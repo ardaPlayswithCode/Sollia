@@ -1,0 +1,9 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+sollia_result.html
+*.backup
+sollia_v1_backup/
