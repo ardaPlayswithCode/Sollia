@@ -223,7 +223,7 @@ class SECEdgarProvider:
                     cleaned.append(p)
                 name = " ".join(cleaned)
                 if 2 <= len(name.split()) <= 4:
-                    bad_words = ["segment", "information", "note", "item", "part", "report", "pricewaterhouse"]
+                    bad_words = ["segment", "information", "note", "item", "part", "report", "pricewaterhouse", "deloitte", "touche", "llp", "ernst", "young", "kpmg", "pricewaterhousecoopers", "pwc", "grant", "thornton", "auditor", "accounting", "audit"]
                     if not any(bad in name.lower() for bad in bad_words):
                         return name
         return ""

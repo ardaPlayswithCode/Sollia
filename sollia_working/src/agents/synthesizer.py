@@ -72,10 +72,18 @@ def _cca_score(a_vecs: List[List[float]], b_vecs: List[List[float]]) -> float:
         if A.shape[0] <= A.shape[1]:
             return 0.5
 
-        cca = CCA(n_components=1)
-        cca.fit(A, B)
-        Ac, Bc = cca.transform(A, B)
-        corr = float(np.corrcoef(Ac.flatten(), Bc.flatten())[0, 1])
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=UserWarning)
+            warnings.filterwarnings('ignore', category=RuntimeWarning)
+            old = np.seterr(divide='ignore', invalid='ignore')
+            try:
+                cca = CCA(n_components=1)
+                cca.fit(A, B)
+                Ac, Bc = cca.transform(A, B)
+                corr = float(np.corrcoef(Ac.flatten(), Bc.flatten())[0, 1])
+            finally:
+                np.seterr(**old)
         return max(0.0, min(1.0, abs(corr)))
     except Exception:
         pass

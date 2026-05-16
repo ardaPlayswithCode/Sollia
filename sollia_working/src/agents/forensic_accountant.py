@@ -422,9 +422,19 @@ class ForensicAccountant:
         most_recent = filings[0]
         _add_log(self._log, f"Most recent 10-K: filed {most_recent.filing_date}, period {most_recent.period_of_report}")
 
-        current_ceo = most_recent.ceo_name or next(
-            (f.ceo_name for f in filings[1:] if f.ceo_name), ""
-        )
+        auditor_keywords = ["deloitte", "touche", "llp", "ernst", "young", "kpmg", "pwc", "pricewaterhouse", "grant", "thornton"]
+        def _is_valid_ceo(name: str) -> bool:
+            if not name or len(name) < 3:
+                return False
+            low = name.lower()
+            return not any(audit in low for audit in auditor_keywords)
+        
+        current_ceo = most_recent.ceo_name if _is_valid_ceo(most_recent.ceo_name) else ""
+        if not current_ceo:
+            for f in filings[1:]:
+                if _is_valid_ceo(f.ceo_name):
+                    current_ceo = f.ceo_name
+                    break
         _add_log(self._log, f"Current CEO: {current_ceo or 'Unknown'}")
 
         ceo_start = ""
@@ -488,10 +498,15 @@ class ForensicAccountant:
         _add_log(self._log, f"Built {len(hist_pairs)} historical pairs")
         _add_log(self._log, f"Matched {len(hist_pairs)} earnings calls to corresponding 10-K periods by filing date alignment")
 
-        if len(hist_pairs) >= 2:
+        if len(hist_pairs) >= 5:
             gaps = [p.gap for p in hist_pairs]
             base_mean = statistics.mean(gaps)
             base_std = statistics.stdev(gaps) if len(gaps) > 1 else 1.0
+        elif len(hist_pairs) >= 2:
+            gaps = [p.gap for p in hist_pairs]
+            base_mean = statistics.mean(gaps)
+            base_std = max(statistics.stdev(gaps) if len(gaps) > 1 else 1.0, 0.1)
+            _add_log(self._log, f"Only {len(hist_pairs)} pairs — using floor stddev=0.1")
         else:
             base_mean = 0.0
             base_std = 1.0
@@ -510,6 +525,13 @@ class ForensicAccountant:
             ps = statistics.stdev(prev) if len(prev) > 1 else 1.0
             pair.rolling_sigma = round((pair.gap - pm) / max(ps, 0.01), 4)
         result.quarterly_pairs = hist_pairs
+
+        if len(hist_pairs) == 0:
+            _add_log(self._log, "No historical pairs — skipping current period analysis")
+            result.s1 = 50.0
+            result.conclusion = f"Insufficient historical data for {ticker} — cannot establish CEO baseline."
+            result.log_messages = self._log
+            return result
 
         _add_log(self._log, "Analyzing current period (test sample)...")
         cur_t = self._best_current_transcript(transcripts, most_recent)
@@ -663,10 +685,12 @@ class ForensicAccountant:
 
         if contradiction:
             result.conclusion = f"A direct contradiction was found between the CEO's statements and the 10-K filing."
-        elif sigma1 > 1.5:
-            result.conclusion = f"The CEO is significantly overpromising relative to the 10-K results, a bearish signal for {ticker}."
-        elif sigma1 < -1.5:
+        elif abs(cur_gap) < 0.1:
+            result.conclusion = f"The gap between transcript tone and 10-K financials is negligible for {ticker}."
+        elif cur_gap > 0.3:
             result.conclusion = f"The CEO is underpromising relative to the 10-K results, a mildly bullish signal for {ticker}."
+        elif cur_gap < -0.3:
+            result.conclusion = f"The CEO is significantly overpromising relative to the 10-K results, a bearish signal for {ticker}."
         else:
             result.conclusion = f"The gap between transcript tone and 10-K financials is within historical norms for {ticker}."
 

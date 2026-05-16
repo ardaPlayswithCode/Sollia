@@ -62,7 +62,9 @@ def run_selected_agents(
     if "forensic" in selected:
         agent = AGENTS["forensic"]
         result = agent.runner.run(ticker)
-        forensic = result
+        # Only use forensic result if it has actual data
+        if result.quarterly_pairs and len(result.quarterly_pairs) > 0:
+            forensic = result
         all_logs.extend(result.log_messages)
 
     if "narrative" in selected:
