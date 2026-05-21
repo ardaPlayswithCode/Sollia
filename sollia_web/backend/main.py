@@ -10,6 +10,7 @@ from pydantic import BaseModel
 sys.path.insert(0, '/Users/ardaturgut/Desktop/SMALL SOLLIA TEST FOLDER ,LAYER BY LAYER/sollia_working')
 from src.agents.synthesizer import Synthesizer
 from backend.agents import get_agents_meta, run_selected_agents, AGENTS
+import backend.agents as _agents
 
 app = FastAPI(title="Sollia API", version="1.0.0")
 
@@ -70,6 +71,7 @@ async def run_analysis(req: AnalysisRequest):
         "corroboration": result.corroboration,
         "forensic": forensic.model_dump() if forensic else None,
         "narrative": narrative.model_dump() if narrative else None,
+        "follow_through": ft_result if ft_result else None,
         "log": [{"speaker": l.speaker, "message": l.message} for l in all_logs],
     }
 

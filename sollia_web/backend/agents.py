@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, '/Users/ardaturgut/Desktop/SMALL SOLLIA TEST FOLDER ,LAYER BY LAYER/sollia_working')
 from src.agents.forensic_accountant import ForensicAccountant
 from src.agents.narrative_scout import NarrativeScout
+from src.agents.follow_through import FollowThroughAgent
 from src.schemas import SolliaForensicResult, SolliaNarrativeResult, AgentLogMessage
 
 
@@ -39,6 +40,12 @@ AGENTS: Dict[str, AgentDefinition] = {
     #     description="Tracks supplier 10-K mentions of target ticker",
     #     runner=SupplyChainAgent(),
     # ),
+    "follow_through": AgentDefinition(
+        id="follow_through",
+        name="Management Follow-Through",
+        description="Tracks CEO promises across filings and checks if they were kept",
+        runner=FollowThroughAgent(),
+    ),
 }
 
 
@@ -74,5 +81,14 @@ def run_selected_agents(
         result = agent.runner.run(ticker, hist_start, hist_end)
         narrative = result
         all_logs.extend(result.log_messages)
+
+    if "follow_through" in selected:
+        agent = AGENTS["follow_through"]
+        result = agent.runner.run(ticker)
+        all_logs.append(AgentLogMessage(speaker="Follow-Through", message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"))
+        # Store follow_through result - we'll handle it in main.py
+        if not hasattr(run_selected_agents, '_ft_result'):
+            run_selected_agents._ft_result = None
+        run_selected_agents._ft_result = result
 
     return forensic, narrative, all_logs
