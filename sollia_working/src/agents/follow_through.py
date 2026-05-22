@@ -419,7 +419,7 @@ class FollowThroughAgent:
             # Build URLs for all 10-K and 10-Q
             self._log.append(f"Processing {len(all_forms_list)} total filings...")
             for i, f in enumerate(all_forms_list):
-                if f in ["10-K", "10-Q"]:
+                if f in ["10-K", "10-Q", "8-K"]:
                     acc = all_acc_list[i].replace("-", "") if i < len(all_acc_list) else ""
                     doc = all_docs_list[i] if i < len(all_docs_list) else ""
                     if not acc or not doc:
@@ -494,7 +494,7 @@ class FollowThroughAgent:
                 continue
             mda = _extract_mda(text, ftype)
             sentences = _split_sentences(mda)
-            info = filings_to_fetch[ftype]
+            info = filings_to_fetch[key]
             for s in sentences:
                 all_sentences.append({
                     "text": s, "source": ftype, "date": info['date'], "url": info['url']
@@ -606,9 +606,20 @@ class FollowThroughAgent:
         if not promises:
             return {"promises": [], "score": 50.0, "log": self._log}
         
-        # Step 7: Sort by severity, keep top 5
-        promises.sort(key=lambda p: p.get('severity', 0), reverse=True)
-        top_promises = promises[:5]
+        # Step 7: Deduplicate and sort by severity
+        seen_texts = set()
+        deduped = []
+        for p in promises:
+            key = p.get('text', '')[:150].lower()
+            key = ''.join(c for c in key if not c.isdigit()).strip()
+            key = ' '.join(key.split())
+            if key not in seen_texts:
+                seen_texts.add(key)
+                deduped.append(p)
+        if len(deduped) < len(promises):
+            self._log.append(f"Deduplicated: {len(promises)} -> {len(deduped)} unique promises")
+        deduped.sort(key=lambda p: p.get('severity', 0), reverse=True)
+        top_promises = deduped[:5]
         
         # Step 8: Evidence search for each promise
         self._log.append("Searching for evidence in later filings...")
@@ -619,9 +630,15 @@ class FollowThroughAgent:
             # Try deterministic search first
             evidence = _deterministic_evidence_search(promise, later)
             if evidence:
-                promise['evidence'] = evidence
-                promise['status'] = 'EVIDENCE_FOUND'
-                self._log.append(f"  Found evidence for: {promise['text'][:80]}...")
+                # Verify with Llama that the evidence is actually relevant
+                self._log.append(f"  Verifying evidence for: {promise['text'][:80]}...")
+                status, verified_evidence = _llama_evidence_verification(promise, later)
+                if status in ['KEPT', 'PARTIAL']:
+                    promise['evidence'] = verified_evidence if verified_evidence else evidence
+                    promise['status'] = status
+                else:
+                    promise['evidence'] = evidence
+                    promise['status'] = 'UNCLEAR'
             else:
                 # Fall back to Llama
                 self._log.append(f"  Asking LLM to verify: {promise['text'][:80]}...")
@@ -632,7 +649,7 @@ class FollowThroughAgent:
         # Step 9: Calculate score
         # Score = (sum of severity × kept) / (sum of all severity) × 100
         total_possible = sum(p.get('severity', 5) for p in top_promises)
-        total_earned = sum(p.get('severity', 5) for p in top_promises if p.get('status') in ['KEPT', 'EVIDENCE_FOUND'])
+        total_earned = sum(p.get('severity', 5) for p in top_promises if p.get('status') in ['KEPT', 'PARTIAL'])
         score = (total_earned / total_possible * 100) if total_possible > 0 else 50.0
         
         elapsed = time.time() - start_time
