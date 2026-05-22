@@ -152,7 +152,7 @@ def _filter_promises(sentences: List[Dict]) -> List[Dict]:
         has_pos = any(re.search(pat, text, re.IGNORECASE) for pat in POSITIVE_PATTERNS)
         has_neg = any(re.search(pat, text, re.IGNORECASE) for pat in NEGATIVE_PATTERNS)
         # Also require a number or percentage for it to be a measurable promise
-        has_metric = bool(re.search(r'\$?\d+[\d,.]*\s*(?:billion|million|thousand|%|percent|year|quarter)', text, re.IGNORECASE))
+        has_metric = bool(re.search(r'\$?\d+[\d,.]*\s*(?:billion|million|thousand|%|percent|year|quarter|Q[1-4]\s*\d{4})|\b(?:by|in|through)\s+\d{4}\b|\bQ[1-4]\s*\d{4}\b|\b\d+\s*(?:new|additional|more)\b|\b\d{3,}\b', text, re.IGNORECASE))
         if has_pos and not has_neg and has_metric:
             candidates.append(s)
     return candidates
@@ -579,8 +579,106 @@ class FollowThroughAgent:
         else:
             self._log.append("  No press releases found from any source")
         
+        # Step 4d: Add 8-K exhibits (fallback: SEC browse → SEC JSON → EDGAR full-text search)
+        self._log.append("Fetching 8-K exhibits...")
+        eight_k_sentences = []
+        
+        # Source 1: SEC EDGAR browse 8-K (fastest at 0.23s)
+        try:
+            resp = requests.get(
+                f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=8-K&dateb=&owner=exclude&count=20",
+                headers=HEADERS, timeout=10
+            )
+            if resp.status_code == 200:
+                # Extract 8-K document links from browse page
+                doc_matches = re.findall(r'/Archives/edgar/data/\d+/(\d+)/([^"]+\.htm)', resp.text)
+                for acc_no, doc_name in doc_matches[:10]:
+                    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_no}/{doc_name}"
+                    try:
+                        resp2 = requests.get(url, headers=HEADERS, timeout=10)
+                        if resp2.status_code == 200:
+                            clean = _strip_html(resp2.text)
+                            if len(clean) > 500:
+                                sentences = _split_sentences(clean)
+                                for s in sentences:
+                                    eight_k_sentences.append({
+                                        "text": s,
+                                        "source": "8-K_browse",
+                                        "date": "recent",
+                                        "url": url
+                                    })
+                    except:
+                        pass
+            if eight_k_sentences:
+                self._log.append(f"  SEC browse: {len(eight_k_sentences)} sentences")
+        except Exception as e:
+            self._log.append(f"  SEC browse 8-K failed: {e}")
+        
+        # Source 2: SEC EDGAR JSON (carry forward)
+        if not eight_k_sentences:
+            try:
+                # Reuse the existing filings data to find 8-Ks
+                resp = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=DATA_HEADERS, timeout=15)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    recent = data.get("filings", {}).get("recent", {})
+                    forms = recent.get("form", [])
+                    accessions = recent.get("accessionNumber", [])
+                    primary_docs = recent.get("primaryDocument", [])
+                    
+                    for i, f in enumerate(forms):
+                        if f == "8-K" and len(eight_k_sentences) < 200:
+                            acc = accessions[i].replace("-", "")
+                            doc = primary_docs[i]
+                            url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{doc}"
+                            try:
+                                resp2 = requests.get(url, headers=HEADERS, timeout=10)
+                                if resp2.status_code == 200:
+                                    clean = _strip_html(resp2.text)
+                                    if len(clean) > 500:
+                                        sentences = _split_sentences(clean)
+                                        for s in sentences:
+                                            eight_k_sentences.append({
+                                                "text": s,
+                                                "source": "8-K_json",
+                                                "date": "recent",
+                                                "url": url
+                                            })
+                            except:
+                                pass
+                if eight_k_sentences:
+                    self._log.append(f"  SEC JSON: {len(eight_k_sentences)} sentences")
+            except Exception as e:
+                self._log.append(f"  SEC JSON 8-K failed: {e}")
+        
+        # Source 3: EDGAR full-text search (carry forward — slowest at 0.29s)
+        if not eight_k_sentences:
+            try:
+                resp = requests.get(
+                    f"https://efts.sec.gov/LATEST/search-index?q={ticker}&dateRange=custom&startdt=2024-01-01&enddt=2026-12-31&forms=8-K",
+                    headers=HEADERS, timeout=10
+                )
+                if resp.status_code == 200 and len(resp.text) > 500:
+                    clean = _strip_html(resp.text)
+                    sentences = _split_sentences(clean)
+                    for s in sentences:
+                        eight_k_sentences.append({
+                            "text": s,
+                            "source": "8-K_search",
+                            "date": "recent",
+                            "url": ""
+                        })
+                    self._log.append(f"  EDGAR search: {len(eight_k_sentences)} sentences")
+            except Exception as e:
+                self._log.append(f"  EDGAR search 8-K failed: {e}")
+        
+        if eight_k_sentences:
+            all_sentences.extend(eight_k_sentences)
+        else:
+            self._log.append("  No 8-K exhibits found from any source")
+        
         all_sentences.sort(key=lambda x: x['date'])
-        self._log.append(f"Total sentences across all filings + transcripts + press releases: {len(all_sentences)}")
+        self._log.append(f"Total sentences across all filings + transcripts + press releases + 8-Ks: {len(all_sentences)}")
         
         # Step 5: Deterministic promise filter
         self._log.append("Filtering for promise-like sentences...")

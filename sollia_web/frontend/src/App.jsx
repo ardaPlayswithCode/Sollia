@@ -227,6 +227,15 @@ export default function App() {
               <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {state.result.forensic && <AgentCard title="CEO vs 10-K" label={state.result.forensic.discrepancy_label} conclusion={state.result.forensic.conclusion} topSignals={state.result.forensic.top_signals} type="forensic" index={0} />}
                 {state.result.narrative && <AgentCard title="News Sentiment" label={state.result.narrative.sentiment_label} conclusion={state.result.narrative.conclusion} topSignals={state.result.narrative.top_signals} type="narrative" index={1} />}
+                {state.result.follow_through && <AgentCard title="Management Follow-Through" label={`Score: ${state.result.follow_through.score}% — ${state.result.follow_through.promises?.length || 0} promises tracked`} conclusion={state.result.follow_through.conclusion || 'Top promises from company history'} topSignals={(state.result.follow_through.promises || []).map(p => ({
+                  severity: p.status === 'EVIDENCE_FOUND' ? 'GREEN' : 'RED',
+                  severity_color: p.status === 'EVIDENCE_FOUND' ? '#22C55E' : '#EF4444',
+                  description: `[${p.status}] ${p.text?.slice(0, 100)}...`,
+                  transcript_citation: p.evidence?.slice(0, 100) || 'No evidence found',
+                  filing_citation: `Severity: ${p.severity}/10 | ${p.source || 'unknown'} | ${p.date || ''}`,
+                  transcript_url: '',
+                  htm_link: ''
+                }))} type="follow_through" index={2} />}
               </motion.section>
 
               {/* Log & JSON tabs */}
