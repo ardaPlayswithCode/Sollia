@@ -527,7 +527,7 @@ class FollowThroughAgent:
         try:
             # Try common IR page patterns
             for ir_url in [
-                f"https://nvidianews.nvidia.com/",
+                f"https://nvidianews.nvidia.com/" if ticker.upper() == "NVDA" else f"https://investor.{ticker.lower()}.com/news-releases/",
                 f"https://investor.{ticker.lower()}.com/news-releases/",
                 f"https://{ticker.lower()}.com/press/",
             ]:
@@ -627,29 +627,21 @@ class FollowThroughAgent:
             promise_date = promise['date']
             later = [s for s in all_sentences if s['date'] > promise_date]
             
-            # Try deterministic search first
+            # Search for evidence in later filings
             evidence = _deterministic_evidence_search(promise, later)
             if evidence:
-                # Verify with Llama that the evidence is actually relevant
-                self._log.append(f"  Verifying evidence for: {promise['text'][:80]}...")
-                status, verified_evidence = _llama_evidence_verification(promise, later)
-                if status in ['KEPT', 'PARTIAL']:
-                    promise['evidence'] = verified_evidence if verified_evidence else evidence
-                    promise['status'] = status
-                else:
-                    promise['evidence'] = evidence
-                    promise['status'] = 'UNCLEAR'
+                promise['evidence'] = evidence
+                promise['status'] = 'EVIDENCE_FOUND'
+                self._log.append(f"  Found evidence for: {promise['text'][:80]}...")
             else:
-                # Fall back to Llama
-                self._log.append(f"  Asking LLM to verify: {promise['text'][:80]}...")
-                status, evidence = _llama_evidence_verification(promise, later)
-                promise['status'] = status
+                self._log.append(f"  No evidence found for: {promise['text'][:80]}...")
+                promise['status'] = 'NO_EVIDENCE'
                 promise['evidence'] = evidence
         
         # Step 9: Calculate score
         # Score = (sum of severity × kept) / (sum of all severity) × 100
         total_possible = sum(p.get('severity', 5) for p in top_promises)
-        total_earned = sum(p.get('severity', 5) for p in top_promises if p.get('status') in ['KEPT', 'PARTIAL'])
+        total_earned = sum(p.get('severity', 5) for p in top_promises if p.get('status') == 'EVIDENCE_FOUND')
         score = (total_earned / total_possible * 100) if total_possible > 0 else 50.0
         
         elapsed = time.time() - start_time
