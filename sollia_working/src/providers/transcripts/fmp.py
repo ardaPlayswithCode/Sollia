@@ -194,7 +194,7 @@ class FMPTranscriptProvider:
                         doc_lc = doc_resp.text.lower()
                         if not any(
                             kw in doc_lc
-                            for kw in ["transcript", "earnings call", "operator:", "quarter ended"]
+                            for kw in ["transcript", "earnings call", "operator:", "quarter ended", "ex-99.1", "exhibit 99.1", "ex-99", "results of operations", "financial results"]
                         ):
                             continue
                         clean = _strip_html(doc_resp.text)
