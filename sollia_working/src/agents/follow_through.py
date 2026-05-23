@@ -89,16 +89,20 @@ NEGATIVE_PATTERNS = [
 
 
 def _ask_ollama(prompt: str, timeout: int = 45) -> str:
-    """Call local Ollama instance."""
+    """Call Groq API for LLM inference."""
     try:
-        result = subprocess.run(
-            ["ollama", "run", "llama3.2"],
-            input=prompt, capture_output=True, text=True, timeout=timeout,
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        resp = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0},
+            timeout=timeout,
         )
-        return result.stdout.strip()
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        logger.error("Ollama call failed: %s", e)
-        return ""
+        logger.error("Groq call failed: %s", e)
+    return ""
 
 
 def _strip_html(html: str) -> str:
@@ -730,12 +734,14 @@ class FollowThroughAgent:
         if len(candidates) <= 15:
             promises = _batch_validate_promises(candidates)
         else:
-            # Split into chunks of 15
+            # Split into chunks of 15 and process in parallel
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            chunks = [candidates[i:i+15] for i in range(0, len(candidates), 15)]
             promises = []
-            for chunk_start in range(0, len(candidates), 15):
-                chunk = candidates[chunk_start:chunk_start+15]
-                chunk_promises = _batch_validate_promises(chunk)
-                promises.extend(chunk_promises)
+            with ThreadPoolExecutor(max_workers=min(len(chunks), 8)) as ex:
+                futures = {ex.submit(_batch_validate_promises, chunk): chunk for chunk in chunks}
+                for future in as_completed(futures):
+                    promises.extend(future.result())
         self._log.append(f"Confirmed promises: {len(promises)}")
         
         if not promises:

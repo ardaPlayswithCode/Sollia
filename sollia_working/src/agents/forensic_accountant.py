@@ -1,5 +1,6 @@
 """Forensic Accountant agent — gaps between CEO transcript tone and 10-K reality."""
 from __future__ import annotations
+import os
 
 import math
 import re
@@ -61,13 +62,15 @@ def _add_log(msgs: List[AgentLogMessage], text: str) -> None:
 
 def _ask_ollama(prompt: str, timeout: int = 25) -> Optional[str]:
     try:
+        api_key = os.environ.get("GROQ_API_KEY", "")
         resp = requests.post(
-            OLLAMA_URL,
-            json={"model": "llama3.2", "prompt": prompt, "stream": False},
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0},
             timeout=timeout,
         )
         if resp.status_code == 200:
-            return resp.json().get("response", "").strip()
+            return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception:
         pass
     return None
