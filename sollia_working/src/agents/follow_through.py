@@ -559,10 +559,15 @@ class FollowThroughAgent:
         try:
             # Try common IR page patterns
             for ir_url in [
-                f"https://nvidianews.nvidia.com/" if ticker.upper() == "NVDA" else f"https://investor.{ticker.lower()}.com/news-releases/",
                 f"https://investor.{ticker.lower()}.com/news-releases/",
+                f"https://investors.{ticker.lower()}.com/news-releases/",
+                f"https://ir.{ticker.lower()}.com/news-releases/",
+                f"https://{ticker.lower()}.com/investors/news/",
                 f"https://{ticker.lower()}.com/press/",
+                f"https://nvidianews.nvidia.com/" if ticker.upper() == "NVDA" else None,
             ]:
+                if ir_url is None:
+                    continue
                 try:
                     resp = requests.get(ir_url, headers=HEADERS, timeout=10)
                     if resp.status_code == 200 and len(resp.text) > 5000:
