@@ -153,7 +153,16 @@ def _filter_promises(sentences: List[Dict]) -> List[Dict]:
         has_neg = any(re.search(pat, text, re.IGNORECASE) for pat in NEGATIVE_PATTERNS)
         # Also require a number or percentage for it to be a measurable promise
         has_metric = bool(re.search(r'\$?\d+[\d,.]*\s*(?:billion|million|thousand|%|percent|year|quarter|Q[1-4]\s*\d{4})|\b(?:by|in|through)\s+\d{4}\b|\bQ[1-4]\s*\d{4}\b|\b\d+\s*(?:new|additional|more)\b|\b\d{3,}\b', text, re.IGNORECASE))
-        if has_pos and not has_neg and has_metric:
+        # Filter out accounting boilerplate promises
+        is_accounting = any(kw in text.lower() for kw in [
+            'accounting standard', 'asc ', 'fasb', 'gaap', 'stock-based comp',
+            'amortization period', 'unearned', 'provisional amount', 'valuation allowance',
+            'adopt this standard', 'adopt this guidance', 'accounting pronouncement',
+            'adopt the standard', 'adopt the guidance', 'accounting standards update',
+            'unrecognized tax benefit', 'tax authority', 'deferred tax asset',
+            'based compensation expense', 'restricted stock unit',
+        ])
+        if has_pos and not has_neg and has_metric and not is_accounting:
             candidates.append(s)
     return candidates
 
@@ -239,7 +248,7 @@ Sentences:
         idx = r.get('id', -1)
         if 0 <= idx < len(candidates) and r.get('is_promise'):
             c = candidates[idx].copy()
-            c['severity'] = r.get('severity', 5)
+            c['severity'] = r.get('severity') or 5
             c['metric'] = str(r.get('metric', 'none'))
             validated.append(c)
     
@@ -267,7 +276,7 @@ Sentences:
                             idx = r.get('id', -1)
                             if 0 <= idx < len(candidates):
                                 c = candidates[idx].copy()
-                                c['severity'] = r.get('severity', 5)
+                                c['severity'] = r.get('severity') or 5
                                 c['metric'] = 'none'
                                 validated.append(c)
             except:
@@ -437,7 +446,21 @@ class FollowThroughAgent:
             self._log.append(f"Cached {len(filings_to_fetch)} filings to disk")
         
         self._log.append(f"Downloading {len(filings_to_fetch)} filings...")
+        # Check filing text cache first
+        text_cache_dir = _os.path.join(_os.path.dirname(__file__), "..", ".filing_text_cache")
+        _os.makedirs(text_cache_dir, exist_ok=True)
+        text_cache_file = _os.path.join(text_cache_dir, f"{ticker}_texts.json")
         filing_texts = {}
+        if _os.path.exists(text_cache_file):
+            try:
+                with open(text_cache_file) as f:
+                    filing_texts = json.loads(f.read())
+                self._log.append(f"Loaded {len(filing_texts)} filing texts from cache")
+            except:
+                pass
+        
+        if not filing_texts:
+            filing_texts = {}
         for key, info in filings_to_fetch.items():
             text = ""
             # Fallback chain: try Last10K first (fastest), then SEC .htm, then SEC JSON
@@ -486,15 +509,24 @@ class FollowThroughAgent:
             if not text:
                 self._log.append(f"  {key}: ALL SOURCES FAILED")
         
+        # Save filing texts to cache
+        if filing_texts:
+            try:
+                with open(text_cache_file, 'w') as f:
+                    json.dump(filing_texts, f)
+            except:
+                pass
+        
         # Step 4: Extract MD&A and split into time-sorted sentences
         self._log.append("Extracting MD&A sections and splitting sentences...")
         all_sentences = []
-        for ftype, text in filing_texts.items():
+        for key, text in filing_texts.items():
             if not text:
                 continue
+            ftype = key.split('_')[0] if '_' in key else 'unknown'
             mda = _extract_mda(text, ftype)
             sentences = _split_sentences(mda)
-            info = filings_to_fetch[key]
+            info = filings_to_fetch.get(key, {})
             for s in sentences:
                 all_sentences.append({
                     "text": s, "source": ftype, "date": info['date'], "url": info['url']
@@ -716,7 +748,7 @@ class FollowThroughAgent:
                 deduped.append(p)
         if len(deduped) < len(promises):
             self._log.append(f"Deduplicated: {len(promises)} -> {len(deduped)} unique promises")
-        deduped.sort(key=lambda p: p.get('severity', 0), reverse=True)
+        deduped.sort(key=lambda p: p.get('severity') or 0, reverse=True)
         top_promises = deduped[:5]
         
         # Step 8: Evidence search for each promise

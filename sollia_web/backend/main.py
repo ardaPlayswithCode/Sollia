@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-sys.path.insert(0, '/Users/ardaturgut/Desktop/SMALL SOLLIA TEST FOLDER ,LAYER BY LAYER/sollia_working')
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Sollia/sollia_working')
 from src.agents.synthesizer import Synthesizer
 from backend.agents import get_agents_meta, run_selected_agents, AGENTS
 import backend.agents as _agents
@@ -58,6 +58,8 @@ async def run_analysis(req: AnalysisRequest):
     if narrative:
         all_logs.extend(narrative.log_messages)
     all_logs.extend(result.log_messages)
+
+    ft_result = getattr(run_selected_agents, "_ft_result", None)
 
     return {
         "ticker": result.ticker,

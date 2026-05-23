@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 # Import your existing agents
 import sys
-sys.path.insert(0, '/Users/ardaturgut/Desktop/SMALL SOLLIA TEST FOLDER ,LAYER BY LAYER/sollia_working')
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Sollia/sollia_working')
 from src.agents.forensic_accountant import ForensicAccountant
 from src.agents.narrative_scout import NarrativeScout
 from src.agents.follow_through import FollowThroughAgent
@@ -65,6 +65,7 @@ def run_selected_agents(
     forensic = None
     narrative = None
     all_logs: List[AgentLogMessage] = []
+    run_selected_agents._ft_result = None  # Clear stale data
 
     if "forensic" in selected:
         agent = AGENTS["forensic"]
