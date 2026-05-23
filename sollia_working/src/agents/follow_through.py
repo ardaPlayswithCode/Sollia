@@ -91,7 +91,7 @@ NEGATIVE_PATTERNS = [
 def _ask_ollama(prompt: str, timeout: int = 45) -> str:
     """Call Groq API for LLM inference."""
     try:
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        api_key = _os.environ.get("GROQ_API_KEY", "")
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -183,8 +183,7 @@ def _batch_validate_promises(candidates: List[Dict]) -> List[Dict]:
 
 A promise must have a specific number, timeline, or measurable outcome. Vague statements like "we will continue to invest" are NOT promises.
 
-You MUST return ONLY a valid JSON array starting with [ and ending with ]. Do NOT include ANY text before or after the array.
-Format: [{"id": 0, "is_promise": true, "severity": 7, "metric": "revenue target"}, ...]
+You MUST return ONLY a valid JSON array. Each object MUST have ALL four fields: id, is_promise, severity (1-10), and metric (short description of what to check). Example: [{"id": 0, "is_promise": true, "severity": 7, "metric": "revenue target"}, {"id": 1, "is_promise": false, "severity": 0, "metric": "none"}]
 
 Sentences:
 """ + batch_text
