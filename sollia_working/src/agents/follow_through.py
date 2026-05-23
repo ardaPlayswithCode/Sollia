@@ -760,7 +760,27 @@ class FollowThroughAgent:
         self._log.append("Searching for evidence in later filings...")
         for promise in top_promises:
             promise_date = promise['date']
-            later = [s for s in all_sentences if s['date'] > promise_date]
+            
+            # Find the next 3 10-Q or 10-K filings after the promise date
+            # Skip 8-Ks — they're mostly headers, not financial results
+            later_keys = sorted(
+                [k for k in filing_texts.keys() 
+                 if filing_texts[k] and k.split('_')[0] in ['10-Q', '10-K'] 
+                 and k.split('_')[-1] > promise_date],
+                key=lambda k: k.split('_')[-1]
+            )[:3]
+            
+            # Build sentences from just those filings' MD&A sections
+            later = []
+            for key in later_keys:
+                ftype = key.split('_')[0]
+                mda = _extract_mda(filing_texts[key], ftype)
+                for s in _split_sentences(mda):
+                    later.append({
+                        "text": s,
+                        "source": key,
+                        "date": key.split('_')[-1] if '_' in key else ''
+                    })
             
             # Search for evidence in later filings
             evidence = _deterministic_evidence_search(promise, later)
