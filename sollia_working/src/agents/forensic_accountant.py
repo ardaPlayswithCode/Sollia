@@ -228,10 +228,12 @@ def _extract_reality(mda: str) -> SolliaRealityMetrics:
 
 def _severity_label(sigma: float) -> Tuple[str, str]:
     a = abs(sigma)
-    if a >= 2.0:
-        return "RED", "#EF4444"
-    if a >= 1.0:
-        return "AMBER", "#F59E0B"
+    if sigma > 0.5:
+        return "GREEN", "#22C55E"  # CEO more conservative than baseline = bullish
+    elif sigma < -0.5:
+        return "RED", "#EF4444"    # CEO more aggressive than baseline = bearish
+    elif a >= 1.0:
+        return "AMBER", "#F59E0B"  # Notable divergence but unclear direction
     return "GREEN", "#22C55E"
 
 
@@ -622,8 +624,17 @@ class ForensicAccountant:
                 
                 divergent.sort(key=lambda p: p[0], reverse=True)
                 
-                # Build top 5 signals
-                for rank, (abs_sig, sigma, gap, tone_s, real_s, tr_s, mda_s) in enumerate(divergent[:5], 1):
+                # Deduplicate by MDA sentence — each 10-K sentence used at most once
+                seen_mda = set()
+                unique_divergent = []
+                for item in divergent:
+                    mda_key = item[6][:100]  # mda_s is index 6
+                    if mda_key not in seen_mda:
+                        seen_mda.add(mda_key)
+                        unique_divergent.append(item)
+                
+                # Build top 5 signals from deduplicated pairs
+                for rank, (abs_sig, sigma, gap, tone_s, real_s, tr_s, mda_s) in enumerate(unique_divergent[:5], 1):
                     sev, col = _severity_label(sigma)
                     direction = "overpromised (bearish)" if gap < 0 else "underpromised (bullish)"
                     description = "CEO %s vs 10-K (gap %+.3f)" % (direction, gap/2)
@@ -644,56 +655,49 @@ class ForensicAccountant:
                         transcript_url=cur_t.source_url if cur_t and hasattr(cur_t, 'source_url') else most_recent.htm_url,
                     ))
         
-        # Fallback: if no sentence pairs found, use V1 behavior
+        # Fallback: if no sentence pairs found, show single aggregate signal
         if not signals:
-            cur_pair = SolliaQuarterlyPair(
+            sev, col = _severity_label(sigma1)
+            direction = "overpromised (bearish)" if cur_gap < 0 else "underpromised (bullish)"
+            signals.append(SolliaDiscrepancySignal(
+                rank=1,
                 fiscal_period=cur_t.date[:10] if cur_t and cur_t.date else (most_recent.period_of_report or ""),
-                transcript_date=cur_t.date if cur_t else "",
-                filing_date=most_recent.filing_date,
-                tone=cur_tone,
-                reality=cur_reality,
-                gap=round(cur_gap, 4),
-                rolling_sigma=round(sigma1, 4),
-            )
-            ranked = [cur_pair] * 5
-            for rank, pair in enumerate(ranked, 1):
-                sev, col = _severity_label(pair.rolling_sigma)
-                direction = "overpromised (bearish)" if pair.gap < 0 else "underpromised (bullish)"
-                signals.append(SolliaDiscrepancySignal(
-                    rank=rank,
-                    fiscal_period=pair.fiscal_period,
-                    severity=sev,
-                    severity_color=col,
-                    description="CEO %s vs 10-K (gap %+.3f)" % (direction, pair.gap/2),
-                    transcript_citation=_first5(cur_t.content if cur_t else ""),
-                    filing_citation=_first5(most_recent.mda_text),
-                    htm_link=most_recent.htm_url,
-                    transcript_url=cur_t.source_url if cur_t and hasattr(cur_t, 'source_url') else most_recent.htm_url,
-                ))
+                severity=sev,
+                severity_color=col,
+                description="CEO %s vs 10-K (gap %+.3f)" % (direction, cur_gap/2),
+                transcript_citation=_first5(cur_t.content if cur_t else ""),
+                filing_citation=_first5(most_recent.mda_text),
+                htm_link=most_recent.htm_url,
+                transcript_url=cur_t.source_url if cur_t and hasattr(cur_t, 'source_url') else most_recent.htm_url,
+            ))
 
         result.top_signals = signals
 
         _add_log(self._log, f"Identified {len(signals)} key sentences where CEO language diverged from 10-K financial reality")
-        result.discrepancy_metric = round(cur_gap, 4)
-        if cur_gap/2 > 0.15:
-            result.discrepancy_label = f"+{cur_gap/2:.2f} [bullish | CEO notably underpromising vs 10-K | scale −1 to +1]"
-        elif cur_gap/2 > 0.05:
-            result.discrepancy_label = f"+{cur_gap/2:.2f} [mildly bullish | CEO somewhat underpromising vs 10-K | scale −1 to +1]"
-        elif cur_gap/2 < -0.15:
-            result.discrepancy_label = f"{cur_gap/2:.2f} [bearish | CEO notably overpromising vs 10-K | scale −1 to +1]"
-        elif cur_gap/2 < -0.05:
-            result.discrepancy_label = f"{cur_gap/2:.2f} [mildly bearish | CEO slightly overpromising vs 10-K | scale −1 to +1]"
+        result.discrepancy_metric = round(sigma1, 4)
+        if sigma1 > 1.0:
+            result.discrepancy_label = f"{sigma1:+.2f}σ [bullish | CEO notably more conservative than baseline | scale −3 to +3σ]"
+        elif sigma1 > 0.3:
+            result.discrepancy_label = f"{sigma1:+.2f}σ [mildly bullish | CEO somewhat more conservative than baseline | scale −3 to +3σ]"
+        elif sigma1 < -1.0:
+            result.discrepancy_label = f"{sigma1:+.2f}σ [bearish | CEO notably more aggressive than baseline | scale −3 to +3σ]"
+        elif sigma1 < -0.3:
+            result.discrepancy_label = f"{sigma1:+.2f}σ [mildly bearish | CEO slightly more aggressive than baseline | scale −3 to +3σ]"
         else:
-            result.discrepancy_label = f"{cur_gap/2:+.2f} [neutral | tone aligned with 10-K results | scale −1 to +1]"
+            result.discrepancy_label = f"{sigma1:+.2f}σ [neutral | within historical norms | scale −3 to +3σ]"
 
         if contradiction:
             result.conclusion = f"A direct contradiction was found between the CEO's statements and the 10-K filing."
-        elif abs(cur_gap) < 0.1:
-            result.conclusion = f"The gap between transcript tone and 10-K financials is negligible for {ticker}."
-        elif cur_gap > 0.3:
-            result.conclusion = f"The CEO is underpromising relative to the 10-K results, a mildly bullish signal for {ticker}."
-        elif cur_gap < -0.3:
-            result.conclusion = f"The CEO is significantly overpromising relative to the 10-K results, a bearish signal for {ticker}."
+        if abs(sigma1) < 0.3:
+            result.conclusion = f"CEO behavior is completely normal for {ticker} — no divergence from historical baseline."
+        elif sigma1 > 1.0:
+            result.conclusion = f"The CEO is notably more conservative than historical baseline, a bullish signal for {ticker}."
+        elif sigma1 < -1.0:
+            result.conclusion = f"The CEO is notably more aggressive than historical baseline, a bearish signal for {ticker}."
+        elif sigma1 > 0.3:
+            result.conclusion = f"The CEO is slightly more conservative than usual, a mildly bullish signal for {ticker}."
+        elif sigma1 < -0.3:
+            result.conclusion = f"The CEO is slightly more aggressive than usual, a mildly bearish signal for {ticker}."
         else:
             result.conclusion = f"The gap between transcript tone and 10-K financials is within historical norms for {ticker}."
 
