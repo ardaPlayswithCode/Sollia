@@ -10,7 +10,6 @@ from pydantic import BaseModel
 sys.path.insert(0, '/Users/ardaturgut/Desktop/Sollia/sollia_working')
 from src.agents.synthesizer import Synthesizer
 from backend.agents import get_agents_meta, run_selected_agents, AGENTS
-import backend.agents as _agents
 
 app = FastAPI(title="Sollia API", version="1.0.0")
 
@@ -21,45 +20,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class AnalysisRequest(BaseModel):
     ticker: str
     agents: list[str] = ["forensic", "narrative"]
-
 
 @app.get("/api/agents")
 async def list_agents():
     return {"agents": get_agents_meta()}
 
-
 @app.post("/api/analyze")
 async def run_analysis(req: AnalysisRequest):
     ticker = req.ticker.upper()
     selected = [a for a in req.agents if a in AGENTS]
-
-    forensic, narrative, logs = run_selected_agents(ticker, selected)
+    
+    forensic, narrative, logs, ft_result = run_selected_agents(ticker, selected)
 
     # Determine company name
     company_name = ticker
     if forensic:
         company_name = getattr(forensic, 'ceo_name', None) or ticker
         if company_name == ticker and hasattr(forensic, 'company_name'):
-            company_name = forensic.company_name or ticker
+            company_name = getattr(forensic, 'company_name', ticker)
 
     # Synthesize
     synth = Synthesizer()
     result = synth.run(forensic, narrative, ticker, company_name)
     normalized_score = round((result.s_final - 20.0) / 60.0 * 100.0, 1)
 
-    # Merge all log messages: forensic -> narrative -> synthesizer
+    # Merge logs
     all_logs = []
     if forensic:
-        all_logs.extend(forensic.log_messages)
+        all_logs.extend(getattr(forensic, 'log_messages', []))
     if narrative:
-        all_logs.extend(narrative.log_messages)
-    all_logs.extend(result.log_messages)
-
-    ft_result = getattr(run_selected_agents, "_ft_result", None)
+        all_logs.extend(getattr(narrative, 'log_messages', []))
+    all_logs.extend(getattr(result, 'log_messages', []))
 
     return {
         "ticker": result.ticker,
@@ -71,18 +65,16 @@ async def run_analysis(req: AnalysisRequest):
         "agents_run": result.agents_run,
         "track1_score": result.track1_score,
         "corroboration": result.corroboration,
-        "forensic": forensic.model_dump() if forensic else None,
-        "narrative": narrative.model_dump() if narrative else None,
-        "follow_through": ft_result if ft_result else None,
+        "forensic": forensic.model_dump() if hasattr(forensic, 'model_dump') else None,
+        "narrative": narrative.model_dump() if hasattr(narrative, 'model_dump') else None,
+        "follow_through": ft_result.model_dump() if hasattr(ft_result, 'model_dump') else (ft_result if ft_result else None),
         "log": [{"speaker": l.speaker, "message": l.message} for l in all_logs],
     }
 
-
-# Serve React build in production
+# Serve React build
 frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
 if os.path.exists(frontend_dist):
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
-
 
 if __name__ == "__main__":
     import uvicorn

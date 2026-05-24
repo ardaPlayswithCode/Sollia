@@ -1,112 +1,95 @@
-"""Agent 3: Management Follow-Through — tracks CEO promises and checks if they were kept."""
+"""Agent 3 — Management Follow-Through: Tracks CEO promises across filings, verifies if they were kept."""
 from __future__ import annotations
-import re
+
 import json
-import time
 import logging
-import subprocess
-from typing import List, Optional, Dict, Tuple
+import os as _os
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 import requests
-import os as _os
 
 logger = logging.getLogger(__name__)
 
-# ── Transcript Provider (reuse FMP) ─────────────────────────────────
-def _get_transcripts(ticker: str) -> List[Dict]:
-    """Fetch earnings call transcripts from FMP API (disk-cached)."""
-    cache_dir = _os.path.join(_os.path.dirname(__file__), '..', '.transcript_cache')
-    _os.makedirs(cache_dir, exist_ok=True)
-    cache_file = _os.path.join(cache_dir, f'{ticker}.json')
-    
-    # Check cache
-    if _os.path.exists(cache_file):
-        try:
-            with open(cache_file) as f:
-                return json.loads(f.read())
-        except:
-            pass
-    
-    # Fetch from FMP
-    try:
-        from src.providers.transcripts.fmp import FMPTranscriptProvider
-        fmp = FMPTranscriptProvider()
-        results = fmp.get_transcripts(ticker)
-        # Cache the results
-        data = [{
-            "date": str(r.date) if hasattr(r, 'date') else str(r.get('date', '')),
-            "content": r.content if hasattr(r, 'content') else r.get('content', ''),
-            "fiscal_period": r.fiscal_period if hasattr(r, 'fiscal_period') else r.get('fiscal_period', ''),
-            "source_url": r.source_url if hasattr(r, 'source_url') else r.get('source_url', ''),
-        } for r in results]
-        with open(cache_file, 'w') as f:
-            json.dump(data, f)
-        return data
-    except Exception as e:
-        logger.error("FMP failed: %s. Trying Yahoo Finance...", e)
-    
-    # Fallback: Yahoo Finance
-    try:
-        yahoo_url = f"https://finance.yahoo.com/quote/{ticker}/"
-        resp = requests.get(yahoo_url, headers={"User-Agent": "Sollia Analysis contact@sollia.app"}, timeout=15)
-        if resp.status_code == 200:
-            # Extract transcript links from Yahoo Finance page
-            # Store the page content for later parsing
-            data = [{
-                "date": "latest",
-                "content": resp.text[:50000],
-                "fiscal_period": "latest",
-                "source_url": yahoo_url,
-            }]
-            with open(cache_file, 'w') as f:
-                json.dump(data, f)
-            return data
-    except Exception as e2:
-        logger.error("Yahoo Finance also failed: %s", e2)
-    
-    return []
-
+SEC_BASE = "https://data.sec.gov"
+EDGAR_BASE = "https://www.sec.gov"
 HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate"}
 DATA_HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate", "Host": "data.sec.gov"}
-EDGAR_BASE = "https://www.sec.gov"
-SEC_BASE = "https://data.sec.gov"
 
-# ── Promise Detection Patterns ───────────────────────────────────
-POSITIVE_PATTERNS = [
-    r'\bwe expect\b', r'\bwe plan\b', r'\bwe will\b', r'\bwe are on track\b',
-    r'\bwe project\b', r'\bwe forecast\b', r'\bwe anticipate\b', r'\bour target\b',
-    r'\bwe aim\b', r'\bwe commit\b', r'\bwe intend\b', r'\bgoal of\b',
-    r'\bobjective of\b', r'\btarget of\b',
-]
+# Groq client (lazy init)
+_groq_client = None
 
-NEGATIVE_PATTERNS = [
-    r'no assurance', r'cannot assure', r'cannot guarantee', r'no guarantee',
-    r'may not', r'might not', r'could not', r'unless', r'except',
-    r'risk factor', r'cautionary', r'forward.looking statements',
-    r'should read', r'completely and understand', r'actual results may differ',
-]
-
-
-def _ask_ollama(prompt: str, timeout: int = 45) -> str:
-    """Call Groq API for LLM inference."""
+def _get_groq_client():
+    """Lazy-init Groq client from official package if available, else use requests."""
+    global _groq_client
+    if _groq_client is not None:
+        return _groq_client
     try:
-        api_key = _os.environ.get("GROQ_API_KEY", "")
+        from groq import Groq
+        _groq_client = Groq(api_key=_os.environ.get("GROQ_API_KEY", ""))
+        return _groq_client
+    except ImportError:
+        _groq_client = False
+        return False
+
+
+def _ask_groq(prompt: str, timeout: int = 15) -> str:
+    """Call Groq API for LLM inference."""
+    api_key = _os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        logger.error("GROQ_API_KEY not set")
+        return ""
+    
+    client = _get_groq_client()
+    if client:
+        try:
+            resp = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0, max_tokens=500, timeout=timeout,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning("Groq client failed, falling back to requests: %s", e)
+    
+    try:
         resp = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0},
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0.0, "max_tokens": 500},
             timeout=timeout,
         )
         if resp.status_code == 200:
             return resp.json()["choices"][0]["message"]["content"].strip()
+        else:
+            logger.error("Groq API error: %s %s", resp.status_code, resp.text[:200])
     except Exception as e:
         logger.error("Groq call failed: %s", e)
     return ""
 
 
+_ask_ollama = _ask_groq
+import threading
+_rate_lock = threading.Lock()
+_last_groq_call = 0.0
+_MIN_GROQ_INTERVAL = 3.0  # seconds between Groq calls (6000 TPM, need buffer for large prompts) (6000 TPM limit = ~100 tokens/sec, 2s buffer)
+
+def _rate_limited_groq(prompt: str, timeout: int = 15) -> str:
+    """Rate-limited wrapper around _ask_groq to avoid 429 errors."""
+    global _last_groq_call
+    with _rate_lock:
+        elapsed = time.time() - _last_groq_call
+        if elapsed < _MIN_GROQ_INTERVAL:
+            time.sleep(_MIN_GROQ_INTERVAL - elapsed)
+        _last_groq_call = time.time()
+    return _ask_groq(prompt, timeout)
+
+
+
 def _strip_html(html: str) -> str:
-    """Remove HTML tags and entities."""
     text = re.sub(r'<[^>]+>', ' ', html)
     text = re.sub(r'&nbsp;', ' ', text)
     text = re.sub(r'&amp;', '&', text)
@@ -117,48 +100,53 @@ def _strip_html(html: str) -> str:
     return text.strip()
 
 
-def _split_sentences(text: str) -> List[str]:
-    """Split text into sentences, filtering out short fragments."""
-    raw = re.split(r'(?<=[.!?])\s+', text)
-    return [s.strip() for s in raw if len(s.split()) >= 5]
-
-
-def _extract_mda(html: str, filing_type: str) -> str:
-    """Extract MD&A section based on filing type."""
-    if filing_type == "10-K":
-        # Multiple regex patterns for different SEC formats
-        patterns = [
-            r'(?i)Item\s*7[\.\s]*Management.s Discussion.*?(?=Item\s*7A|Item\s*8)',
-            r'(?i)ITEM\s*7[\.\s]*MANAGEMENT.S DISCUSSION.*?(?=ITEM\s*7A|ITEM\s*8)',
-            r'(?i)Management.s Discussion and Analysis.*?(?=Item\s*7A|Item\s*8|Quantitative)',
-        ]
-    elif filing_type == "10-Q":
-        patterns = [
-            r'(?i)Item\s*2[\.\s]*Management.s Discussion.*?(?=Item\s*3|Item\s*4)',
-            r'(?i)ITEM\s*2[\.\s]*MANAGEMENT.S DISCUSSION.*?(?=ITEM\s*3|ITEM\s*4)',
-            r'(?i)Management.s Discussion and Analysis.*?(?=Item\s*3|Item\s*4|Quantitative)',
-        ]
-    else:
-        return html[:30000]
-    
+def _extract_mda(text: str, form_type: str = "") -> str:
+    if not text:
+        return ""
+    patterns = [
+        r"(?:Item\s*7[\.:]|ITEM\s*7[\.:])\s*(?:Management.s\s*Discussion|MANAGEMENT.S\s*DISCUSSION)(.*?)(?:Item\s*7A|ITEM\s*7A|Item\s*8|ITEM\s*8)",
+        r"(?:Item\s*2[\.:]|ITEM\s*2[\.:])\s*(?:Management.s\s*Discussion|MANAGEMENT.S\s*DISCUSSION)(.*?)(?:Item\s*3|ITEM\s*3)",
+        r"Management.s\s*Discussion\s*(?:and|&)\s*Analysis(.*?)(?:Quantitative|Liquidity|Risk\s*Factors)",
+    ]
     for pattern in patterns:
-        match = re.search(pattern, html, re.DOTALL)
-        if match and len(match.group()) > 1000:
-            return match.group()
-    return html[:30000]
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(1)[:50000]
+    if len(text) > 10000:
+        return text[len(text)//4:len(text)//2]
+    return text[:50000]
+
+
+def _split_sentences(text: str) -> List[str]:
+    if not text:
+        return []
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    return [s.strip() for s in sentences if len(s.strip()) > 20]
 
 
 def _filter_promises(sentences: List[Dict]) -> List[Dict]:
-    """Filter sentences for promise-like language (deterministic)."""
+    pos_keywords = [
+        'will', 'plan to', 'expect to', 'target', 'commit', 'goal', 'objective',
+        'project', 'forecast', 'guidance', 'aim to', 'intend to', 'shall',
+        'on track to', 'roadmap', 'pipeline', 'initiative'
+    ]
+    neg_keywords = ['may', 'might', 'could', 'possibly', 'potential', 'believe', 'think', 'hope']
+    metric_keywords = [
+        'revenue', 'growth', 'margin', 'profit', 'eps', 'earnings per share',
+        'billion', 'million', 'percent', '%', 'dollar', '$',
+        'launch', 'expand', 'reduce', 'increase', 'decrease', 'open', 'close',
+        'hire', 'acquire', 'divest', 'buyback', 'repurchase', 'dividend',
+        'store', 'location', 'customer', 'subscriber', 'user',
+        'product', 'service', 'market', 'share', 'reduce cost', 'cut',
+        'carbon neutral', 'emission', 'sustainability'
+    ]
     candidates = []
     for s in sentences:
-        text = s['text']
-        has_pos = any(re.search(pat, text, re.IGNORECASE) for pat in POSITIVE_PATTERNS)
-        has_neg = any(re.search(pat, text, re.IGNORECASE) for pat in NEGATIVE_PATTERNS)
-        # Also require a number or percentage for it to be a measurable promise
-        has_metric = bool(re.search(r'\$?\d+[\d,.]*\s*(?:billion|million|thousand|%|percent|year|quarter|Q[1-4]\s*\d{4})|\b(?:by|in|through)\s+\d{4}\b|\bQ[1-4]\s*\d{4}\b|\b\d+\s*(?:new|additional|more)\b|\b\d{3,}\b', text, re.IGNORECASE))
-        # Filter out accounting boilerplate promises
-        is_accounting = any(kw in text.lower() for kw in [
+        text = s['text'].lower()
+        has_pos = any(kw in text for kw in pos_keywords)
+        has_neg = any(kw in text for kw in neg_keywords)
+        has_metric = any(kw in text for kw in metric_keywords)
+        is_accounting = any(kw in text for kw in [
             'accounting standard', 'asc ', 'fasb', 'gaap', 'stock-based comp',
             'amortization period', 'unearned', 'provisional amount', 'valuation allowance',
             'adopt this standard', 'adopt this guidance', 'accounting pronouncement',
@@ -166,19 +154,27 @@ def _filter_promises(sentences: List[Dict]) -> List[Dict]:
             'unrecognized tax benefit', 'tax authority', 'deferred tax asset',
             'based compensation expense', 'restricted stock unit',
         ])
-        if has_pos and not has_neg and has_metric and not is_accounting:
+        is_compensation = any(kw in text for kw in [
+            'compensation committee', 'base salary', 'annual bonus', 'equity award',
+            'restricted stock', 'stock option', 'severance', 'employment agreement',
+            'consulting period', 'lump sum payment', 'per month during',
+            'paid $', 'will be paid', 'will receive $', 'dividend', 'per share',
+            'board of directors', 'bonus target', 'equity grant',
+            'option grant', 'rsu grant', 'performance share', 'long-term incentive',
+            'named executive', 'executive officer', 'say-on-pay',
+            'signing bonus', 'option to purchase', 'exercise price',
+            'fair market value', 'shares of common stock', 'commencement of',
+            'payable in', 'equal quarterly installments', 'equal monthly installments',
+        ])
+        if has_pos and not has_neg and has_metric and not is_accounting and not is_compensation:
             candidates.append(s)
     return candidates
 
 
 def _batch_validate_promises(candidates: List[Dict]) -> List[Dict]:
-    """Use Llama to validate which candidates are real promises and score severity."""
     if not candidates:
         return []
-    
-    batch_text = "\n\n".join([f"[{i}] {s['text'][:400]}" for i, s in enumerate(candidates)])
-    
-    # Build prompt as a plain string to avoid f-string curly brace issues
+    batch_text = "\n\n".join([f"[{i}] {s['text'][:150]}" for i, s in enumerate(candidates)])
     prompt = """Analyze these sentences from company filings. For each one, determine if it's a specific, measurable business promise.
 
 A promise must have a specific number, timeline, or measurable outcome. Vague statements like "we will continue to invest" are NOT promises.
@@ -188,26 +184,18 @@ You MUST return ONLY a valid JSON array. Each object MUST have ALL four fields: 
 Sentences:
 """ + batch_text
 
-    response = _ask_ollama(prompt)
+    response = _rate_limited_groq(prompt)
     if not response:
         return []
-    
-    # Parse JSON from Llama response (handles malformed JSON, duplicate keys, extra chars)
     try:
         start = response.find('[')
         if start < 0:
             return []
-        
         raw = response[start:]
-        # Pre-clean: remove all bracket-delimited control codes
         raw = re.sub(r'\[\d+[A-Za-z]', ' ', raw)
         raw = re.sub(r'\[[A-Za-z]', ' ', raw)
-        # Keep only valid JSON characters
         raw = re.sub(r'[^a-zA-Z0-9\s{}\[\]":,\-.]', ' ', raw)
         raw = re.sub(r'\s+', ' ', raw)
-        
-        # Strategy: extract individual JSON objects by finding {...} patterns
-        # This handles cases where Llama returns multiple arrays or malformed JSON
         results = []
         depth = 0
         obj_start = -1
@@ -220,9 +208,8 @@ Sentences:
                 depth -= 1
                 if depth == 0 and obj_start >= 0:
                     obj_str = raw[obj_start:i+1]
-                    # Fix common Llama mistakes
                     obj_str = obj_str.replace('"is promise"', '"is_promise"')
-                    obj_str = re.sub(r'([a-z])" "([a-z])', r'\1_\2', obj_str)  # Fix spaces in keys
+                    obj_str = re.sub(r'([a-z])" "([a-z])', r'\1_\2', obj_str)
                     try:
                         obj = json.loads(obj_str)
                         if isinstance(obj, dict):
@@ -230,9 +217,7 @@ Sentences:
                     except:
                         pass
                     obj_start = -1
-        
         if not results:
-            # Fallback: try parsing the whole thing
             last_valid = raw.rfind('},')
             if last_valid >= 0:
                 raw = raw[:last_valid+1] + ']'
@@ -243,7 +228,6 @@ Sentences:
         logger.error("Failed to parse Llama response: %s", e)
         return []
     
-    # Merge back with original data
     validated = []
     for r in results:
         if not isinstance(r, dict):
@@ -255,12 +239,11 @@ Sentences:
             c['metric'] = str(r.get('metric', 'none'))
             validated.append(c)
     
-    # If no promises found, try one more time with a simpler prompt
     if not validated and len(candidates) > 0:
         logger.info("First attempt found 0 promises. Retrying...")
-        retry_text = "\n".join([f"[{i}] {s['text'][:300]}" for i, s in enumerate(candidates[:5])])
+        retry_text = "\n".join([f"[{i}] {s['text'][:150]}" for i, s in enumerate(candidates[:5])])
         retry_prompt = "For each sentence, is it a promise? Reply JSON: [{\"id\":0,\"promise\":true,\"severity\":5}, ...]\n\n" + retry_text
-        response2 = _ask_ollama(retry_prompt, timeout=30)
+        response2 = _rate_limited_groq(retry_prompt, timeout=15)
         if response2:
             try:
                 start2 = response2.find('[')
@@ -284,59 +267,79 @@ Sentences:
                                 validated.append(c)
             except:
                 pass
-    
     return validated
 
+
+def _batch_verify_evidence(promises: List[Dict], later_sentences: List[Dict]) -> None:
+    if not promises or not later_sentences:
+        return
+    later_context = " ".join([s['text'] for s in later_sentences[:50]])[:4000]
+    promises_text = "\n\n".join([
+        f"[{i}] PROMISE: \"{p['text'][:300]}\" (Metric: {p.get('metric', 'none')})"
+        for i, p in enumerate(promises)
+    ])
+    prompt = f"""A company made these statements in earlier filings. Here are excerpts from LATER filings:
+
+LATER FILINGS EXCERPTS:
+{later_context}
+
+EARLIER STATEMENTS TO VERIFY:
+{promises_text}
+
+For EACH statement above, determine if it was KEPT, BROKEN, PARTIAL, or UNCLEAR.
+Reply ONLY with a JSON array: [{{"id": 0, "status": "KEPT", "evidence": "brief quote or explanation"}}, ...]"""
+
+    response = _rate_limited_groq(prompt, timeout=30)
+    if not response:
+        return
+    try:
+        start = response.find('[')
+        if start < 0:
+            return
+        raw = response[start:]
+        raw = re.sub(r'[^a-zA-Z0-9\s{}\[\]":,\-.]', ' ', raw)
+        raw = re.sub(r'\s+', ' ', raw)
+        last = raw.rfind('},')
+        if last >= 0:
+            raw = raw[:last+1] + ']'
+        elif not raw.endswith(']'):
+            raw += ']'
+        results = json.loads(raw)
+        for r in results:
+            if isinstance(r, dict):
+                idx = r.get('id', -1)
+                if 0 <= idx < len(promises):
+                    status = r.get('status', 'UNCLEAR')
+                    evidence = r.get('evidence', '')
+                    if status in ('KEPT', 'PARTIAL'):
+                        promises[idx]['status'] = 'EVIDENCE_FOUND'
+                        promises[idx]['evidence'] = evidence
+                    elif status == 'BROKEN':
+                        promises[idx]['status'] = 'BROKEN'
+                        promises[idx]['evidence'] = evidence
+    except Exception as e:
+        logger.error("Failed to parse evidence verification: %s", e)
+
+
 def _deterministic_evidence_search(promise: Dict, later_sentences: List[Dict]) -> Optional[str]:
-    """Search later filings for evidence the promise was kept."""
     metric = promise.get('metric', '')
     text_to_search = " ".join([s['text'] for s in later_sentences[:500]])
-    
-    # Extract key terms from metric
     keywords = re.findall(r'\b\w+\b', str(metric).lower())
     keywords = [k for k in keywords if len(k) > 3 and k not in ['what', 'none', 'that', 'this', 'with', 'from', 'they', 'have', 'were', 'been']]
-    
     if not keywords:
         return None
-    
-    # Build a search pattern
     pattern = '|'.join(keywords[:5])
-    search_regex = r'.{{0,200}}(?i:{pattern}).{{0,200}}'.format(pattern=pattern)
-    matches = re.findall(search_regex, text_to_search, re.IGNORECASE)
-    
-    if matches:
-        return matches[0][:500]
+    try:
+        search_regex = re.compile(r'.{0,200}(' + pattern + r').{0,200}', re.IGNORECASE)
+        matches = search_regex.findall(text_to_search)
+        if matches:
+            return matches[0][:500]
+    except:
+        pass
     return None
 
 
-def _llama_evidence_verification(promise: Dict, later_sentences: List[Dict]) -> Tuple[str, str]:
-    """Use Llama to verify if a promise was kept based on later filings."""
-    promise_text = promise['text'][:500]
-    later_context = " ".join([s['text'] for s in later_sentences[:30]])[:3000]
-    
-    prompt = f"""A company made this statement in a filing:
-
-PROMISE: "{promise_text}"
-
-Here are excerpts from later filings:
-
-{later_context}
-
-Was this promise KEPT (they did what they said), BROKEN (they didn't), PARTIAL (some but not all), or UNCLEAR (not enough evidence)?
-
-Reply ONLY in JSON:
-{{"status": "KEPT/BROKEN/PARTIAL/UNCLEAR", "evidence": "brief quote from later filings or explanation"}}"""
-
-    response = _ask_ollama(prompt)
-    try:
-        result = json.loads(response)
-        return result.get('status', 'UNCLEAR'), result.get('evidence', 'No evidence found')
-    except json.JSONDecodeError:
-        return 'UNCLEAR', 'Could not verify'
-
-
 def _get_cik(ticker: str) -> Optional[str]:
-    """Lookup CIK from SEC."""
     try:
         resp = requests.get("https://www.sec.gov/files/company_tickers.json", headers=HEADERS, timeout=15)
         for item in resp.json().values():
@@ -347,6 +350,10 @@ def _get_cik(ticker: str) -> Optional[str]:
     return None
 
 
+def _get_transcripts(ticker: str) -> List[Dict]:
+    return []
+
+
 class FollowThroughAgent:
     """Agent 3 — tracks management promises and verifies follow-through."""
     
@@ -354,19 +361,16 @@ class FollowThroughAgent:
         self._log: List[str] = []
     
     def run(self, ticker: str) -> Dict:
-        """Run the follow-through analysis for a given ticker."""
         ticker = ticker.upper()
         self._log = []
         start_time = time.time()
         
-        # Step 1: Get CIK
         self._log.append(f"Looking up CIK for {ticker}...")
         cik = _get_cik(ticker)
         if not cik:
             return {"error": f"CIK not found for {ticker}", "promises": [], "score": 50.0}
         self._log.append(f"Found CIK: {cik}")
         
-        # Step 2: Fetch filings
         self._log.append("Fetching SEC filings...")
         try:
             resp = requests.get(f"{SEC_BASE}/submissions/CIK{cik}.json", headers=DATA_HEADERS, timeout=15)
@@ -380,12 +384,10 @@ class FollowThroughAgent:
         primary_docs = recent.get("primaryDocument", [])
         report_dates = recent.get("reportDate", [])
         
-        # Step 3: Pull ALL historical 10-K and 10-Q filings (disk-cached)
-        cache_dir = _os.path.join(_os.path.dirname(__file__), '..', '.filing_cache')
+        cache_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', '.filing_cache')
         _os.makedirs(cache_dir, exist_ok=True)
         cache_file = _os.path.join(cache_dir, f'{ticker}_all_filings.json')
         
-        # Check disk cache first
         filings_to_fetch = {}
         if _os.path.exists(cache_file):
             try:
@@ -396,13 +398,11 @@ class FollowThroughAgent:
                 pass
         
         if not filings_to_fetch:
-            # Fetch full history: recent + older archive files
             all_forms_list = list(forms)
             all_acc_list = list(accessions)
             all_docs_list = list(primary_docs)
             all_dates_list = list(report_dates)
             
-            # Fetch older archive files (pre-2020)
             files = data.get("filings", {}).get("files", [])
             for file_info in files:
                 try:
@@ -410,26 +410,18 @@ class FollowThroughAgent:
                     resp2 = requests.get(file_url, headers=DATA_HEADERS, timeout=30)
                     if resp2.status_code == 200:
                         old_data = resp2.json()
-                        old_forms = old_data.get("form", [])
-                        old_accs = old_data.get("accessionNumber", [])
-                        old_dates = old_data.get("reportDate", [])
-                        old_docs = old_data.get("primaryDocument", [])
-                        all_forms_list.extend(old_forms)
-                        all_acc_list.extend(old_accs)
-                        all_dates_list.extend(old_dates)
-                        all_docs_list.extend(old_docs)
-                        # Pad if lengths don't match
-                        max_len = max(len(old_forms), len(old_accs), len(old_dates), len(old_docs))
+                        all_forms_list.extend(old_data.get("form", []))
+                        all_acc_list.extend(old_data.get("accessionNumber", []))
+                        all_dates_list.extend(old_data.get("reportDate", []))
+                        all_docs_list.extend(old_data.get("primaryDocument", []))
                         while len(all_dates_list) < len(all_forms_list):
                             all_dates_list.append("")
                         while len(all_docs_list) < len(all_forms_list):
                             all_docs_list.append("")
-                        self._log.append(f"  Fetched {len(old_forms)} filings from {file_info['name']} ({old_dates[0] if old_dates else 'unknown'} to {old_dates[-1] if old_dates else 'unknown'})")
+                        self._log.append(f"  Fetched archive filings")
                 except Exception as e:
-                    self._log.append(f"  Failed to fetch archive {file_info.get('name', '?')}: {e}")
+                    self._log.append(f"  Archive fetch failed: {e}")
             
-            # Build URLs for all 10-K and 10-Q
-            self._log.append(f"Processing {len(all_forms_list)} total filings...")
             for i, f in enumerate(all_forms_list):
                 if f in ["10-K", "10-Q", "8-K"]:
                     acc = all_acc_list[i].replace("-", "") if i < len(all_acc_list) else ""
@@ -438,21 +430,17 @@ class FollowThroughAgent:
                         continue
                     url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc}/{doc}"
                     key = f"{f}_{all_dates_list[i] if i < len(all_dates_list) else i}"
-                    filings_to_fetch[key] = {
-                        "form": f, "date": all_dates_list[i] if i < len(all_dates_list) else "unknown",
-                        "url": url
-                    }
+                    filings_to_fetch[key] = {"form": f, "date": all_dates_list[i] if i < len(all_dates_list) else "unknown", "url": url}
             
-            # Cache to disk
             with open(cache_file, 'w') as f:
                 json.dump(filings_to_fetch, f)
             self._log.append(f"Cached {len(filings_to_fetch)} filings to disk")
         
         self._log.append(f"Downloading {len(filings_to_fetch)} filings...")
-        # Check filing text cache first
-        text_cache_dir = _os.path.join(_os.path.dirname(__file__), "..", ".filing_text_cache")
+        text_cache_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', '.filing_text_cache')
         _os.makedirs(text_cache_dir, exist_ok=True)
         text_cache_file = _os.path.join(text_cache_dir, f"{ticker}_texts.json")
+        
         filing_texts = {}
         if _os.path.exists(text_cache_file):
             try:
@@ -462,66 +450,45 @@ class FollowThroughAgent:
             except:
                 pass
         
-        if not filing_texts:
-            filing_texts = {}
-        for key, info in filings_to_fetch.items():
-            text = ""
-            # Fallback chain: try Last10K first (fastest), then SEC .htm, then SEC JSON
-            form = info['form']
-            date = info.get('date', '')
+        uncached = {k: v for k, v in filings_to_fetch.items() if k not in filing_texts}
+        if uncached:
+            self._log.append(f"  {len(uncached)} uncached filings to download...")
             
-            # Source 1: Last10K (fastest - 0.08-0.13s)
-            if not text:
+            def _download_one(key_info):
+                key, info = key_info
+                text = ""
                 try:
-                    lk_url = f"https://last10k.com/sec-filings/{ticker.lower()}/{info.get('url', '').split('/')[-1].replace('.htm', '')}"
+                    doc_id = info.get('url', '').split('/')[-1].replace('.htm', '')
+                    lk_url = f"https://last10k.com/sec-filings/{ticker.lower()}/{doc_id}"
                     resp = requests.get(lk_url, headers=HEADERS, timeout=10)
                     if resp.status_code == 200 and len(resp.text) > 5000:
-                        text = _strip_html(resp.text)
-                        self._log.append(f"  {key}: {len(text)} chars (Last10K)")
+                        return key, _strip_html(resp.text)
                 except:
                     pass
-            
-            # Source 2: SEC EDGAR .htm (original URL)
-            if not text:
                 try:
                     resp = requests.get(info['url'], headers=HEADERS, timeout=15)
                     if resp.status_code == 200:
-                        text = _strip_html(resp.text)
-                        self._log.append(f"  {key}: {len(text)} chars (SEC .htm)")
-                except Exception as e:
-                    self._log.append(f"  {key}: SEC .htm FAILED - {e}")
-            
-            # Source 3: SEC JSON (rebuild URL from CIK + accession)
-            if not text:
-                try:
-                    acc = info.get('url', '').split('/')[-2] if '/' in info.get('url', '') else ''
-                    doc = info.get('url', '').split('/')[-1] if '/' in info.get('url', '') else ''
-                    if acc and doc:
-                        json_url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-                        resp = requests.get(json_url, headers=DATA_HEADERS, timeout=15)
-                        if resp.status_code == 200:
-                            # Re-fetch via the original URL as fallback
-                            resp2 = requests.get(info['url'], headers=HEADERS, timeout=15)
-                            if resp2.status_code == 200:
-                                text = _strip_html(resp2.text)
-                                self._log.append(f"  {key}: {len(text)} chars (SEC JSON fallback)")
+                        return key, _strip_html(resp.text)
                 except:
                     pass
+                return key, ""
             
-            filing_texts[key] = text
-            if not text:
-                self._log.append(f"  {key}: ALL SOURCES FAILED")
-        
-        # Save filing texts to cache
-        if filing_texts:
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                futures = {ex.submit(_download_one, (k, v)): k for k, v in uncached.items()}
+                for future in as_completed(futures):
+                    try:
+                        key, text = future.result()
+                        filing_texts[key] = text
+                    except:
+                        pass
+            
             try:
                 with open(text_cache_file, 'w') as f:
                     json.dump(filing_texts, f)
             except:
                 pass
         
-        # Step 4: Extract MD&A and split into time-sorted sentences
-        self._log.append("Extracting MD&A sections and splitting sentences...")
+        self._log.append("Extracting MD&A sections...")
         all_sentences = []
         for key, text in filing_texts.items():
             if not text:
@@ -531,210 +498,22 @@ class FollowThroughAgent:
             sentences = _split_sentences(mda)
             info = filings_to_fetch.get(key, {})
             for s in sentences:
-                all_sentences.append({
-                    "text": s, "source": ftype, "date": info['date'], "url": info['url']
-                })
-        
-        # Step 4b: Add transcript sentences
-        self._log.append("Fetching earnings call transcripts...")
-        transcripts = _get_transcripts(ticker)
-        self._log.append(f"Got {len(transcripts)} transcripts")
-        for t in transcripts:
-            content_text = t.get('content', '')
-            if not content_text:
-                continue
-            sentences = _split_sentences(content_text)
-            t_date = t.get('date', '')[:10]
-            for s in sentences:
-                all_sentences.append({
-                    "text": s,
-                    "source": "transcript",
-                    "date": t_date,
-                    "url": t.get('source_url', '')
-                })
-        
-        # Step 4c: Add press releases (fallback: Company IR → GlobeNewswire → Google News)
-        self._log.append("Fetching press releases...")
-        pr_texts = []
-        pr_sources_used = []
-        
-        # Source 1: Company IR page (fastest at 0.27s)
-        try:
-            # Try common IR page patterns
-            for ir_url in [
-                f"https://investor.{ticker.lower()}.com/news-releases/",
-                f"https://investors.{ticker.lower()}.com/news-releases/",
-                f"https://ir.{ticker.lower()}.com/news-releases/",
-                f"https://{ticker.lower()}.com/investors/news/",
-                f"https://{ticker.lower()}.com/press/",
-                f"https://nvidianews.nvidia.com/" if ticker.upper() == "NVDA" else None,
-            ]:
-                if ir_url is None:
-                    continue
-                try:
-                    resp = requests.get(ir_url, headers=HEADERS, timeout=10)
-                    if resp.status_code == 200 and len(resp.text) > 5000:
-                        clean = _strip_html(resp.text)
-                        if len(clean) > 2000:
-                            pr_texts.append(clean)
-                            pr_sources_used.append(f"IR page ({ir_url})")
-                            break
-                except:
-                    continue
-        except:
-            pass
-        
-        # Source 2: GlobeNewswire (0.31s)
-        if not pr_texts:
-            try:
-                resp = requests.get(f"https://www.globenewswire.com/search/keyword/{ticker}?pageSize=10", headers=HEADERS, timeout=10)
-                if resp.status_code == 200 and len(resp.text) > 5000:
-                    pr_texts.append(_strip_html(resp.text))
-                    pr_sources_used.append("GlobeNewswire")
-            except:
-                pass
-        
-        # Source 3: Google News RSS (0.78s)
-        if not pr_texts:
-            try:
-                resp = requests.get(f"https://news.google.com/rss/search?q={ticker}+press+release&hl=en-US&gl=US&ceid=US:en", headers=HEADERS, timeout=10)
-                if resp.status_code == 200 and len(resp.text) > 2000:
-                    pr_texts.append(_strip_html(resp.text))
-                    pr_sources_used.append("Google News RSS")
-            except:
-                pass
-        
-        if pr_texts:
-            self._log.append(f"  Got {len(pr_texts)} press release sources: {', '.join(pr_sources_used)}")
-            for pr_text in pr_texts:
-                sentences = _split_sentences(pr_text)
-                today = datetime.now().strftime("%Y-%m-%d")
-                for s in sentences:
-                    all_sentences.append({
-                        "text": s,
-                        "source": "press_release",
-                        "date": today,
-                        "url": pr_sources_used[0] if pr_sources_used else ""
-                    })
-        else:
-            self._log.append("  No press releases found from any source")
-        
-        # Step 4d: Add 8-K exhibits (fallback: SEC browse → SEC JSON → EDGAR full-text search)
-        self._log.append("Fetching 8-K exhibits...")
-        eight_k_sentences = []
-        
-        # Source 1: SEC EDGAR browse 8-K (fastest at 0.23s)
-        try:
-            resp = requests.get(
-                f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type=8-K&dateb=&owner=exclude&count=20",
-                headers=HEADERS, timeout=10
-            )
-            if resp.status_code == 200:
-                # Extract 8-K document links from browse page
-                doc_matches = re.findall(r'/Archives/edgar/data/\d+/(\d+)/([^"]+\.htm)', resp.text)
-                for acc_no, doc_name in doc_matches[:10]:
-                    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_no}/{doc_name}"
-                    try:
-                        resp2 = requests.get(url, headers=HEADERS, timeout=10)
-                        if resp2.status_code == 200:
-                            clean = _strip_html(resp2.text)
-                            if len(clean) > 500:
-                                sentences = _split_sentences(clean)
-                                for s in sentences:
-                                    eight_k_sentences.append({
-                                        "text": s,
-                                        "source": "8-K_browse",
-                                        "date": "recent",
-                                        "url": url
-                                    })
-                    except:
-                        pass
-            if eight_k_sentences:
-                self._log.append(f"  SEC browse: {len(eight_k_sentences)} sentences")
-        except Exception as e:
-            self._log.append(f"  SEC browse 8-K failed: {e}")
-        
-        # Source 2: SEC EDGAR JSON (carry forward)
-        if not eight_k_sentences:
-            try:
-                # Reuse the existing filings data to find 8-Ks
-                resp = requests.get(f"https://data.sec.gov/submissions/CIK{cik}.json", headers=DATA_HEADERS, timeout=15)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    recent = data.get("filings", {}).get("recent", {})
-                    forms = recent.get("form", [])
-                    accessions = recent.get("accessionNumber", [])
-                    primary_docs = recent.get("primaryDocument", [])
-                    
-                    for i, f in enumerate(forms):
-                        if f == "8-K" and len(eight_k_sentences) < 200:
-                            acc = accessions[i].replace("-", "")
-                            doc = primary_docs[i]
-                            url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc}/{doc}"
-                            try:
-                                resp2 = requests.get(url, headers=HEADERS, timeout=10)
-                                if resp2.status_code == 200:
-                                    clean = _strip_html(resp2.text)
-                                    if len(clean) > 500:
-                                        sentences = _split_sentences(clean)
-                                        for s in sentences:
-                                            eight_k_sentences.append({
-                                                "text": s,
-                                                "source": "8-K_json",
-                                                "date": "recent",
-                                                "url": url
-                                            })
-                            except:
-                                pass
-                if eight_k_sentences:
-                    self._log.append(f"  SEC JSON: {len(eight_k_sentences)} sentences")
-            except Exception as e:
-                self._log.append(f"  SEC JSON 8-K failed: {e}")
-        
-        # Source 3: EDGAR full-text search (carry forward — slowest at 0.29s)
-        if not eight_k_sentences:
-            try:
-                resp = requests.get(
-                    f"https://efts.sec.gov/LATEST/search-index?q={ticker}&dateRange=custom&startdt=2024-01-01&enddt=2026-12-31&forms=8-K",
-                    headers=HEADERS, timeout=10
-                )
-                if resp.status_code == 200 and len(resp.text) > 500:
-                    clean = _strip_html(resp.text)
-                    sentences = _split_sentences(clean)
-                    for s in sentences:
-                        eight_k_sentences.append({
-                            "text": s,
-                            "source": "8-K_search",
-                            "date": "recent",
-                            "url": ""
-                        })
-                    self._log.append(f"  EDGAR search: {len(eight_k_sentences)} sentences")
-            except Exception as e:
-                self._log.append(f"  EDGAR search 8-K failed: {e}")
-        
-        if eight_k_sentences:
-            all_sentences.extend(eight_k_sentences)
-        else:
-            self._log.append("  No 8-K exhibits found from any source")
+                all_sentences.append({"text": s, "source": ftype, "date": info.get('date', ''), "url": info.get('url', '')})
         
         all_sentences.sort(key=lambda x: x['date'])
-        self._log.append(f"Total sentences across all filings + transcripts + press releases + 8-Ks: {len(all_sentences)}")
+        self._log.append(f"Total sentences: {len(all_sentences)}")
         
-        # Step 5: Deterministic promise filter
         self._log.append("Filtering for promise-like sentences...")
         candidates = _filter_promises(all_sentences)
-        self._log.append(f"Promise candidates (after filter): {len(candidates)}")
+        self._log.append(f"Promise candidates: {len(candidates)}")
         
         if not candidates:
             return {"promises": [], "score": 50.0, "log": self._log}
         
-        # Step 6: Batch Llama validation (cap at 15 per call to avoid overwhelming the model)
         self._log.append(f"Validating {len(candidates)} promises with LLM...")
         if len(candidates) <= 15:
             promises = _batch_validate_promises(candidates)
         else:
-            # Split into chunks of 15 and process in parallel
-            from concurrent.futures import ThreadPoolExecutor, as_completed
             chunks = [candidates[i:i+15] for i in range(0, len(candidates), 15)]
             promises = []
             with ThreadPoolExecutor(max_workers=min(len(chunks), 8)) as ex:
@@ -746,7 +525,6 @@ class FollowThroughAgent:
         if not promises:
             return {"promises": [], "score": 50.0, "log": self._log}
         
-        # Step 7: Deduplicate and sort by severity
         seen_texts = set()
         deduped = []
         for p in promises:
@@ -757,55 +535,45 @@ class FollowThroughAgent:
                 seen_texts.add(key)
                 deduped.append(p)
         if len(deduped) < len(promises):
-            self._log.append(f"Deduplicated: {len(promises)} -> {len(deduped)} unique promises")
+            self._log.append(f"Deduplicated: {len(promises)} -> {len(deduped)}")
         deduped.sort(key=lambda p: p.get('severity') or 0, reverse=True)
         top_promises = deduped[:5]
         
-        # Step 8: Evidence search for each promise
-        self._log.append("Searching for evidence in later filings...")
-        for promise in top_promises:
-            promise_date = promise['date']
-            
-            # Find the next 3 10-Q or 10-K filings after the promise date
-            # Skip 8-Ks — they're mostly headers, not financial results
-            later_keys = sorted(
-                [k for k in filing_texts.keys() 
-                 if filing_texts[k] and k.split('_')[0] in ['10-Q', '10-K'] 
-                 and k.split('_')[-1] > promise_date],
-                key=lambda k: k.split('_')[-1]
-            )[:3]
-            
-            # Build sentences from just those filings' MD&A sections
-            later = []
-            for key in later_keys:
-                ftype = key.split('_')[0]
-                mda = _extract_mda(filing_texts[key], ftype)
-                for s in _split_sentences(mda):
-                    later.append({
-                        "text": s,
-                        "source": key,
-                        "date": key.split('_')[-1] if '_' in key else ''
-                    })
-            
-            # Search for evidence in later filings
-            evidence = _deterministic_evidence_search(promise, later)
-            if evidence:
-                promise['evidence'] = evidence
-                promise['status'] = 'EVIDENCE_FOUND'
-                self._log.append(f"  Found evidence for: {promise['text'][:80]}...")
-            else:
-                self._log.append(f"  No evidence found for: {promise['text'][:80]}...")
-                promise['status'] = 'NO_EVIDENCE'
-                promise['evidence'] = evidence
+        self._log.append("Verifying evidence...")
+        latest_date = max((p['date'] for p in top_promises if p.get('date')), default="")
+        later_keys = sorted(
+            [k for k in filing_texts.keys()
+             if filing_texts[k] and k.split('_')[0] in ['10-Q', '10-K']
+             and k.split('_')[-1] > latest_date],
+            key=lambda k: k.split('_')[-1]
+        )[:3]
         
-        # Step 9: Calculate score
-        # Score = (sum of severity × kept) / (sum of all severity) × 100
+        later_sentences = []
+        for key in later_keys:
+            ftype = key.split('_')[0]
+            mda = _extract_mda(filing_texts[key], ftype)
+            for s in _split_sentences(mda):
+                later_sentences.append({"text": s, "source": key, "date": key.split('_')[-1] if '_' in key else ''})
+        
+        if later_sentences:
+            _batch_verify_evidence(top_promises, later_sentences)
+        
+        for promise in top_promises:
+            if promise.get('status') not in ('EVIDENCE_FOUND', 'BROKEN'):
+                evidence = _deterministic_evidence_search(promise, later_sentences)
+                if evidence:
+                    promise['evidence'] = evidence
+                    promise['status'] = 'EVIDENCE_FOUND'
+                else:
+                    promise['status'] = 'NO_EVIDENCE'
+                    promise['evidence'] = None
+        
         total_possible = sum(p.get('severity', 5) for p in top_promises)
         total_earned = sum(p.get('severity', 5) for p in top_promises if p.get('status') == 'EVIDENCE_FOUND')
         score = (total_earned / total_possible * 100) if total_possible > 0 else 50.0
         
         elapsed = time.time() - start_time
-        self._log.append(f"Analysis complete in {elapsed:.1f}s. Score: {score:.1f}%")
+        self._log.append(f"Complete in {elapsed:.1f}s. Score: {score:.1f}%")
         
         return {
             "ticker": ticker,
