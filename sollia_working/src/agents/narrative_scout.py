@@ -170,7 +170,9 @@ class NarrativeScout:
         result.total_articles = len(all_headlines)
         result.filtered_articles = len(filtered)
 
-        # Historical baseline: articles before most recent 10-K filing date
+        # Historical baseline: use articles before the most recent 10-K filing date
+        # If the provider returned enough historical data, this works naturally.
+        # If not (free tier limitation), fall back to oldest 70% of available articles.
         try:
             filing_dt = datetime.strptime(historical_end[:10], "%Y-%m-%d")
             cutoff = (filing_dt - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -178,7 +180,16 @@ class NarrativeScout:
             cutoff = historical_end
 
         base_articles = [h for h in filtered if h.date and h.date <= cutoff]
-        _add_log(self._log, f"Historical baseline articles: {len(base_articles)}")
+        
+        # If baseline is empty or tiny, use oldest 70% of available data
+        if len(base_articles) < 5 and len(filtered) >= 10:
+            dated = sorted([h for h in filtered if h.date], key=lambda h: h.date)
+            split = int(len(dated) * 0.7)
+            base_articles = dated[:split]
+            _add_log(self._log, f"Historical baseline articles: {len(base_articles)} (using oldest 70% — provider data doesn't span full historical period)")
+        else:
+            _add_log(self._log, f"Historical baseline articles: {len(base_articles)}")
+        
         _add_log(self._log, f"Established baseline from {len(base_articles)} articles spanning the full historical period")
 
         if len(base_articles) >= 2:
@@ -194,9 +205,15 @@ class NarrativeScout:
         result.baseline_stddev = round(max(base_std, 0.01), 4)
         _add_log(self._log, f"Baseline: mean={base_mean:.4f}, stddev={base_std:.4f}")
 
-        # Test sample: up to 100 articles from most recent 10-K → present (evenly spaced)
-        test_raw = [h for h in filtered if h.date and h.date >= historical_end]
-        _add_log(self._log, f"Test articles (since most recent 10-K): {len(test_raw)}")
+        # Test sample: articles after the baseline cutoff (or newest 30% if we used fallback)
+        test_raw = [h for h in filtered if h.date and h.date > cutoff]
+        if len(test_raw) < 5 and len(filtered) >= 10:
+            dated = sorted([h for h in filtered if h.date], key=lambda h: h.date)
+            split = int(len(dated) * 0.7)
+            test_raw = dated[split:]
+            _add_log(self._log, f"Test articles (newest 30%): {len(test_raw)}")
+        else:
+            _add_log(self._log, f"Test articles (since most recent 10-K): {len(test_raw)}")
 
         if len(test_raw) > 100:
             step = len(test_raw) / 100.0
