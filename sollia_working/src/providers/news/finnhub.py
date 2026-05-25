@@ -32,7 +32,7 @@ class FinnhubNewsProvider:
         all_h: List[Headline] = []
         providers: List[str] = []
 
-        # Source 1: Google News RSS — primary, 101 articles, all sizes
+        # Source 1: Google News RSS — keyword rotation for historical coverage
         gn = self._google_news_rss(ticker)
         if gn:
             all_h.extend(gn)
@@ -44,12 +44,18 @@ class FinnhubNewsProvider:
             all_h.extend(fh)
             providers.append("Finnhub")
 
-        # Source 3: Yahoo Finance RSS — fallback if still empty
-        if not all_h:
-            yr = self._yahoo_rss(ticker)
-            if yr:
-                all_h.extend(yr)
-                providers.append("YahooRSS")
+        # Source 3: Yahoo Finance RSS (with retry on 429)
+        yr = self._yahoo_rss(ticker)
+        if yr:
+            all_h.extend(yr)
+            providers.append("YahooRSS")
+
+        # Source 4: Yahoo Finance News API v8 (search endpoint)
+        if not all_h or len(all_h) < 50:
+            yf_api = self._yahoo_api_v8(ticker)
+            if yf_api:
+                all_h.extend(yf_api)
+                providers.append("YahooAPIv8")
 
         # Deduplicate by URL (fall back to headline as key)
         seen: set = set()
@@ -62,33 +68,65 @@ class FinnhubNewsProvider:
 
         return deduped, providers
 
+    # ── GDELT Project ─────────────────────────────────────────────
+
+    def _gdelt_news(self, ticker: str, start_date: str) -> List[Headline]:
+        """Fetch historical news from GDELT Project (free, 2015-present)."""
+        try:
+            from src.providers.news.gdelt import GDELTProvider
+            provider = GDELTProvider()
+            headlines, _ = provider.get_news(ticker, start_date)
+            return headlines
+        except Exception as e:
+            logger.debug("GDELT fetch failed: %s", e)
+            return []
+
     # ── Google News RSS ───────────────────────────────────────────────────────
 
+    # Financial keywords for rotating queries to get historical coverage
+    _NEWS_KEYWORDS = [
+        "earnings", "revenue", "data+center", "gaming", "quarterly+results",
+        "acquisition", "guidance", "dividend", "AI+chip", "semiconductor",
+        "GPU", "partnership", "margin", "growth", "investor",
+        "product+launch", "buyback", "forecast", "CEO", "stock+price",
+    ]
+
     def _google_news_rss(self, ticker: str) -> List[Headline]:
-        """Fetch from Google News RSS: news.google.com/rss/search?q={TICKER}+stock"""
-        try:
-            url = f"https://news.google.com/rss/search?q={ticker}+stock"
-            resp = requests.get(url, timeout=15)
-            if resp.status_code != 200:
-                return []
-            items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
-            out: List[Headline] = []
-            for item in items[:200]:
-                title_m = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
-                link_m = re.search(r"<link>(.*?)</link>", item, re.DOTALL)
-                date_m = re.search(r"<pubDate>(.*?)</pubDate>", item, re.DOTALL)
-                source_m = re.search(r"<source[^>]*>(.*?)</source>", item, re.DOTALL)
-                if not title_m:
+        """Fetch from Google News RSS with keyword rotation for historical coverage."""
+        all_items: List[Headline] = []
+        seen_urls: set = set()
+
+        # Use top 10 keywords for good coverage without too many requests
+        for kw in self._NEWS_KEYWORDS[:10]:
+            try:
+                url = f"https://news.google.com/rss/search?q={ticker}+{kw}&hl=en-US&gl=US&ceid=US:en"
+                resp = requests.get(url, timeout=15)
+                if resp.status_code != 200:
                     continue
-                headline = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
-                link = (link_m.group(1) if link_m else "").strip()
-                source = re.sub(r"<!\[CDATA\[|\]\]>", "", source_m.group(1) if source_m else "").strip()
-                date_str = _parse_rfc_date(date_m.group(1) if date_m else "")
-                out.append(Headline(headline=headline, url=link, source=source, date=date_str))
-            return out
-        except Exception as exc:
-            logger.debug("Google News RSS failed: %s", exc)
-            return []
+                items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+                for item in items[:100]:  # 100 per keyword
+                    title_m = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
+                    link_m = re.search(r"<link>(.*?)</link>", item, re.DOTALL)
+                    date_m = re.search(r"<pubDate>(.*?)</pubDate>", item, re.DOTALL)
+                    source_m = re.search(r"<source[^>]*>(.*?)</source>", item, re.DOTALL)
+                    if not title_m or not link_m:
+                        continue
+                    link = link_m.group(1).strip()
+                    if link in seen_urls:
+                        continue
+                    seen_urls.add(link)
+                    headline = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
+                    source = re.sub(r"<!\[CDATA\[|\]\]>", "", source_m.group(1) if source_m else "").strip()
+                    date_str = _parse_rfc_date(date_m.group(1) if date_m else "")
+                    all_items.append(Headline(
+                        headline=headline, url=link, source=source, date=date_str
+                    ))
+                time.sleep(0.5)  # Rate limit between queries
+            except Exception as exc:
+                logger.debug("Google News RSS keyword '%s' failed: %s", kw, exc)
+                continue
+
+        return all_items
 
     # ── Finnhub ───────────────────────────────────────────────────────────────
 
@@ -166,38 +204,81 @@ class FinnhubNewsProvider:
             out.append(Headline(headline=headline, url=url, source=source, date=date_str))
         return out
 
-    # ── Yahoo Finance RSS ─────────────────────────────────────────────────────
+    # ── Yahoo Finance News API v8 ──────────────────────────────────────────
 
-    def _yahoo_rss(self, ticker: str) -> List[Headline]:
+    def _yahoo_api_v8(self, ticker: str) -> List[Headline]:
+        """Fetch from Yahoo Finance search/news API v8."""
         try:
-            url = (
-                f"https://feeds.finance.yahoo.com/rss/2.0/headline"
-                f"?s={ticker}&region=US&lang=en-US"
-            )
-            resp = requests.get(url, timeout=15)
+            url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=100"
+            resp = requests.get(url, timeout=10, headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+            })
             if resp.status_code != 200:
                 return []
-            items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+            data = resp.json()
+            news_items = data.get("news", [])
             out: List[Headline] = []
-            for item in items[:60]:
-                tm = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
-                lm = re.search(r"<link>(.*?)</link>", item, re.DOTALL)
-                dm = re.search(r"<pubDate>(.*?)</pubDate>", item, re.DOTALL)
-                if not tm:
+            for item in news_items:
+                title = item.get("title", "")
+                if not title:
                     continue
-                headline = re.sub(r"<!\[CDATA\[|\]\]>", "", tm.group(1)).strip()
-                link = lm.group(1).strip() if lm else ""
-                date_str = _parse_rfc_date(dm.group(1) if dm else "")
+                link = item.get("link", "")
+                source = item.get("publisher", "Yahoo Finance")
+                ts = item.get("providerPublishTime", 0)
+                date_str = ""
+                if ts:
+                    try:
+                        date_str = datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
                 out.append(Headline(
-                    headline=headline,
+                    headline=title,
                     url=link,
-                    source="Yahoo Finance",
+                    source=str(source),
                     date=date_str,
                 ))
             return out
         except Exception as exc:
-            logger.debug("Yahoo RSS failed: %s", exc)
+            logger.debug("Yahoo API v8 failed: %s", exc)
             return []
+
+    # ── Yahoo Finance RSS ─────────────────────────────────────────────────────
+
+    def _yahoo_rss(self, ticker: str) -> List[Headline]:
+        url = (
+            f"https://feeds.finance.yahoo.com/rss/2.0/headline"
+            f"?s={ticker}&region=US&lang=en-US"
+        )
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=15)
+                if resp.status_code == 429:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                if resp.status_code != 200:
+                    return []
+                items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
+                out: List[Headline] = []
+                for item in items[:60]:
+                    tm = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
+                    lm = re.search(r"<link>(.*?)</link>", item, re.DOTALL)
+                    dm = re.search(r"<pubDate>(.*?)</pubDate>", item, re.DOTALL)
+                    if not tm:
+                        continue
+                    headline = re.sub(r"<!\[CDATA\[|\]\]>", "", tm.group(1)).strip()
+                    link = lm.group(1).strip() if lm else ""
+                    date_str = _parse_rfc_date(dm.group(1) if dm else "")
+                    out.append(Headline(
+                        headline=headline,
+                        url=link,
+                        source="Yahoo Finance",
+                        date=date_str,
+                    ))
+                return out
+            except Exception as exc:
+                logger.debug("Yahoo RSS attempt %d failed: %s", attempt + 1, exc)
+                time.sleep(1.0)
+        return []
 
 
 def _parse_rfc_date(raw: str) -> str:
