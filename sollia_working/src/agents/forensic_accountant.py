@@ -475,8 +475,15 @@ class ForensicAccountant:
 
         twelfth_date = hist_transcripts[-1].date if hist_transcripts else ""
 
-        candidates = [d for d in [ceo_start, inception_date, twelfth_date] if d]
-        hist_start = min(candidates) if candidates else ""
+        # Per-CEO baseline: historical window starts when THIS CEO took over
+        if ceo_start:
+            hist_start = ceo_start
+            hist_end = datetime.now().strftime("%Y-%m-%d")  # include all transcripts up to today
+        elif inception_date or twelfth_date:
+            cands = [d for d in [inception_date, twelfth_date] if d]
+            hist_start = min(cands)
+        else:
+            hist_start = ""
         # Safety: cap at 5 years
         if hist_start:
             try:
