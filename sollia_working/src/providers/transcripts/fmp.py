@@ -111,7 +111,7 @@ class FMPTranscriptProvider:
         except Exception:
             pass
         
-        for method in (self._sec_8k, self._stock_analysis, self._nasdaq, self._yahoo_finance):
+        for method in (self._nasdaq, self._yahoo_finance, self._sec_8k, self._stock_analysis):
             try:
                 results = method(ticker)
                 if results:
@@ -231,7 +231,7 @@ class FMPTranscriptProvider:
 
     def _stock_analysis(self, ticker: str) -> List[TranscriptResult]:
         """Scrape transcript listing from stockanalysis.com with date validation."""
-        url = f"https://stockanalysis.com/stocks/{ticker.lower()}/transcripts/"
+        url = f"https://stockanalysis.com/stocks/{ticker.lower()}/earnings/call-transcript/"
         resp = requests.get(url, headers=_BROWSER_HEADERS, timeout=15)
         if resp.status_code != 200:
             return []

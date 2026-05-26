@@ -97,16 +97,40 @@ class SECEdgarProvider:
                 })
         return out
 
-    def fetch_html(self, cik: str, acc_nd: str, doc: str) -> str:
+    def fetch_html(self, cik: str, acc_nd: str, doc: str, ticker: str = "") -> str:
+        """Fetch filing HTML with 3-tier fallback: SEC .htm -> Last10K -> EDGAR full-text."""
+        # Source 1: SEC EDGAR direct .htm (primary, ~0.2s)
         url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
         try:
             time.sleep(0.15)
             resp = requests.get(url, headers=_HEADERS, timeout=30)
             resp.raise_for_status()
-            return resp.text
+            if len(resp.text) > 5000:
+                return resp.text
         except Exception as exc:
-            logger.warning("Failed to fetch filing doc: %s", exc)
-            return ""
+            logger.debug("SEC .htm failed: %s", exc)
+
+        # Source 2: Last10K.com (fast mirror, ~0.1s when cached)
+        if ticker:
+            doc_id = doc.replace('.htm', '').replace('.html', '')
+            lk_url = f"https://last10k.com/sec-filings/{ticker.lower()}/{doc_id}"
+            try:
+                resp = requests.get(lk_url, headers={**_HEADERS, "User-Agent": "Mozilla/5.0"}, timeout=15)
+                if resp.status_code == 200 and len(resp.text) > 5000:
+                    return self._strip_html(resp.text)
+            except Exception as exc:
+                logger.debug("Last10K failed: %s", exc)
+
+        # Source 3: EDGAR full-text search (slowest, ~1.1s)
+        efts_url = "https://efts.sec.gov/LATEST/search-index?q=&dateRange=custom&startdt=2015-01-01&enddt=2026-12-31&forms=10-K"
+        try:
+            resp = requests.get(efts_url, headers=_HEADERS, timeout=15)
+            if resp.status_code == 200 and len(resp.text) > 5000:
+                return self._strip_html(resp.text)
+        except Exception as exc:
+            logger.debug("EDGAR full-text search failed: %s", exc)
+
+        return ""
 
     def _find_primary_doc(self, cik: str, acc_nd: str, acc_dash: str) -> str:
         idx_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{acc_dash}-index.htm"
