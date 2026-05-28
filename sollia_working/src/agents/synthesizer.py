@@ -144,9 +144,36 @@ class Synthesizer:
             track1 = s1
             corroboration = 0.5
         else:
-            track1, corroboration = self._two_track(s1, s2, forensic, narrative, logs)
-            s_raw = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(corroboration))
-            s_final = max(20.0, min(80.0, s_raw))
+            track1, old_corr = self._two_track(s1, s2, forensic, narrative, logs)
+            
+            # Correlation layer replaces CCA Track 2
+            try:
+                from src.agents.correlation_layer import (
+                    ZMatrixBuilder, compute_R_matrix, compute_omega, synthesize_score
+                )
+                import numpy as np
+                
+                builder = ZMatrixBuilder()
+                Z = builder.build(ticker)
+                
+                if Z.shape[0] >= 10:
+                    R = compute_R_matrix(Z)
+                    Omega = compute_omega(R)
+                    S_raw = np.array([s1, s2])
+                    s_corr = synthesize_score(S_raw, Omega)
+                    s_raw_old = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
+                    s_final = max(20.0, min(80.0, 0.7 * s_corr + 0.3 * s_raw_old))
+                    corroboration = 1.0 - abs(R[0,1])
+                    _add_log(logs, "Correlation layer: R[0,1]=%.3f, Omega[0,1]=%.3f" % (R[0,1], Omega[0,1]))
+                else:
+                    s_raw = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
+                    s_final = max(20.0, min(80.0, s_raw))
+                    corroboration = old_corr
+            except Exception as e:
+                _add_log(logs, "Correlation layer error: %s, using legacy" % str(e)[:80])
+                s_raw = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
+                s_final = max(20.0, min(80.0, s_raw))
+                corroboration = old_corr
 
         _add_log(logs, f"Synthesis result: final score {s_final:.0f}/100 ({'BUY' if s_final >= 62 else 'HOLD' if s_final >= 39 else 'SELL'})")
 
