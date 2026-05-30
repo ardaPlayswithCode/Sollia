@@ -41,7 +41,7 @@ const fadeUp = {
 
 export default function App() {
   const [agents, setAgents] = useState([]);
-  const [selected, setSelected] = useState(['forensic', 'narrative', 'follow_through']);
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit']);
   const [ticker, setTicker] = useState('');
   const [state, dispatch] = useReducer(reducer, initialState);
 
@@ -50,13 +50,12 @@ export default function App() {
       .then(r => r.json())
       .then(data => {
         setAgents(data.agents || []);
-        setSelected(data.agents?.map(a => a.id) || ['forensic', 'narrative', 'follow_through']);
+        setSelected(data.agents?.map(a => a.id) || ['corporate_discrepancy', 'promise_audit']);
       })
       .catch(() => {
         setAgents([
-          { id: 'forensic', name: 'CEO vs 10-K', description: 'CEO transcript vs 10-K analysis' },
-          { id: 'narrative', name: 'News Sentiment', description: 'Financial news sentiment analysis' },
-          { id: 'follow_through', name: 'Management Follow-Through', description: 'Tracks CEO promises across filings' }
+          { id: 'corporate_discrepancy', name: 'Corporate Discrepancy', description: 'Cross-document contradiction finder across 5 SEC filings' },
+          { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' }
         ]);
       });
   }, []);
@@ -147,14 +146,14 @@ export default function App() {
               </motion.section>
 
               <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {state.result.forensic && <AgentCard title="CEO vs 10-K" label={state.result.forensic.discrepancy_label} conclusion={state.result.forensic.conclusion} topSignals={state.result.forensic.top_signals} type="forensic" index={0} />}
-                {state.result.narrative && <AgentCard title="News Sentiment" label={state.result.narrative.sentiment_label} conclusion={state.result.narrative.conclusion} topSignals={state.result.narrative.top_signals} type="narrative" index={1} />}
-                {state.result.follow_through && (
+                {state.result.corporate_discrepancy && <AgentCard title="Corporate Discrepancy" label={state.result.corporate_discrepancy.top_discrepancies?.[0]?.discrepancy_type || 'No discrepancies found'} conclusion={state.result.corporate_discrepancy.top_discrepancies?.[0]?.reasoning || 'Analysis complete'} topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({ severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'AMBER' : 'GREEN', description: d.reasoning, transcript_citation: d.source_a?.sentence_text || '', filing_citation: d.source_b?.sentence_text || '' }))} type="corporate_discrepancy" index={0} />}
+                {state.result.promise_audit && <AgentCard title="Promise Audit" label={`Score: ${state.result.promise_audit.score || 50}%`} conclusion={state.result.promise_audit.conclusion || 'Promise tracking complete'} topSignals={(state.result.promise_audit.promises || []).map(p => ({ severity: p.status === 'EVIDENCE_FOUND' ? 'GREEN' : 'RED', description: p.text?.slice(0, 100) || '', transcript_citation: p.evidence || '', filing_citation: `Severity: ${p.severity}/10` }))} type="promise_audit" index={1} />}
+                {state.result.promise_audit && (
                   <AgentCard
-                    title="Management Follow-Through"
-                    label={`Score: ${state.result.follow_through.score}% — ${state.result.follow_through.promises?.length || 0} promises tracked`}
-                    conclusion={state.result.follow_through.conclusion || 'Top promises from company history'}
-                    topSignals={(state.result.follow_through.promises || []).map(p => ({
+                    title="Promise Audit"
+                    label={`Score: ${state.result.promise_audit.score}% — ${state.result.promise_audit.promises?.length || 0} promises tracked`}
+                    conclusion={state.result.promise_audit.conclusion || 'Promise tracking complete' || 'Top promises from company history'}
+                    topSignals={(state.result.promise_audit.promises || []).map(p => ({
                       severity: p.status === 'EVIDENCE_FOUND' ? 'GREEN' : 'RED',
                       severity_color: p.status === 'EVIDENCE_FOUND' ? '#22C55E' : '#EF4444',
                       description: `[${p.status}] ${p.text?.slice(0, 100)}...`,
@@ -163,7 +162,7 @@ export default function App() {
                       transcript_url: '',
                       htm_link: ''
                     }))}
-                    type="follow_through"
+                    type="promise_audit"
                     index={2}
                   />
                 )}
