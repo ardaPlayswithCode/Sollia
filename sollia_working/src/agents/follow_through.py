@@ -101,8 +101,12 @@ def _strip_html(html: str) -> str:
 
 
 def _extract_mda(text: str, form_type: str = "") -> str:
+    """Extract MD&A section. For 8-Ks, returns full text (no MD&A section exists)."""
     if not text:
         return ""
+    # 8-Ks are event-driven, no MD&A — return the full cleaned text
+    if form_type == "8-K":
+        return text[:50000]
     patterns = [
         r"(?:Item\s*7[\.:]|ITEM\s*7[\.:])\s*(?:Management.s\s*Discussion|MANAGEMENT.S\s*DISCUSSION)(.*?)(?:Item\s*7A|ITEM\s*7A|Item\s*8|ITEM\s*8)",
         r"(?:Item\s*2[\.:]|ITEM\s*2[\.:])\s*(?:Management.s\s*Discussion|MANAGEMENT.S\s*DISCUSSION)(.*?)(?:Item\s*3|ITEM\s*3)",
@@ -115,7 +119,6 @@ def _extract_mda(text: str, form_type: str = "") -> str:
     if len(text) > 10000:
         return text[len(text)//4:len(text)//2]
     return text[:50000]
-
 
 def _split_sentences(text: str) -> List[str]:
     if not text:
@@ -399,6 +402,7 @@ class FollowThroughAgent:
         
         if not filings_to_fetch:
             all_forms_list = list(forms)
+            all_items_list = list(recent.get("items", [""] * len(all_forms_list)))
             all_acc_list = list(accessions)
             all_docs_list = list(primary_docs)
             all_dates_list = list(report_dates)
@@ -411,6 +415,7 @@ class FollowThroughAgent:
                     if resp2.status_code == 200:
                         old_data = resp2.json()
                         all_forms_list.extend(old_data.get("form", []))
+                        all_items_list.extend(old_data.get("items", [""] * len(old_data.get("form", []))))
                         all_acc_list.extend(old_data.get("accessionNumber", []))
                         all_dates_list.extend(old_data.get("reportDate", []))
                         all_docs_list.extend(old_data.get("primaryDocument", []))
@@ -423,7 +428,9 @@ class FollowThroughAgent:
                     self._log.append(f"  Archive fetch failed: {e}")
             
             for i, f in enumerate(all_forms_list):
-                if f in ["10-K", "10-Q", "8-K"]:
+                # Only include 8-Ks with promise-relevant items (agreements, earnings, leadership)
+                if f in ["10-K", "10-Q"] or (f == "8-K" and all_items_list[i] and any(
+                    code in all_items_list[i] for code in ["1.01", "2.02", "5.02"])):
                     acc = all_acc_list[i].replace("-", "") if i < len(all_acc_list) else ""
                     doc = all_docs_list[i] if i < len(all_docs_list) else ""
                     if not acc or not doc:

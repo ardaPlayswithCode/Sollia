@@ -2,34 +2,16 @@
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel
+from typing import Any
 
 # Import agents
 import sys
 sys.path.insert(0, '/Users/ardaturgut/Desktop/Sollia/sollia_working')
+from src.agents.corporate_discrepancy import run_discrepancy_agent as run_corporate_discrepancy
 from src.agents.forensic_accountant import ForensicAccountant
-from src.agents.narrative_scout import NarrativeScout
-from src.agents.follow_through import FollowThroughAgent
-from src.schemas import SolliaForensicResult, SolliaNarrativeResult, AgentLogMessage
 
-# === FollowThrough Schema ===
-class Promise(BaseModel):
-    text: str
-    status: str
-    severity: int
-    evidence: Optional[str] = None
-    source: Optional[str] = None
-    date: Optional[str] = None
-    metric: Optional[str] = None
-
-class SolliaFollowThroughResult(BaseModel):
-    ticker: str
-    score: float
-    promises: List[Promise]
-    total_candidates: int
-    confirmed_promises: int
-    elapsed_seconds: float
-    conclusion: Optional[str] = None
-    log: Optional[List[str]] = None
+from src.agents.follow_through import FollowThroughAgent as PromiseAuditAgent
+from src.schemas import AgentLogMessage
 
 @dataclass
 class AgentDefinition:
@@ -37,26 +19,23 @@ class AgentDefinition:
     name: str
     description: str
     runner: object
+    weight: float = 1.0
 
 # Registry
 AGENTS: Dict[str, AgentDefinition] = {
-    "forensic": AgentDefinition(
-        id="forensic",
-        name="CEO vs 10-K",
-        description="Measures gaps between CEO transcript tone and 10-K financial reality",
+    "corporate_discrepancy": AgentDefinition(
+        id="corporate_discrepancy",
+        name="Corporate Discrepancy",
+        description="Cross-document contradiction finder across 5 SEC filings",
         runner=ForensicAccountant(),
+        weight=1.0,
     ),
-    "narrative": AgentDefinition(
-        id="narrative",
-        name="News Sentiment",
-        description="Analyzes financial news flow against historical sentiment baselines",
-        runner=NarrativeScout(),
-    ),
-    "follow_through": AgentDefinition(
-        id="follow_through",
-        name="Management Follow-Through",
-        description="Tracks CEO promises across filings and checks if they were kept",
+    "promise_audit": AgentDefinition(
+        id="promise_audit",
+        name="Promise Audit",
+        description="Tracks management promises and verifies follow-through",
         runner=FollowThroughAgent(),
+        weight=0.5,  # Half weight: 1/(2N) where N=2 → 0.25 normalized to 0.33
     ),
 }
 

@@ -115,98 +115,106 @@ class Synthesizer:
 
     def run(
         self,
-        forensic: Optional[SolliaForensicResult],
-        narrative: Optional[SolliaNarrativeResult],
+        agent_results: dict,
+        agent_weights: dict,
         ticker: str,
         company_name: str,
-    ) -> SolliaAnalysisResult:
-        logs: List[AgentLogMessage] = []
-        _add_log(logs, "Starting synthesis...")
-
-        s1 = forensic.s1 if forensic else 50.0
-        s2 = narrative.s2 if narrative else 50.0
-        agents_run = []
-        if forensic:
-            agents_run.append("ForensicAccountant")
-        if narrative:
-            agents_run.append("NarrativeScout")
-
-        if not forensic and not narrative:
-            s_final = 50.0
-            track1 = 50.0
-            corroboration = 0.5
-        elif not forensic:
-            s_final = s2
-            track1 = s2
-            corroboration = 0.5
-        elif not narrative:
-            s_final = s1
-            track1 = s1
-            corroboration = 0.5
+    ) -> dict:
+        """Merge agent scores using Gaussian similarity with fixed weights.
+        
+        agent_results: {"corporate_discrepancy": {...}, "promise_audit": {...}}
+        agent_weights: {"corporate_discrepancy": 1.0, "promise_audit": 0.5}
+        """
+        logs = []
+        def _add_log(msg):
+            logs.append(msg)
+        
+        _add_log("Starting synthesis...")
+        
+        if not agent_results:
+            return {
+                "ticker": ticker, "company": company_name,
+                "score": 50.0, "signal": "HOLD", "signal_color": "#F59E0B",
+                "summary": "No agent results available.",
+                "agents_run": [], "log": logs
+            }
+        
+        # Extract scores from each agent
+        scores = {}
+        for agent_id, result in agent_results.items():
+            if "score" in result:
+                scores[agent_id] = result["score"]
+            elif "s1" in result:
+                scores[agent_id] = result["s1"]
+            elif "final_score" in result:
+                scores[agent_id] = result.get("final_score", 50.0)
+            else:
+                scores[agent_id] = 50.0
+        
+        agents_run = list(scores.keys())
+        _add_log(f"Merging {len(scores)} agents: {agents_run}")
+        
+        # Normalize weights to sum to 1.0
+        total_weight = sum(agent_weights.get(aid, 1.0) for aid in scores)
+        norm_weights = {aid: agent_weights.get(aid, 1.0) / total_weight for aid in scores}
+        
+        # Weighted average score
+        weighted_score = sum(scores[aid] * norm_weights[aid] for aid in scores)
+        
+        # Gaussian similarity between all agent pairs
+        import math
+        agent_ids = list(scores.keys())
+        if len(agent_ids) >= 2:
+            similarities = []
+            for i in range(len(agent_ids)):
+                for j in range(i+1, len(agent_ids)):
+                    s_i = scores[agent_ids[i]]
+                    s_j = scores[agent_ids[j]]
+                    sim = math.exp(-((s_i - s_j) ** 2) / (2.0 * 225.0))
+                    similarities.append(sim)
+            avg_similarity = sum(similarities) / len(similarities)
         else:
-            track1, old_corr = self._two_track(s1, s2, forensic, narrative, logs)
-            
-            # Correlation layer replaces CCA Track 2
-            try:
-                from src.agents.correlation_layer import (
-                    ZMatrixBuilder, compute_R_matrix, compute_omega, synthesize_score
-                )
-                import numpy as np
-                
-                builder = ZMatrixBuilder()
-                Z = builder.build(ticker)
-                
-                if Z.shape[0] >= 10:
-                    R = compute_R_matrix(Z)
-                    Omega = compute_omega(R)
-                    S_raw = np.array([s1, s2])
-                    s_corr = synthesize_score(S_raw, Omega)
-                    s_raw_old = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
-                    s_final = max(20.0, min(80.0, 0.7 * s_corr + 0.3 * s_raw_old))
-                    corroboration = 1.0 - abs(R[0,1])
-                    _add_log(logs, "Correlation layer: R[0,1]=%.3f, Omega[0,1]=%.3f" % (R[0,1], Omega[0,1]))
-                else:
-                    s_raw = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
-                    s_final = max(20.0, min(80.0, s_raw))
-                    corroboration = old_corr
-            except Exception as e:
-                _add_log(logs, "Correlation layer error: %s, using legacy" % str(e)[:80])
-                s_raw = 50.0 + (track1 - 50.0) * (1.0 - 0.2 * abs(old_corr))
-                s_final = max(20.0, min(80.0, s_raw))
-                corroboration = old_corr
-
-        _add_log(logs, f"Synthesis result: final score {s_final:.0f}/100 ({'BUY' if s_final >= 62 else 'HOLD' if s_final >= 39 else 'SELL'})")
-
-        signal, color = self._classify(s_final)
-        _add_log(logs, f"Signal: {signal}")
-
-        exec_summary = self._executive_summary(forensic, narrative, signal, ticker)
-
-        result = SolliaAnalysisResult(
-            ticker=ticker,
-            company_name=company_name,
-            s_final=round(s_final, 2),
-            signal=signal,
-            signal_color=color,
-            agents_run=agents_run,
-            forensic=forensic,
-            narrative=narrative,
-            executive_summary=exec_summary,
-            track1_score=round(track1, 2),
-            corroboration=round(corroboration, 4),
-            log_messages=logs,
-        )
-
-        # Build export data without circular reference
-        try:
-            raw = result.model_dump(exclude={"export_data"})
-        except AttributeError:
-            raw = result.dict()
-            raw.pop("export_data", None)
-        result.export_data = raw
-        return result
-
-    # ── Private ───────────────────────────────────────────────────────────
+            avg_similarity = 1.0
+        
+        # Blend: weighted average adjusted by alignment
+        s_final = avg_similarity * weighted_score + (1.0 - avg_similarity) * 50.0
+        s_final = max(20.0, min(80.0, s_final))
+        
+        _add_log(f"Agent scores: {scores}")
+        _add_log(f"Normalized weights: {norm_weights}")
+        _add_log(f"Weighted score: {weighted_score:.1f}, Similarity: {avg_similarity:.3f}")
+        _add_log(f"Synthesis result: final score {s_final:.0f}/100 ({'BUY' if s_final >= 62 else 'HOLD' if s_final >= 39 else 'SELL'})")
+        
+        # Classify
+        if s_final <= 38:
+            signal, color = "SELL", "#EF4444"
+        elif s_final <= 61:
+            signal, color = "HOLD", "#F59E0B"
+        else:
+            signal, color = "BUY", "#22C55E"
+        
+        # Build summary
+        summaries = []
+        for aid, result in agent_results.items():
+            if "executive_summary" in result:
+                summaries.append(result["executive_summary"])
+            elif "conclusion" in result:
+                summaries.append(result["conclusion"])
+        exec_summary = "; ".join(summaries) if summaries else f"Synthesis complete for {ticker}."
+        
+        return {
+            "ticker": ticker,
+            "company": company_name,
+            "score": round(s_final, 1),
+            "signal": signal,
+            "signal_color": color,
+            "summary": exec_summary,
+            "agents_run": agents_run,
+            "agent_weights": norm_weights,
+            "agent_scores": scores,
+            "similarity": round(avg_similarity, 4),
+            "log": logs,
+        }
 
     def _two_track(
         self,
@@ -238,7 +246,7 @@ class Synthesizer:
         _add_log(logs, f"  Historical corroboration: {'high' if corroboration > 0.7 else 'moderate' if corroboration > 0.4 else 'low'}")
         _add_log(logs, "  Corroboration adjustment applied to final score weighting")
 
-        return s_track1, corroboration
+        return s_track1, 0.5
 
     def _corroboration(
         self,
