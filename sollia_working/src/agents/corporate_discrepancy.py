@@ -650,10 +650,12 @@ def align_all_pairs(documents):
 LLM_PROVIDERS = [
     {"name": "Groq-8B", "url": "https://api.groq.com/openai/v1/chat/completions",
      "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY"},
-    {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
-     "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY"},
+    {"name": "Groq-8B-Retry", "url": "https://api.groq.com/openai/v1/chat/completions",
+     "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY"},
     {"name": "OpenRouter", "url": "https://openrouter.ai/api/v1/chat/completions",
      "model": "google/gemini-2.0-flash-001", "key_env": "OPENROUTER_API_KEY"},
+    {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
+     "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY"},
 ]
 
 def _build_discrepancy_prompt(batch):
