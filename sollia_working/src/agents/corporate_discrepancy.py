@@ -42,6 +42,13 @@ def _strip_html(html: str) -> str:
         tag.decompose()
     text = soup.get_text(separator="\n", strip=True)
     text = re.sub(r"<\w+:?\w+[^>]*>", "", text)
+    # Remove XBRL metadata lines that survive HTML stripping
+    text = re.sub(r'^\d{10}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^\d{4}-\d{2}-\d{2}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^(false|true)\s*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^iso4217:\S+\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^xbrli:\S+\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^us-gaap:\S+\s*$', '', text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r" +", " ", text)
     return text.strip()
@@ -357,10 +364,41 @@ def split_sentences(text: str) -> List[str]:
     return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if len(s.strip()) > 10]
 
 
+def _filter_bad_sentences(sentences: List[str]) -> List[str]:
+    """Remove SEC artifact fragments that survive HTML stripping."""
+    filtered = []
+    for s in sentences:
+        stripped = s.strip()
+        # Skip very short fragments (page numbers, single words)
+        if len(stripped) < 12:
+            continue
+        # Skip purely numeric or CIK-like lines
+        if re.match(r'^[\d\s|\-]+$', stripped):
+            continue
+        # Skip orphaned page header fragments
+        if re.match(r'^\|?\s*\d+\s*$', stripped):
+            continue
+        # Skip lines that are just "PART", "Item", "ITEM" etc
+        if re.match(r'^(PART|Item|ITEM)\s*$', stripped):
+            continue
+        # Skip XBRL metadata remnants
+        if re.match(r'^(false|true|iso4217|[A-Z]+:\S+)$', stripped, re.IGNORECASE):
+            continue
+        # Skip lines that are just registered trademark symbols or special chars
+        if re.match(r'^[®©™\|\s]+$', stripped):
+            continue
+        filtered.append(s)
+    return filtered
+
+
 def chunk_paragraph(text: str, max_chars: int = 800, min_chars: int = 300) -> List[str]:
     if len(text) <= max_chars:
         return [text]
     sents = split_sentences(text)
+    # Filter out SEC artifact fragments
+    sents = _filter_bad_sentences(sents)
+    if not sents:
+        return [text] if len(text) >= 50 else []
     chunks, current, cur_len = [], [], 0
     for s in sents:
         if cur_len + len(s) > max_chars and cur_len >= min_chars:
