@@ -10,7 +10,7 @@ const sevBadge = {
 export default function AgentCard({ title, label, conclusion, topSignals, type, index = 0 }) {
   const cardRef = useRef(null)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
-  const isForensic = type === 'forensic'
+  const isForensic = type === 'forensic' || type === 'corporate_discrepancy'
   const accent = isForensic ? 'from-blue-400 to-cyan-400' : 'from-emerald-400 to-teal-400'
 
   const handleMouseMove = (e) => {
@@ -42,7 +42,7 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
           <table className="w-full">
             <thead>
               <tr className="text-xs text-slate-600 uppercase tracking-wider border-b border-white/5">
-                <th className="text-left py-3 px-2 font-semibold">Sev</th>
+                <th className="text-left py-3 px-2 font-semibold">Score</th>
                 <th className="text-left py-3 px-2 font-semibold">Finding</th>
                 {isForensic ? (
                   <>
@@ -65,7 +65,7 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
                 >
                   <td className="py-3 px-2">
                     <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-bold ${sevBadge[s.severity] || 'badge-green'}`}>
-                      {s.severity}
+                      {s.final_score || s.severity}
                     </span>
                   </td>
                   <td className="py-3 px-2 text-slate-300 text-sm">{s.description}</td>

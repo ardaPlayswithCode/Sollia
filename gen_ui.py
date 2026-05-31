@@ -20,7 +20,6 @@ if result:
         'summary': result.executive_summary, 'timestamp': datetime.now().isoformat(),
         'agents_run': result.agents_run,
         'track1_score': result.track1_score,
-        'corroboration': result.corroboration,
         'forensic': {}, 'narrative': {},
         'log': [{'speaker': l.speaker, 'message': l.message} for l in logs],
     }

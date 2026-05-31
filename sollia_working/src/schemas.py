@@ -151,7 +151,6 @@ class SolliaAnalysisResult(BaseModel):
     narrative: Optional[SolliaNarrativeResult] = None
     executive_summary: str = ""
     track1_score: float = 50.0
-    corroboration: float = 0.0
     track1_detail: Optional[Dict[str, Any]] = None
     track2_detail: Optional[Dict[str, Any]] = None
     log_messages: List[AgentLogMessage] = Field(default_factory=list)

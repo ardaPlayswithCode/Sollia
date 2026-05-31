@@ -1,28 +1,28 @@
 """FastAPI backend — serves agent pipeline."""
 import sys
 import os
-import json
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-sys.path.insert(0, '/Users/ardaturgut/Desktop/Sollia/sollia_working')
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda\u2019s Mac Studio/Sollia/sollia_working')
 from src.agents.synthesizer import Synthesizer
 from backend.agents import get_agents_meta, run_selected_agents, AGENTS
 
-app = FastAPI(title="Sollia API", version="1.0.0")
+app = FastAPI(title="Sollia API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 class AnalysisRequest(BaseModel):
     ticker: str
-    agents: list[str] = ["forensic", "narrative"]
+    agents: list[str] = ["corporate_discrepancy", "promise_audit"]
+    year: int = 2023
 
 @app.get("/api/agents")
 async def list_agents():
@@ -33,45 +33,43 @@ async def run_analysis(req: AnalysisRequest):
     ticker = req.ticker.upper()
     selected = [a for a in req.agents if a in AGENTS]
     
-    forensic, narrative, logs, ft_result = run_selected_agents(ticker, selected)
+    results, weights, logs = run_selected_agents(ticker, selected, req.year)
 
-    # Determine company name
-    company_name = ticker
-    if forensic:
-        company_name = getattr(forensic, 'ceo_name', None) or ticker
-        if company_name == ticker and hasattr(forensic, 'company_name'):
-            company_name = getattr(forensic, 'company_name', ticker)
+    if not results:
+        return {
+            "ticker": ticker, "company": ticker,
+            "score": 50, "signal": "HOLD", "signal_color": "#F59E0B",
+            "summary": "No agents produced results.",
+            "agents_run": [], "log": []
+        }
 
-    # Synthesize
     synth = Synthesizer()
-    result = synth.run(forensic, narrative, ticker, company_name)
-    normalized_score = round((result.s_final - 20.0) / 60.0 * 100.0, 1)
+    merged = synth.run(results, weights, ticker, ticker)
 
-    # Merge logs
-    all_logs = []
-    if forensic:
-        all_logs.extend(getattr(forensic, 'log_messages', []))
-    if narrative:
-        all_logs.extend(getattr(narrative, 'log_messages', []))
-    all_logs.extend(getattr(result, 'log_messages', []))
-
+    # Strip embedding arrays from response to avoid bloat
+    def strip_embeddings(obj):
+        if isinstance(obj, dict):
+            return {k: strip_embeddings(v) for k, v in obj.items() if k != "embedding"}
+        elif isinstance(obj, list):
+            return [strip_embeddings(i) for i in obj]
+        return obj
+    
     return {
-        "ticker": result.ticker,
-        "company": result.company_name,
-        "score": normalized_score,
-        "signal": result.signal,
-        "signal_color": result.signal_color,
-        "summary": result.executive_summary,
-        "agents_run": result.agents_run,
-        "track1_score": result.track1_score,
-        "corroboration": result.corroboration,
-        "forensic": forensic.model_dump() if hasattr(forensic, 'model_dump') else None,
-        "narrative": narrative.model_dump() if hasattr(narrative, 'model_dump') else None,
-        "follow_through": ft_result.model_dump() if hasattr(ft_result, 'model_dump') else (ft_result if ft_result else None),
-        "log": [{"speaker": l.speaker, "message": l.message} for l in all_logs],
+        "ticker": ticker,
+        "company": ticker,
+        "score": merged["score"],
+        "signal": merged["signal"],
+        "signal_color": merged["signal_color"],
+        "summary": merged["summary"],
+        "agents_run": merged["agents_run"],
+        "similarity": merged.get("similarity", 0),
+        "agent_weights": merged.get("agent_weights", {}),
+        "agent_scores": merged.get("agent_scores", {}),
+        "corporate_discrepancy": strip_embeddings(results.get("corporate_discrepancy")),
+        "promise_audit": strip_embeddings(results.get("promise_audit")),
+        "log": [{"speaker": "Sollia", "message": l} for l in merged.get("log", [])],
     }
 
-# Serve React build
 frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
 if os.path.exists(frontend_dist):
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

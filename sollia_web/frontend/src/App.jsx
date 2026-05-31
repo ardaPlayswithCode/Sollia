@@ -43,6 +43,7 @@ export default function App() {
   const [agents, setAgents] = useState([]);
   const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit']);
   const [ticker, setTicker] = useState('');
+  const [year, setYear] = useState(2023);
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
@@ -67,7 +68,7 @@ export default function App() {
       const response = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected })
+        body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year: year })
       });
       if (!response.ok) throw new Error('Analysis failed');
       const data = await response.json();
@@ -94,7 +95,7 @@ export default function App() {
         <motion.header style={{ opacity: 1 }} className="sticky top-0 z-20 pt-2 pb-4">
           <div className="glass-card p-5 flex flex-col lg:flex-row gap-4 items-stretch lg:items-end">
             <div className="flex-1">
-              <label className="block text-xs text-slate-500 uppercase tracking-[0.2em] mb-2 font-medium">Ticker</label>
+              <label className="block text-xs text-slate-500 uppercase tracking-[0.2em] mb-2 font-medium">Ticker <span className="text-slate-700">· Year</span></label>
               <div className="flex gap-3 items-end">
                 <input
                   type="text"
@@ -103,6 +104,15 @@ export default function App() {
                   placeholder="NVDA"
                   maxLength={5}
                   className="bg-[#06080D] border border-white/10 rounded-xl px-5 py-4 text-white text-3xl font-black tracking-[0.15em] placeholder-slate-700 transition-all w-full sm:w-44 text-center"
+                />
+                <span className="text-xs text-slate-500 uppercase tracking-[0.2em] mt-2 block sm:hidden">Year</span>
+                <input
+                  type="number"
+                  value={year}
+                  onChange={e => setYear(parseInt(e.target.value) || 2023)}
+                  min={2016}
+                  max={2026}
+                  className="bg-[#06080D] border border-white/10 rounded-xl px-4 py-4 text-white text-xl font-bold placeholder-slate-700 transition-all w-full sm:w-24 text-center"
                 />
                 <motion.button
                   onClick={runAnalysis}
@@ -146,8 +156,8 @@ export default function App() {
               </motion.section>
 
               <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {state.result.corporate_discrepancy && <AgentCard title="Corporate Discrepancy" label={state.result.corporate_discrepancy.top_discrepancies?.[0]?.discrepancy_type || 'No discrepancies found'} conclusion={state.result.corporate_discrepancy.top_discrepancies?.[0]?.reasoning || 'Analysis complete'} topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({ severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'AMBER' : 'GREEN', description: d.reasoning, transcript_citation: d.source_a?.sentence_text || '', filing_citation: d.source_b?.sentence_text || '' }))} type="corporate_discrepancy" index={0} />}
-                {state.result.promise_audit && <AgentCard title="Promise Audit" label={`Score: ${state.result.promise_audit.score || 50}%`} conclusion={state.result.promise_audit.conclusion || 'Promise tracking complete'} topSignals={(state.result.promise_audit.promises || []).map(p => ({ severity: p.status === 'EVIDENCE_FOUND' ? 'GREEN' : 'RED', description: p.text?.slice(0, 100) || '', transcript_citation: p.evidence || '', filing_citation: `Severity: ${p.severity}/10` }))} type="promise_audit" index={1} />}
+                {state.result.corporate_discrepancy && <AgentCard title="Corporate Discrepancy" label={state.result.corporate_discrepancy.top_discrepancies?.[0]?.discrepancy_type || 'No discrepancies found'} conclusion={state.result.corporate_discrepancy.top_discrepancies?.[0]?.reasoning || 'Analysis complete'} topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({ severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'AMBER' : 'GREEN', severity_color: d.severity === 'high' ? '#EF4444' : d.severity === 'medium' ? '#F59E0B' : '#22C55E', description: d.reasoning, transcript_citation: d.source_a?.sentence_text || '', filing_citation: d.source_b?.sentence_text || '', transcript_url: d.source_a?.edgar_url || '', htm_link: d.source_b?.edgar_url || '' }))} type="corporate_discrepancy" index={0} />}
+                
                 {state.result.promise_audit && (
                   <AgentCard
                     title="Promise Audit"

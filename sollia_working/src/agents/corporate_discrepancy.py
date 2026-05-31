@@ -766,7 +766,8 @@ def classify_discrepancies(documents):
         valid = _validate_llm_response(response, batch)
         for v in valid:
             v["batch_key"] = key
-            v["batch"] = batch
+            # Store minimal batch info without embeddings
+            v["batch"] = {"topic": batch.get("topic",""), "passages_count": len(batch.get("passages",{}))}
         return valid
     
     all_discrepancies = []
@@ -828,7 +829,11 @@ def rank_discrepancies(documents):
     return documents
 
 def build_citations(documents):
-    """Build exact sentence citations for each top discrepancy."""
+    """Build exact sentence citations for each top discrepancy with EDGAR URLs."""
+    ticker = documents.get("ticker", "")
+    year = documents.get("year", "")
+    cik = documents.get("cik", "")
+    
     for d in documents.get("top_discrepancies", []):
         batch = d.get("batch", {})
         pair_name = d.get("pair", "")
@@ -840,21 +845,35 @@ def build_citations(documents):
                 idx = d.get("sentence_index_a" if side == 0 else "sentence_index_b", 0)
                 sents = passage.get("sentences", [])
                 meta = passage.get("metadata", {})
+                doc_type = meta.get("source_doc_type", doc_label)
+                # Clean up transcript labels (EARNINGS_CALL_1 -> 8-K for EDGAR)
+                clean_type = doc_type
+                if "EARNINGS_CALL" in clean_type:
+                    clean_type = "8-K"
+                # Build EDGAR URL
+                cik_int = int(cik) if cik else 0
+                edgar_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type={clean_type}&dateb=&owner=include&count=40" if cik else ""
                 source = {
-                    "document_type": doc_label,
+                    "document_type": doc_type,
                     "section": meta.get("section", ""),
                     "page_number": meta.get("page_number", 1),
                     "paragraph_index": meta.get("paragraph_index", 0),
                     "sentence_index": idx,
-                    "sentence_text": sents[idx] if idx < len(sents) else ""
+                    "sentence_text": sents[idx] if idx < len(sents) else "",
+                    "edgar_url": edgar_url,
+                    "year": year,
+                    "ticker": ticker
                 }
             else:
-                source = {"document_type": doc_label, "sentence_text": str(passage)}
+                source = {"document_type": doc_label, "sentence_text": str(passage), "edgar_url": "", "year": year, "ticker": ticker}
             
             if side == 0:
                 d["source_a"] = source
             else:
                 d["source_b"] = source
+        
+        # Strip batch object to remove embedding bloat
+        d.pop("batch", None)
     
     return documents
 
@@ -913,6 +932,10 @@ def run_discrepancy_agent(ticker: str, year: int) -> dict:
     
     # Layer 6: Citations
     documents = build_citations(documents)
+    # Add ticker/year/cik for URL construction
+    documents["ticker"] = ticker
+    documents["year"] = year
+    documents["cik"] = documents.get("cik", "")
     add_log("CITE", "Built exact sentence citations")
     
     elapsed = time.time() - t0
@@ -926,6 +949,7 @@ def run_discrepancy_agent(ticker: str, year: int) -> dict:
         "total_aligned_pairs": len(documents.get("aligned_pairs", [])),
         "total_discrepancies_found": len(documents.get("discrepancies", [])),
         "top_discrepancies": documents.get("top_discrepancies", []),
+        "score": round(documents.get("top_discrepancies", [{}])[0].get("final_score", 50)) if documents.get("top_discrepancies") else 50,
         "elapsed_seconds": round(elapsed, 1),
         "agent_log": log,
     }
