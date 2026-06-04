@@ -1,0 +1,1 @@
+[{"pair": "10-K_vs_10-Q", "is_discrepancy": false, "discrepancy_type": "omission_discrepancy", "severity": "medium", "weight": 60, "reasoning": "short", "sentence_index_a": 3, "sentence_index_b": 3, "quoted_phrase_a": "Net sales can also be affected when consumers and distributors anticipate a product introduction.", "quoted_phrase_b": ""}]

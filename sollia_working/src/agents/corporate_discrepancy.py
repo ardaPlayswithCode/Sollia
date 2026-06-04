@@ -411,7 +411,7 @@ def chunk_paragraph(text: str, max_chars: int = 800, min_chars: int = 300) -> Li
     return chunks
 
 
-def build_chunks(text: str, doc_type: str, ticker: str, year: int) -> List[dict]:
+def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: str = '', primary_doc: str = '') -> List[dict]:
     sections = split_sections(text)
     chunks, char_count = [], 0
     for section in sections:
@@ -431,7 +431,9 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int) -> List[dict]
                         "section": section["section_name"],
                         "page_number": max(1, char_count // 3000),
                         "paragraph_index": pi,
-                        "sentence_count": len(sents)
+                        "sentence_count": len(sents),
+                        "accessionNumber": accession,
+                        "primaryDocument": primary_doc
                     },
                     "embedding": None
                 })
@@ -442,15 +444,18 @@ def chunk_all(documents: dict) -> dict:
     """Chunk all cleaned documents."""
     ticker = documents["ticker"]
     year = documents["year"]
-    documents["chunks_10k"] = build_chunks(documents["ten_k_clean"], "10-K", ticker, year)
+    documents["chunks_10k"] = build_chunks(documents["ten_k_clean"], "10-K", ticker, year, documents.get("ten_k", {}).get("accessionNumber", ""), documents.get("ten_k", {}).get("primaryDocument", ""))
     documents["chunks_10q"] = []
     for i, text in enumerate(documents["ten_q_clean"]):
-        documents["chunks_10q"].extend(build_chunks(text, f"10-Q_{i}", ticker, year))
-    documents["chunks_def14a"] = build_chunks(documents["def14a_clean"], "DEF14A", ticker, year)
-    documents["chunks_8k"] = build_chunks(documents["eight_k_clean"], "8-K", ticker, year)
+        ten_q_list = documents.get("ten_qs", [])
+        acc = ten_q_list[i].get("accessionNumber", "") if i < len(ten_q_list) else ""
+        doc = ten_q_list[i].get("primaryDocument", "") if i < len(ten_q_list) else ""
+        documents["chunks_10q"].extend(build_chunks(text, f"10-Q_{i}", ticker, year, acc, doc))
+    documents["chunks_def14a"] = build_chunks(documents["def14a_clean"], "DEF14A", ticker, year, documents.get("def14a", {}).get("accessionNumber", ""), documents.get("def14a", {}).get("primaryDocument", ""))
+    documents["chunks_8k"] = build_chunks(documents["eight_k_clean"], "8-K", ticker, year, documents.get("eight_k", {}).get("accessionNumber", ""), documents.get("eight_k", {}).get("primaryDocument", ""))
     documents["chunks_transcript"] = []
     for i, text in enumerate(documents["transcript_clean"]):
-        documents["chunks_transcript"].extend(build_chunks(text, f"EARNINGS_CALL_{i}", ticker, year))
+        documents["chunks_transcript"].extend(build_chunks(text, f"EARNINGS_CALL_{i}", ticker, year, "", ""))
     return documents
 
 
@@ -738,7 +743,8 @@ def _call_llm(prompt, provider_idx=0, max_tokens=400):
     return []
 
 def _validate_llm_response(response, batch):
-    """Validate LLM response: bounds-check indices, verify quoted phrases."""
+    """Validate LLM response: minimal checks, trust LLM sentence indices.
+    Only rejects entries where quoted phrases are completely absent from the passage."""
     valid = []
     for entry in response:
         if not isinstance(entry, dict) or not entry.get("is_discrepancy"):
@@ -747,23 +753,62 @@ def _validate_llm_response(response, batch):
         parts = pair.split("_vs_")
         if len(parts) != 2:
             continue
-        doc_a, doc_b = parts
-        pa = batch.get("passages", {}).get(doc_a, {})
-        pb = batch.get("passages", {}).get(doc_b, {})
-        sents_a = pa.get("sentences", []) if isinstance(pa, dict) else []
-        sents_b = pb.get("sentences", []) if isinstance(pb, dict) else []
-        idx_a = entry.get("sentence_index_a")
-        idx_b = entry.get("sentence_index_b")
-        if idx_a is None or idx_b is None:
-            continue
-        if idx_a < 0 or idx_a >= len(sents_a) or idx_b < 0 or idx_b >= len(sents_b):
-            continue
+        
         qa = entry.get("quoted_phrase_a", "")
         qb = entry.get("quoted_phrase_b", "")
-        if qa and qa not in sents_a[idx_a]:
+        
+        # Minimal check: at least some key words from quoted phrase appear in the passage
+        doc_a, doc_b = parts
+        passages = batch.get("passages", {})
+        # Prefix match for doc labels (e.g. '10-Q' -> '10-Q_0')
+        actual_a = doc_a
+        if actual_a not in passages:
+            for pk in passages:
+                if pk == doc_a or pk.startswith(doc_a + '_'):
+                    actual_a = pk
+                    break
+        actual_b = doc_b
+        if actual_b not in passages:
+            for pk in passages:
+                if pk == doc_b or pk.startswith(doc_b + '_'):
+                    actual_b = pk
+                    break
+        pa = passages.get(actual_a, {})
+        pb = passages.get(actual_b, {})
+        text_a = pa.get("text", "") if isinstance(pa, dict) else ""
+        text_b = pb.get("text", "") if isinstance(pb, dict) else ""
+        
+        # Check that at least 2 significant words (>3 chars) from each quote appear in the text
+        def words_in_text(phrase, text):
+            if not phrase:
+                return True
+            words = [w for w in phrase.split() if len(w) > 3]
+            if not words:
+                return True
+            matches = sum(1 for w in words if w.lower() in text.lower())
+            return matches >= min(2, len(words))
+        
+        if qa and not words_in_text(qa, text_a):
             continue
-        if qb and qb not in sents_b[idx_b]:
+        if qb and not words_in_text(qb, text_b):
             continue
+        
+        # Try to find correct sentence indices by locating key words
+        sents_a = pa.get("sentences", []) if isinstance(pa, dict) else []
+        sents_b = pb.get("sentences", []) if isinstance(pb, dict) else []
+        
+        key_a = qa.split()[0] if qa else ""
+        key_b = qb.split()[0] if qb else ""
+        
+        for i, s in enumerate(sents_a):
+            if key_a and key_a.lower() in s.lower():
+                entry["sentence_index_a"] = i
+                break
+        for i, s in enumerate(sents_b):
+            if key_b and key_b.lower() in s.lower():
+                entry["sentence_index_b"] = i
+                break
+        
         valid.append(entry)
     return valid
 
@@ -795,10 +840,30 @@ def classify_discrepancies(documents):
         batches[key]["similarity"] = pair.get("similarity", 0.86)
     
     # Filter to batches with >= 2 passages
-    valid_batches = [(k, b) for k, b in batches.items() if len(b["passages"]) >= 2]
+    # valid_batches already computed above with boilerplate filter
     
     # Parallel LLM calls with ThreadPoolExecutor
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # Pre-filter: skip batches where all passages are near-identical boilerplate
+    filtered_batches = {}
+    for key, batch in batches.items():
+        texts = []
+        for p in batch.get("passages", {}).values():
+            t = p.get("text", "")[:200].strip()
+            # Skip boilerplate-only passages
+            boilerplate_patterns = [
+                "incorporated herein by reference", "press release", "furnished herewith",
+                "shall not be deemed filed", "forward-looking statements", "safe harbor"
+            ]
+            is_boilerplate = all(pat in t.lower() for pat in boilerplate_patterns[:2])
+            if not is_boilerplate:
+                texts.append(t)
+        if len(set(texts)) >= 2:
+            filtered_batches[key] = batch
+    
+    valid_batches = [(k, b) for k, b in filtered_batches.items() if len(b["passages"]) >= 2]
+    print(f"Batches after boilerplate filter: {len(valid_batches)} (filtered out {len(batches) - len(filtered_batches)})")
     
     def process_batch(key, batch):
         prompt = _build_discrepancy_prompt(batch)
@@ -807,7 +872,7 @@ def classify_discrepancies(documents):
         for v in valid:
             v["batch_key"] = key
             # Store minimal batch info without embeddings
-            v["batch"] = {"topic": batch.get("topic",""), "passages_count": len(batch.get("passages",{}))}
+            v["batch"] = {"topic": batch.get("topic",""), "passages_count": len(batch.get("passages",{})), "chunk_ids": {dt: p.get("chunk_id","") for dt, p in batch.get("passages", {}).items()}}
         return valid
     
     all_discrepancies = []
@@ -874,25 +939,44 @@ def build_citations(documents):
     year = documents.get("year", "")
     cik = documents.get("cik", "")
     
+    # Build lookup: chunk_id -> chunk (with sentences + metadata)
+    all_chunks = {}
+    for key in ["chunks_10k", "chunks_10q", "chunks_def14a", "chunks_8k", "chunks_transcript"]:
+        for chunk in documents.get(key, []):
+            all_chunks[chunk["chunk_id"]] = chunk
+    
     for d in documents.get("top_discrepancies", []):
         batch = d.get("batch", {})
+        chunk_ids = batch.get("chunk_ids", {})
         pair_name = d.get("pair", "")
         parts = pair_name.split("_vs_")
         
         for side, doc_label in enumerate(parts):
-            passage = batch.get("passages", {}).get(doc_label, {})
-            if isinstance(passage, dict):
-                idx = d.get("sentence_index_a" if side == 0 else "sentence_index_b", 0)
-                sents = passage.get("sentences", [])
-                meta = passage.get("metadata", {})
+            chunk_id = chunk_ids.get(doc_label, "")
+            # If exact match fails, try prefix match (e.g. '10-Q' matching '10-Q_2')
+            if not chunk_id:
+                for ck in chunk_ids:
+                    if ck.startswith(doc_label + '_') or ck == doc_label:
+                        chunk_id = chunk_ids[ck]
+                        break
+            chunk = all_chunks.get(chunk_id, {})
+            
+            if chunk:
+                idx = d.get("sentence_index_a" if side == 0 else "sentence_index_b") or 0
+                sents = chunk.get("sentences", [])
+                meta = chunk.get("metadata", {})
                 doc_type = meta.get("source_doc_type", doc_label)
-                # Clean up transcript labels (EARNINGS_CALL_1 -> 8-K for EDGAR)
                 clean_type = doc_type
                 if "EARNINGS_CALL" in clean_type:
                     clean_type = "8-K"
-                # Build EDGAR URL
                 cik_int = int(cik) if cik else 0
-                edgar_url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type={clean_type}&dateb=&owner=include&count=40" if cik else ""
+                # Build direct .htm URL using CIK + accession
+                # Accession format: 0001045810-23-000017 -> 000104581023000017
+                acc = meta.get("accessionNumber", "")
+                doc = meta.get("primaryDocument", "")
+                cik_stripped = str(cik_int)
+                acc_no_dashes = acc.replace("-", "")
+                edgar_url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/{doc}" if cik and acc and doc else ""
                 source = {
                     "document_type": doc_type,
                     "section": meta.get("section", ""),
@@ -905,18 +989,19 @@ def build_citations(documents):
                     "ticker": ticker
                 }
             else:
-                source = {"document_type": doc_label, "sentence_text": str(passage), "edgar_url": "", "year": year, "ticker": ticker}
+                source = {"document_type": doc_label, "sentence_text": "", "edgar_url": "", "year": year, "ticker": ticker}
             
             if side == 0:
                 d["source_a"] = source
             else:
                 d["source_b"] = source
         
-        # Strip batch object to remove embedding bloat
         d.pop("batch", None)
     
     return documents
 
+
+# ===
 
 # ============================================================================
 # LAYER 7: Output + Main run() function
