@@ -717,15 +717,24 @@ class PromiseAuditAgent:
             pid = p.get("promise_id", "")
             match = evidence_map.get(pid, {})
             p["status"] = match.get("status", "UNRESOLVED")
-            p["evidence_text"] = match.get("evidence_text")
-            p["evidence_filing"] = match.get("evidence_filing")
-            p["evidence_date"] = match.get("evidence_date")
-            # Look up htm_url from evidence candidates
+            # Look up evidence details from unique_evidence by evidence_id
             ev_id = match.get("evidence_id", "")
+            matched_ev = None
             for ev in unique_evidence:
-                if ev.get("evidence_id", ev.get("sentence", "")) == ev_id:
-                    p["evidence_url"] = ev.get("htm_url", "")
+                ev_sid = f"EVID_{unique_evidence.index(ev):03d}"
+                if ev_id == ev_sid:
+                    matched_ev = ev
                     break
+            if matched_ev:
+                p["evidence_text"] = matched_ev.get("sentence", "")
+                p["evidence_filing"] = match.get("evidence_filing") or matched_ev.get("filing_type", "")
+                p["evidence_date"] = match.get("evidence_date") or matched_ev.get("filing_date", "")
+                p["evidence_url"] = matched_ev.get("htm_url", "")
+            else:
+                p["evidence_text"] = match.get("evidence_text", "")
+                p["evidence_filing"] = match.get("evidence_filing", "")
+                p["evidence_date"] = match.get("evidence_date", "")
+                p["evidence_url"] = ""
             p["confidence"] = match.get("confidence", "low")
             p["reasoning"] = match.get("reasoning", "")
             
