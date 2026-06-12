@@ -502,8 +502,8 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
                         "page_number": max(1, char_count // 3000),
                         "paragraph_index": pi,
                         "sentence_count": len(sents),
-                        "accessionNumber": accession,
-                        "primaryDocument": primary_doc
+                        "accession_number": accession,
+                        "primary_document": primary_doc
                     },
                     "embedding": None
                 })

@@ -18,6 +18,7 @@ import re
 import time
 import threading
 from datetime import date, datetime, timedelta
+from src.config.llm_config import call_llm as _call_llm_config
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -379,10 +380,28 @@ def _call_llm(prompt: str, max_tokens: int = 2000) -> Tuple[str, str]:
     try:
         text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0)
         model = meta.get("model", "unknown")
-        _set_llm_cache(prompt_hash, prompt, text, model)
+        if text:
+            _set_llm_cache(prompt_hash, prompt, text, model)
         return text, model
     except Exception as e:
-        logger.warning("LLM call failed: %s", str(e)[:80])
+        # Fallback: try direct requests without the lock
+        logger.warning("Config LLM failed, trying direct: %s", str(e)[:80])
+        try:
+            import requests, os
+            key = os.environ.get("GROQ_API_KEY", "")
+            r = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}], "temperature": 0, "max_tokens": max_tokens},
+                timeout=120
+            )
+            if r.status_code == 200:
+                data = r.json()
+                text = data["choices"][0]["message"]["content"].strip()
+                _set_llm_cache(prompt_hash, prompt, text, "llama-3.1-8b-instant")
+                return text, "llama-3.1-8b-instant"
+        except Exception as e2:
+            logger.warning("Direct Groq also failed: %s", str(e2)[:80])
         raise
 
 def _build_stage1_prompt(batch: List[Dict[str, Any]]) -> str:
@@ -525,7 +544,7 @@ class PromiseAuditAgent:
         # ── Step 2: Fetch transcripts ────────────────────────────────────
         self._add_log("FETCH", "Fetching transcripts...")
         transcripts_raw = sec_trans.get_transcripts(ticker)
-        transcripts = [t for t in transcripts_raw if str(t.date) >= str(ten_years_ago)]
+        transcripts = [t for t in transcripts_raw if str(t["date"] if isinstance(t, dict) else t.date) >= str(ten_years_ago)]
         self._add_log("FETCH", f"Fetched {len(transcripts_raw)} total, {len(transcripts)} within 10yr window")
         
         # ── Step 3: Build fiscal year bundles ─────────────────────────────
@@ -569,7 +588,7 @@ class PromiseAuditAgent:
                 if text:
                     tokenized_docs[acc] = split_sentences(text)
         for t in transcripts:
-            t_date = str(t.date) if hasattr(t, 'date') and t.date else ''
+            t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
             content_text = getattr(t, 'content', '') or ''
             if content_text and t_date:
                 tokenized_docs[f"TR_{t_date}"] = split_sentences(content_text)
@@ -819,7 +838,7 @@ def extract_promises_from_documents(
         if not content or len(content) < 200:
             continue
         
-        t_date = str(t.date) if hasattr(t, 'date') and t.date else ''
+        t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
         
         cleaned = clean_document(content, doc_type="transcript")
         sentences = split_sentences(cleaned)
@@ -988,7 +1007,7 @@ def _search_evidence_fast(
                 })
     
     for t in transcripts:
-        t_date = str(t.date) if hasattr(t, 'date') and t.date else ''
+        t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
         if t_date <= promise_date:
             continue
         key = f"TR_{t_date}"
@@ -1068,7 +1087,7 @@ def search_evidence_candidates(
     
     # Also search transcripts
     for t in transcripts:
-        t_date = str(t.date) if hasattr(t, 'date') and t.date else ''
+        t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
         if t_date <= promise_date:
             continue
         
