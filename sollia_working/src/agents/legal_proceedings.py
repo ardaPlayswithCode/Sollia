@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import sys
 import os
 import requests
+import time
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, parse_qs
 
@@ -57,6 +58,19 @@ class LegalProceedingsTracker:
             resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"})
             if resp.status_code == 200:
                 filings_data = resp.json()
+                # Also fetch historical archives
+                for file_info in filings_data.get("filings", {}).get("files", []):
+                    try:
+                        time.sleep(0.1)
+                        r = requests.get(f"https://data.sec.gov/submissions/{file_info['name']}", 
+                                        headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"}, timeout=30)
+                        if r.status_code == 200:
+                            old = r.json()
+                            for key in ["form", "accessionNumber", "filingDate", "reportDate", "items", "primaryDocument"]:
+                                if key in old and key in filings_data["filings"]["recent"]:
+                                    filings_data["filings"]["recent"][key].extend(old.get(key, []))
+                    except Exception:
+                        pass
                 with open(cache_file, 'w') as f:
                     json.dump(filings_data, f)
 

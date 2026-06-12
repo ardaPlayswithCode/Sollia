@@ -3,8 +3,15 @@ Agent 1 — Corporate Discrepancy: Cross-document contradiction finder across 5 
 Layer 0: Fiscal year alignment + data fetching with 3-tier fallback per document type.
 """
 from __future__ import annotations
+import os
 
 from src.config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model
+
+# Cache integration — check before downloading
+from src.providers.filings.sec_edgar import get_cached_text, cache_text, get_cached_filings, cache_filings
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.cache')
+os.makedirs(os.path.join(CACHE_DIR, 'filings'), exist_ok=True)
+os.makedirs(os.path.join(CACHE_DIR, 'texts'), exist_ok=True)
 
 import logging
 import re
@@ -72,7 +79,56 @@ class SECFilingFetcher:
         return r.json()
 
     def _get_all_filings(self, cik: str) -> List[dict]:
+        # CHECK CACHE FIRST
+        ticker = getattr(self, '_current_ticker', None)
+        if ticker:
+            cached = get_cached_filings(ticker)
+            if cached:
+                recent = cached.get("filings", {}).get("recent", {})
+                all_forms = list(recent.get("form", []))
+                n = len(all_forms)
+                all_periods = list(recent.get("reportDate", [""] * n))
+                all_filing_dates = list(recent.get("filingDate", [""] * n))
+                all_items = list(recent.get("items", [""] * n))
+                all_accessions = list(recent.get("accessionNumber", [""] * n))
+                all_docs = list(recent.get("primaryDocument", [""] * n))
+                # Also merge historical archives from cache
+                for file_info in cached.get("filings", {}).get("files", []):
+                    hist_cached = get_cached_filings(f"{ticker}_hist_{file_info['name']}")
+                    if hist_cached:
+                        m = len(hist_cached.get("form", []))
+                        all_forms.extend(hist_cached.get("form", []))
+                        all_periods.extend(hist_cached.get("reportDate", [""] * m))
+                        all_filing_dates.extend(hist_cached.get("filingDate", [""] * m))
+                        all_items.extend(hist_cached.get("items", [""] * m))
+                        all_accessions.extend(hist_cached.get("accessionNumber", [""] * m))
+                        all_docs.extend(hist_cached.get("primaryDocument", [""] * m))
+            else:
+                # Fetch fresh and cache
+                return self._fetch_filings_from_sec(cik, ticker)
+        else:
+            return self._fetch_filings_from_sec(cik, None)
+        
+        filings = []
+        for i in range(len(all_forms)):
+            filings.append({
+                "form": all_forms[i],
+                "period_of_report": all_periods[i] if i < len(all_periods) else "",
+                "filing_date": all_filing_dates[i] if i < len(all_filing_dates) else "",
+                "items": all_items[i] if i < len(all_items) else "",
+                "accession_number": all_accessions[i] if i < len(all_accessions) else "",
+                "primary_document": all_docs[i] if i < len(all_docs) else "",
+            })
+        return filings
+
+    def _fetch_filings_from_sec(self, cik: str, ticker: str = None) -> List[dict]:
+        """Fetch all filings from SEC (fresh, no cache)."""
         data = self._get_json(cik)
+        if ticker:
+            import json as _json
+            cache_file = os.path.join(CACHE_DIR, "filings", f"{ticker}_filings.json")
+            with open(cache_file, "w") as _f:
+                _json.dump(data, _f)
         recent = data["filings"]["recent"]
         all_forms = list(recent.get("form", []))
         n = len(all_forms)
@@ -87,6 +143,9 @@ class SECFilingFetcher:
                 r = requests.get(f"{SEC_BASE}/submissions/{file_info['name']}", headers=DATA_HEADERS, timeout=30)
                 if r.status_code == 200:
                     old = r.json()
+                    # Cache historical data too
+                    if ticker:
+                        cache_filings(f"{ticker}_hist_{file_info['name']}", old)
                     m = len(old.get("form", []))
                     all_forms.extend(old.get("form", []))
                     all_periods.extend(old.get("reportDate", [""] * m))
@@ -101,20 +160,30 @@ class SECFilingFetcher:
             filings.append({
                 "form": all_forms[i],
                 "period_of_report": all_periods[i] if i < len(all_periods) else "",
-                "filingDate": all_filing_dates[i] if i < len(all_filing_dates) else "",
+                "filing_date": all_filing_dates[i] if i < len(all_filing_dates) else "",
                 "items": all_items[i] if i < len(all_items) else "",
-                "accessionNumber": all_accessions[i] if i < len(all_accessions) else "",
-                "primaryDocument": all_docs[i] if i < len(all_docs) else "",
+                "accession_number": all_accessions[i] if i < len(all_accessions) else "",
+                "primary_document": all_docs[i] if i < len(all_docs) else "",
             })
         return filings
-
     def _fetch_htm(self, cik: str, acc: str, doc: str) -> str:
+        # CHECK CACHE FIRST
+        ticker = getattr(self, '_current_ticker', None)
+        if ticker:
+            cached_text = get_cached_text(ticker, acc)
+            if cached_text:
+                return cached_text
+        
         acc_clean = acc.replace("-", "")
         url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_clean}/{doc}"
         self._rate_limit()
         r = requests.get(url, headers=HEADERS, timeout=30)
         if r.status_code == 200 and len(r.text) > 5000:
-            return r.text
+            text = r.text
+            # Cache the fetched text
+            if ticker:
+                cache_text(ticker, acc, text)
+            return text
         return ""
 
     def align_fiscal_year(self, ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
