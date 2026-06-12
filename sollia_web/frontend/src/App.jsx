@@ -66,13 +66,13 @@ export default function App() {
 
   useEffect(() => {
     const handleEnter = (e) => {
-      if (e.key === 'Enter' && ticker.trim() && selected.length > 0 && !state.loading) {
+      if (e.key === 'Enter' && ticker.trim() && selected.length > 0) {
         runAnalysis();
       }
     };
     window.addEventListener('keydown', handleEnter);
     return () => window.removeEventListener('keydown', handleEnter);
-  }, [ticker, selected, state.loading]);
+  }, [ticker, selected]);
 
   const runAnalysis = useCallback(async () => {
     console.log('runAnalysis called', {ticker, selected, loading: state.loading});

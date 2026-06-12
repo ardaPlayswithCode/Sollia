@@ -8,6 +8,7 @@
   </head>
   <body>
     <div id="root"></div>
+<div style="position:fixed;bottom:20px;right:20px;z-index:9999;background:#ef4444;color:white;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:bold" onclick="fetch('http://localhost:8000/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:'F',agents:['legal_proceedings'],year:2025})}).then(r=>r.json()).then(d=>this.textContent='API OK: '+d.signal+' '+d.score).catch(e=>this.textContent='API FAIL: '+e.message)">🔴 TEST API DIRECTLY</button>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
