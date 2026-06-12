@@ -82,15 +82,17 @@ class LegalProceedingsTracker:
         forms = recent.get("form", [])
         accessions = recent.get("accessionNumber", [])
         dates = recent.get("filingDate", [])
+        primary_docs = recent.get("primaryDocument", [])
 
         for i in range(len(forms)):
             if forms[i] == form_type:
-                filings.append({
-                    "accession": accessions[i] if i < len(accessions) else None,
-                    "filing_date": dates[i] if i < len(dates) else None,
-                    "cik": cik,
-                    "ticker": ticker
-                })
+                    filings.append({
+                        "accession": accessions[i] if i < len(accessions) else None,
+                        "filing_date": dates[i] if i < len(dates) else None,
+                        "cik": cik,
+                        "ticker": ticker,
+                        "primary_document": primary_docs[i] if i < len(primary_docs) else None
+                    })
 
         filings.sort(key=lambda x: x["filing_date"], reverse=True)
         return filings
@@ -338,39 +340,20 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                             # Add score
                             score = self._calculate_score(proceedings_list)
                             # Store in findings with score
-                            # Add SEC links to proceedings
-            for proc in proceedings_list:
-                if curr.get("accession"):
-                    try:
-                        cik_int_clean = int(curr.get("cik", cik))
-                        acc_no_dash = curr["accession"].replace("-", "")
-                        doc = curr.get("primary_document", "")
-                        if doc:
-                            proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}"
-                    except:
-                        pass
-            results["findings"].append({
+                            results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
                                 "current_date": curr['filing_date'],
                                 "proceedings": proceedings_list,
                                 "summary": data.get('summary', ''),
-                                "agent3_score": score
+                                "agent3_score": score,
+                                "current_accession": curr.get("accession", ""),
+                                "current_primary_doc": curr.get("primary_document", ""),
+                                "cik": cik
                             })
                         except Exception as e:
                             # Fallback: store raw response
-                            # Add SEC links to proceedings
-            for proc in proceedings_list:
-                if curr.get("accession"):
-                    try:
-                        cik_int_clean = int(curr.get("cik", cik))
-                        acc_no_dash = curr["accession"].replace("-", "")
-                        doc = curr.get("primary_document", "")
-                        if doc:
-                            proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}"
-                    except:
-                        pass
-            results["findings"].append({
+                            results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
                                 "current_date": curr['filing_date'],
@@ -384,6 +367,26 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                     priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
                     finding["proceedings"].sort(key=lambda x: priority_order.get(x.get("priority", "MEDIUM"), 1))
                     finding["proceedings"] = finding["proceedings"][:5]
+        # Add SEC links to all proceedings
+        for finding in results["findings"]:
+            for proc in finding.get("proceedings", []):
+                # Build URL from the current filing info stored in the finding
+                curr_acc = finding.get("current_accession", "")
+                if curr_acc:
+                    cik_int_clean = int(cik) if cik else 0
+                    acc_no_dash = curr_acc.replace("-", "")
+                    primary_doc = finding.get("primary_document", "")
+                    if cik_int_clean and acc_no_dash and primary_doc:
+                        proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{primary_doc}"
+        # Add EDGAR links to all proceedings
+        for finding in results["findings"]:
+            cik_int = int(finding.get("cik", "0")) if finding.get("cik") else 0
+            acc = finding.get("current_accession", "")
+            doc = finding.get("current_primary_doc", "")
+            if cik_int and acc and doc:
+                acc_no_dash = acc.replace("-", "")
+                for proc in finding.get("proceedings", []):
+                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_no_dash}/{doc}"
         return results
 
 
