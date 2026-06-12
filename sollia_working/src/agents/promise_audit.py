@@ -30,12 +30,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # LLM provider priority (from project spec)
-LLM_PRIORITY = [
-    ("groq", "llama-3.1-8b-instant"),
-    ("groq", "llama-3.1-8b-instant"),  # retry
-    ("openrouter", "google/gemini-2.0-flash-001"),
-    ("groq", "llama-3.3-70b-versatile"),
-]
+# LLM priority imported from config.llm_config
 
 # Stage config
 STAGE1_BATCH_SIZE = 15

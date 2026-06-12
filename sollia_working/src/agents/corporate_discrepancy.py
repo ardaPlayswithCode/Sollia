@@ -653,17 +653,7 @@ def align_all_pairs(documents):
 # LAYER 4: LLM Classification
 # ============================================================================
 
-LLM_PROVIDERS = [
-    # Priority 1: Groq 70B - Best accuracy for complex reasoning
-    {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
-     "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY"},
-    # Priority 2: Groq 8B - High volume fallback (14,400 RPD)
-    {"name": "Groq-8B", "url": "https://api.groq.com/openai/v1/chat/completions",
-     "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY"},
-    # Priority 3: OpenRouter - Backup with Llama 70B (if Groq fails)
-    {"name": "OpenRouter", "url": "https://openrouter.ai/api/v1/chat/completions",
-     "model": "meta-llama/llama-3.1-70b-instruct", "key_env": "OPENROUTER_API_KEY"},
-]
+# LLM_PROVIDERS imported from config.llm_config (see top of file)
 
 def _build_discrepancy_prompt(batch):
     """Build the LLM prompt for a topic batch."""
