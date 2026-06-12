@@ -291,7 +291,7 @@ export default function App() {
 
         {!state.result && !state.loading && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="text-center py-20">
-            <p className="text-slate-700 text-lg font-medium">Enter a ticker and select agents to begin</p>
+            {state.error ? <p className="text-red-400 text-lg font-medium">Error: {state.error}</p> : <p className="text-slate-700 text-lg font-medium">Enter a ticker and select agents to begin</p>}
             <p className="text-slate-800 text-sm mt-2">or press Enter</p>
           </motion.div>
         )}
