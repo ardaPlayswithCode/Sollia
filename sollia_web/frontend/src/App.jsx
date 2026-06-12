@@ -75,6 +75,7 @@ export default function App() {
   }, [ticker, selected, state.loading]);
 
   const runAnalysis = useCallback(async () => {
+    console.log('runAnalysis called', {ticker, selected, loading: state.loading});
     if (!ticker || selected.length === 0) return;
 dispatch({ type: 'START' }); dispatch({ type: 'ERROR', payload: null });
     try {
@@ -133,7 +134,7 @@ dispatch({ type: 'START' }); dispatch({ type: 'ERROR', payload: null });
                   </>
                 )}
                 <motion.button
-                  onClick={runAnalysis}
+                  onClick={(e) => { console.log("Button clicked"); runAnalysis(); }}
                   disabled={state.loading || !ticker.trim() || selected.length === 0}
                   whileHover={state.loading ? {} : { scale: 1.03, boxShadow: '0 0 40px rgba(59,130,246,0.4)' }}
                   whileTap={state.loading ? {} : { scale: 0.97 }}
