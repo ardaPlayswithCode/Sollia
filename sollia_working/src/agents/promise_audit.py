@@ -427,11 +427,16 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
     if not response:
         return []
     
-    # Strip markdown code fences
+    # Strip markdown code fences and any text before/after JSON
     cleaned = response.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
         cleaned = re.sub(r'\s*```$', '', cleaned)
+    
+    # Aggressively extract JSON array — find first [ to last ]
+    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+    if match:
+        cleaned = match.group(0)
     
     # Try to parse JSON
     try:
@@ -648,6 +653,45 @@ class PromiseAuditAgent:
                 self._add_log("STAGE2_LLM", f"Split across {len(categories)} categories, matched {len(evidence_results)}")
         else:
             self._add_log("STAGE2_LLM", "No evidence candidates found — all promises unresolved")
+        else:
+            # Deterministic fallback: if LLM fails, try text-based matching directly
+            if not evidence_results:
+                self._add_log("STAGE2_LLM", "LLM returned no results — using deterministic fallback")
+                for p in promises:
+                    promise_text = p.get("text", "")[:100].lower()
+                    best_score = 0
+                    best_ev = None
+                    for ev in unique_evidence:
+                        ev_text = ev.get("sentence", "").lower()
+                        # Simple overlap score
+                        words = set(promise_text.split())
+                        ev_words = set(ev_text.split())
+                        overlap = len(words & ev_words)
+                        if overlap > best_score:
+                            best_score = overlap
+                            best_ev = ev
+                    if best_ev and best_score >= 2:
+                        evidence_results.append({
+                            "promise_id": p.get("promise_id", ""),
+                            "status": "KEPT",
+                            "evidence_text": best_ev.get("sentence", ""),
+                            "evidence_filing": best_ev.get("filing_type", ""),
+                            "evidence_date": best_ev.get("filing_date", ""),
+                            "evidence_id": "",
+                            "confidence": "low",
+                            "reasoning": "Deterministic keyword match"
+                        })
+                    else:
+                        evidence_results.append({
+                            "promise_id": p.get("promise_id", ""),
+                            "status": "UNRESOLVED",
+                            "evidence_text": "",
+                            "evidence_filing": "",
+                            "evidence_date": "",
+                            "evidence_id": "",
+                            "confidence": "low",
+                            "reasoning": "No evidence found"
+                        })
         
         # ── Step 6: Merge evidence results into promises ──────────────────
         evidence_map = {r["promise_id"]: r for r in evidence_results}
