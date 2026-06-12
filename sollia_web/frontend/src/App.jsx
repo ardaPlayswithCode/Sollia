@@ -40,7 +40,11 @@ const fadeUp = {
 };
 
 export default function App() {
-  const [agents, setAgents] = useState([]);
+  const [agents, setAgents] = useState([
+    { id: 'corporate_discrepancy', name: 'Corporate Discrepancy', description: 'Cross-document contradiction finder across 5 SEC filings' },
+    { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' },
+    { id: 'legal_proceedings', name: 'Legal Proceedings', description: 'Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings' }
+  ]);
   const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings']);
   const [ticker, setTicker] = useState('');
   const [year, setYear] = useState(2023);
@@ -50,15 +54,13 @@ export default function App() {
     fetch(`${API_BASE}/api/agents`)
       .then(r => r.json())
       .then(data => {
-        setAgents(data.agents || []);
-        setSelected(data.agents?.map(a => a.id) || ['corporate_discrepancy', 'promise_audit', 'legal_proceedings']);
+        if (data.agents && data.agents.length > 0) {
+          setAgents(data.agents);
+          setSelected(data.agents.map(a => a.id));
+        }
       })
       .catch(() => {
-        setAgents([
-          { id: 'corporate_discrepancy', name: 'Corporate Discrepancy', description: 'Cross-document contradiction finder across 5 SEC filings' },
-          { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' },
-          { id: 'legal_proceedings', name: 'Legal Proceedings', description: 'Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings' }
-        ]);
+        // Keep default hardcoded agents on error — no change needed
       });
     
     const handleEnter = (e) => {
