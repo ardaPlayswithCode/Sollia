@@ -1,309 +1,267 @@
-import { useState, useReducer, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Background3D from './components/Background3D';
-import TickerInput from './components/TickerInput';
-import AgentSelector from './components/AgentSelector';
-import ScoreCard from './components/ScoreCard';
-import AgentCard from './components/AgentCard';
-import LogStream from './components/LogStream';
-import JsonExport from './components/JsonExport';
+import { useState, useEffect } from 'react'
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = 'http://localhost:8000'
 
-const initialState = {
-  loading: false,
-  result: null,
-  logs: [],
-  error: null,
-  activeTab: 'log'
-};
-
-function reducer(state, action) {
-  switch (action.type) {
-    case 'START': return { ...initialState, loading: true };
-    case 'LOG': return { ...state, logs: [...state.logs, action.payload] };
-    case 'RESULT': return { ...state, loading: false, result: action.payload };
-    case 'ERROR': return { ...state, loading: false, error: action.payload };
-    case 'SET_TAB': return { ...state, activeTab: action.payload };
-    case 'RESET': return initialState;
-    default: return state;
-  }
-}
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  show: (i) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.1, duration: 0.7, ease: [0.22, 1, 0.36, 1] }
-  })
-};
+const defaultAgents = [
+  { id: 'corporate_discrepancy', name: 'Corporate Discrepancy' },
+  { id: 'promise_audit', name: 'Promise Audit' },
+  { id: 'legal_proceedings', name: 'Legal Proceedings' },
+]
 
 export default function App() {
-  const [agents, setAgents] = useState([
-    { id: 'corporate_discrepancy', name: 'Corporate Discrepancy', description: 'Cross-document contradiction finder across 5 SEC filings' },
-    { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' },
-    { id: 'legal_proceedings', name: 'Legal Proceedings', description: 'Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings' }
-  ]);
-  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings']);
-  const [ticker, setTicker] = useState('');
-  const [year, setYear] = useState(2023);
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [ticker, setTicker] = useState('F')
+  const [year, setYear] = useState(2025)
+  const [selected, setSelected] = useState(['legal_proceedings'])
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+  const [log, setLog] = useState([])
 
-  useEffect(() => {
-    fetch(`${API_BASE}/api/agents`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.agents && data.agents.length > 0) {
-          setAgents(data.agents);
-          // Only auto-select if user hasn't changed selection yet (first load)
-          setSelected(prev => prev.length === 3 ? data.agents.map(a => a.id) : prev);
-        }
-      })
-      .catch(() => {
-        // Keep default hardcoded agents on error — no change needed
-      });
-  }, []);  // Only run once on mount
+  function toggleAgent(id) {
+    setSelected(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id])
+    setResult(null)
+    setError(null)
+  }
 
-  useEffect(() => {
-    const handleEnter = (e) => {
-      if (e.key === 'Enter' && ticker.trim() && selected.length > 0) {
-        runAnalysis();
-      }
-    };
-    window.addEventListener('keydown', handleEnter);
-    return () => window.removeEventListener('keydown', handleEnter);
-  }, [ticker, selected]);
-
-  const runAnalysis = useCallback(async () => {
-    console.log('runAnalysis called', {ticker, selected, loading: state.loading});
-    if (!ticker || selected.length === 0) return;
-dispatch({ type: 'START' }); dispatch({ type: 'ERROR', payload: null });
+  async function runAnalysis() {
+    if (!ticker.trim() || selected.length === 0 || loading) return
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    setLog([])
     try {
-      const response = await fetch(`${API_BASE}/api/analyze`, {
+      const res = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year: year })
-      });
-      if (!response.ok) throw new Error('Analysis failed');
-      const data = await response.json();
+        body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year })
+      })
+      if (!res.ok) throw new Error('Server error: ' + res.status)
+      const data = await res.json()
+      setResult(data)
       if (data.log) {
-        data.log.forEach((l, i) => {
-          setTimeout(() => dispatch({ type: 'LOG', payload: l }), i * 15);
-        });
+        data.log.forEach((l, i) => setTimeout(() => setLog(prev => [...prev, l]), i * 30))
       }
-      setTimeout(() => { dispatch({ type: 'RESULT', payload: data }); }, (data.log?.length || 0) * 15 + 300);
-    } catch (err) {
-      dispatch({ type: 'ERROR', payload: err.message });
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
     }
-  }, [ticker, selected]);
+  }
 
-  const toggleAgent = (id) => {
-    setSelected(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
-    dispatch({ type: 'ERROR', payload: null });
-  };
+  // Keyboard shortcut
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Enter' && ticker.trim() && selected.length > 0 && !loading) runAnalysis()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [ticker, selected, loading])
+
+  const showYear = selected.includes('corporate_discrepancy')
 
   return (
-    <>
-      <Background3D />
-      <div className="aurora-layer" />
-      <main className="relative z-10 min-h-screen px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
-        <motion.header style={{ opacity: 1 }} className="sticky top-0 z-20 pt-2 pb-4">
-          <div className="glass-card p-5 flex flex-col lg:flex-row gap-4 items-stretch lg:items-end">
-            <div className="flex-1">
-              <label className="block text-xs text-slate-500 uppercase tracking-[0.2em] mb-2 font-medium">Ticker <span className="text-slate-700">· Year</span></label>
-              <div className="flex gap-3 items-end">
+    <div className="min-h-screen bg-[#06080D] text-white font-sans">
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* HEADER */}
+        <div className="flex flex-wrap gap-4 items-end mb-8">
+          <div>
+            <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">
+              Ticker{showYear ? ' · Year' : ''}
+            </label>
+            <div className="flex gap-3">
+              <input
+                type="text" value={ticker}
+                onChange={e => setTicker(e.target.value.toUpperCase().slice(0, 5))}
+                placeholder="NVDA" maxLength={5}
+                className="bg-[#0A0B14] border border-white/10 rounded-xl px-5 py-3.5 text-white text-2xl font-black tracking-[0.2em] placeholder-slate-700 focus:outline-none focus:border-blue-400/50 w-36 text-center"
+              />
+              {showYear && (
                 <input
-                  type="text"
-                  value={ticker}
-                  onChange={e => setTicker(e.target.value.toUpperCase().slice(0, 5))}
-                  placeholder="NVDA"
-                  maxLength={5}
-                  className="bg-[#06080D] border border-white/10 rounded-xl px-5 py-4 text-white text-3xl font-black tracking-[0.15em] placeholder-slate-700 transition-all w-full sm:w-44 text-center"
+                  type="number" value={year}
+                  onChange={e => setYear(parseInt(e.target.value) || 2025)}
+                  min={2016} max={2026}
+                  className="bg-[#0A0B14] border border-white/10 rounded-xl px-4 py-3.5 text-white text-xl font-bold placeholder-slate-700 focus:outline-none focus:border-purple-400/50 w-24 text-center"
                 />
-                {selected.includes('corporate_discrepancy') && (
-                  <>
-                    <span className="text-xs text-slate-500 uppercase tracking-[0.2em] mt-2 block sm:hidden">Year</span>
-                    <input
-                      type="number"
-                      value={year}
-                      onChange={e => setYear(parseInt(e.target.value) || 2023)}
-                      min={2016}
-                      max={2026}
-                      className="bg-[#06080D] border border-white/10 rounded-xl px-4 py-4 text-white text-xl font-bold placeholder-slate-700 transition-all w-full sm:w-24 text-center"
-                    />
-                  </>
-                )}
-                <motion.button
-                  onClick={(e) => { console.log("Button clicked"); runAnalysis(); }}
-                  disabled={state.loading || !ticker.trim() || selected.length === 0}
-                  whileHover={state.loading ? {} : { scale: 1.03, boxShadow: '0 0 40px rgba(59,130,246,0.4)' }}
-                  whileTap={state.loading ? {} : { scale: 0.97 }}
-                  className="px-8 py-4 rounded-xl font-bold text-base tracking-wide transition-all cursor-pointer bg-gradient-to-r from-blue-500 to-violet-500 text-white disabled:bg-white/5 disabled:text-slate-700"
-                >
-                  {state.loading ? "Running..." : "Analyze"}
-                </motion.button>
-              </div>
-            </div>
-            <div className="flex-1">
-              <label className="block text-xs text-slate-500 uppercase tracking-[0.2em] mb-2 font-medium">Agents</label>
-              <div className="flex flex-wrap gap-2">
-                {agents.map(agent => (
-                  <motion.button
-                    key={agent.id}
-                    onClick={() => toggleAgent(agent.id)}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
-                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer border ${
-                      selected.includes(agent.id)
-                        ? 'bg-blue-500/15 border-blue-400 text-blue-300'
-                        : 'bg-white/[0.02] border-white/5 hover:border-white/30 hover:text-slate-300'
-                    }`}
-                  >
-                    {agent.name}
-                  </motion.button>
-                ))}
-              </div>
+              )}
             </div>
           </div>
-        </motion.header>
+          <button
+            onClick={runAnalysis}
+            disabled={loading || !ticker.trim() || selected.length === 0}
+            className={`px-8 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all ${
+              loading || !ticker.trim() ? 'bg-white/5 text-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-blue-500 to-violet-500 text-white hover:shadow-lg hover:shadow-blue-500/20'
+            }`}
+          >
+            {loading ? 'Running...' : 'Analyze'}
+          </button>
+        </div>
 
-        <AnimatePresence>
-          {state.result && !state.loading && (
-            <div className="space-y-8 pb-16">
-              {/* Score cards: one per agent, no merged score */}
-              <motion.section custom={0} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {state.result.corporate_discrepancy && (
-                  <ScoreCard
-                    score={state.result.corporate_discrepancy.final_score || state.result.corporate_discrepancy.score || 0}
-                    label="Corporate Discrepancy"
-                    signal_color={state.result.corporate_discrepancy.signal_color || (state.result.corporate_discrepancy.score >= 70 ? "#EF4444" : state.result.corporate_discrepancy.score >= 50 ? "#F59E0B" : "#22C55E")}
-                    signal={state.result.corporate_discrepancy.signal || (state.result.corporate_discrepancy.score >= 70 ? 'BEARISH' : state.result.corporate_discrepancy.score >= 50 ? 'NEUTRAL' : 'BULLISH')}
-                  />
-                )}
-                {state.result.promise_audit && (
-                  <ScoreCard
-                    score={state.result.promise_audit.score || 50}
-                    label="Promise Audit"
-                    signal_color={state.result.promise_audit.score >= 70 ? "#22C55E" : state.result.promise_audit.score >= 40 ? "#F59E0B" : "#EF4444"}
-                    signal={state.result.promise_audit.score >= 70 ? 'BULLISH' : state.result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'}
-                  />
-                )}
-                {state.result.legal_proceedings && (
-                  <ScoreCard
-                    score={state.result.legal_proceedings.agent3_score || 50}
-                    label="Legal Proceedings"
-                    signal_color={state.result.legal_proceedings.agent3_score >= 60 ? "#22C55E" : state.result.legal_proceedings.agent3_score <= 40 ? "#EF4444" : "#F59E0B"}
-                    signal={state.result.legal_proceedings.agent3_score >= 60 ? 'BULLISH' : state.result.legal_proceedings.agent3_score <= 40 ? 'BEARISH' : 'NEUTRAL'}
-                  />
-                )}
-              </motion.section>
+        {/* AGENTS */}
+        <div className="mb-6">
+          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Agents</label>
+          <div className="flex flex-wrap gap-2">
+            {defaultAgents.map(agent => (
+              <button
+                key={agent.id}
+                onClick={() => toggleAgent(agent.id)}
+                className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
+                  selected.includes(agent.id) ? 'bg-blue-500/15 border-blue-400 text-blue-300' : 'bg-white/[0.02] border-white/5 hover:border-white/30 text-slate-400'
+                }`}
+              >
+                {agent.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
-              {/* Agent cards */}
-              <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {state.result.corporate_discrepancy && (
-                  <AgentCard
-                    title="Corporate Discrepancy"
-                    label={`Score: ${state.result.corporate_discrepancy.final_score || state.result.corporate_discrepancy.score || '—'}`}
-                    conclusion={state.result.corporate_discrepancy.conclusion || 'Cross-document analysis complete'}
-                    topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({
-                      severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN',
-                      final_score: d.final_score,
-                      discrepancy_type: d.discrepancy_type,
-                      pair: d.pair,
-                      description: d.reasoning,
-                      transcript_citation: d.source_a?.sentence_text || '',
-                      filing_citation: d.source_b?.sentence_text || '',
-                      source_a_type: d.source_a?.document_type || 'Source A',
-                      source_b_type: d.source_b?.document_type || 'Source B',
-                      transcript_url: d.source_a?.edgar_url || '',
-                      htm_link: d.source_b?.edgar_url || ''
-                    }))}
-                    type="corporate_discrepancy"
-                    index={0}
-                  />
-                )}
-                
-                {state.result.promise_audit && (
-                  <AgentCard
-                    title="Promise Audit"
-                    label={`${state.result.promise_audit.total_promises_extracted || 0} promises · ${state.result.promise_audit.total_kept || 0} kept · ${state.result.promise_audit.total_broken || 0} broken`}
-                    conclusion={`Credibility score: ${state.result.promise_audit.score || 50}%`}
-                    topSignals={(state.result.promise_audit.top_promises || []).map(p => ({
-                      status: p.status || 'UNRESOLVED',
-                      category: p.category || 'other',
-                      severity: p.severity || 5,
-                      text: p.text || '',
-                      evidence_text: p.evidence_text || '',
-                      promise_url: p.promise_url || '',
-                      evidence_url: p.evidence_url || '',
-                      promise_source: p.promise_source || 'Filing',
-                      evidence_source: p.evidence_filing || '',
-                      reasoning: p.reasoning || ''
-                    }))}
-                    type="promise_audit"
-                    index={1}
-                  />
-                )}
-                
-                {state.result.legal_proceedings && (
-                  <AgentCard
-                    title="Legal Proceedings"
-                    label={`${state.result.legal_proceedings.findings?.length || 0} filing types compared`}
-                    conclusion={`Legal score: ${state.result.legal_proceedings.agent3_score || 50}%`}
-                    topSignals={(state.result.legal_proceedings.findings || []).flatMap(f => 
-                      (f.proceedings || []).map(p => ({
-                        status: p.status || p.change_type || 'UNCHANGED',
-                        case_name: p.case_name || '',
-                        doc_type: f.doc_type || '',
-                        prior_quote: p.prior_quote || p.prior_text || '',
-                        current_quote: p.current_quote || p.current_text || '',
-                        liability_change: p.liability_change || '',
-                        summary: f.summary || '',
-                        obfuscation_detected: p.obfuscation_detected || false,
-                        priority: p.priority || 'MEDIUM'
-                      }))
-                    )}
-                    type="legal_proceedings"
-                    index={2}
-                  />
-                )}
-              </motion.section>
+        {/* ERROR */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-6">
+            <p className="text-red-400 font-medium">Error: {error}</p>
+          </div>
+        )}
 
-              {/* Log / JSON tabs */}
-              <motion.section custom={2} variants={fadeUp} initial="hidden" animate="show" className="glass-card overflow-hidden">
-                <div className="flex border-b border-white/5">
-                  {[
-                    { id: 'log', label: 'Agent Log' },
-                    { id: 'json', label: 'JSON Export' }
-                  ].map(tab => (
-                    <button key={tab.id} onClick={() => dispatch({ type: 'SET_TAB', payload: tab.id })}
-                      className={`relative px-6 py-4 text-sm font-semibold transition-all cursor-pointer ${
-                        state.activeTab === tab.id ? 'text-white' : 'text-slate-600 hover:text-slate-400'
-                      }`}>
-                      {tab.label}
-                      {state.activeTab === tab.id && (
-                        <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-400 to-violet-400" />
-                      )}
-                    </button>
+        {/* EMPTY STATE */}
+        {!result && !loading && !error && (
+          <div className="text-center py-20">
+            <p className="text-slate-600 text-lg">Enter a ticker, select agents, and click Analyze</p>
+            <p className="text-slate-800 text-sm mt-2">or press Enter</p>
+          </div>
+        )}
+
+        {/* RESULTS */}
+        {result && (
+          <div className="space-y-6">
+            {/* SCORE CARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {result.corporate_discrepancy && (
+                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.final_score || result.corporate_discrepancy.score || 50} signal={result.corporate_discrepancy.score >= 70 ? 'BEARISH' : result.corporate_discrepancy.score >= 50 ? 'NEUTRAL' : 'BULLISH'} />
+              )}
+              {result.promise_audit && (
+                <ScoreBox label="Promise Audit" score={result.promise_audit.score || 50} signal={result.promise_audit.score >= 70 ? 'BULLISH' : result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'} />
+              )}
+              {result.legal_proceedings && (
+                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score || 50} signal={result.legal_proceedings.agent3_score >= 60 ? 'BULLISH' : result.legal_proceedings.agent3_score <= 40 ? 'BEARISH' : 'NEUTRAL'} />
+              )}
+            </div>
+
+            {/* AGENT 1 - Corporate Discrepancy */}
+            {result.corporate_discrepancy && (
+              <Card title="Corporate Discrepancy" subtitle={`Score: ${result.corporate_discrepancy.final_score || result.corporate_discrepancy.score || '—'}`}>
+                {(result.corporate_discrepancy.top_discrepancies || []).slice(0, 5).map((d, i) => (
+                  <Row key={i} badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair?.replace(/_/g, ' ')}>
+                    <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
+                    <Quote text={d.source_a?.sentence_text} url={d.source_a?.htm_link || d.source_a?.edgar_url} label={d.source_a?.document_type} />
+                    <Quote text={d.source_b?.sentence_text} url={d.source_b?.htm_link || d.source_b?.edgar_url} label={d.source_b?.document_type} />
+                  </Row>
+                ))}
+              </Card>
+            )}
+
+            {/* AGENT 2 - Promise Audit */}
+            {result.promise_audit && (
+              <Card title="Promise Audit" subtitle={`${result.promise_audit.total_promises_extracted || 0} promises · ${result.promise_audit.total_kept || 0} kept · ${result.promise_audit.total_broken || 0} broken`}>
+                {(result.promise_audit.top_promises || []).slice(0, 5).map((p, i) => (
+                  <Row key={i} badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
+                    <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
+                    <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
+                    <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>
+                  </Row>
+                ))}
+              </Card>
+            )}
+
+            {/* AGENT 3 - Legal Proceedings */}
+            {result.legal_proceedings && (
+              <Card title="Legal Proceedings" subtitle={`${result.legal_proceedings.findings?.length || 0} filing types compared`}>
+                {(result.legal_proceedings.findings || []).map((f, i) => (
+                  <div key={i} className="mb-4">
+                    <p className="text-slate-400 text-xs font-semibold mb-2">{f.doc_type}: {f.prior_date} → {f.current_date} | Score: {f.agent3_score}</p>
+                    <p className="text-slate-500 text-xs mb-2">{f.summary}</p>
+                    {(f.proceedings || []).slice(0, 5).map((p, j) => (
+                      <Row key={j} badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name}>
+                        <Quote text={p.prior_quote || p.prior_text} label="Prior" />
+                        <Quote text={p.current_quote || p.current_text} label="Current" url={p.edgar_url} />
+                        {p.liability_change && <p className="text-slate-500 text-xs">Liability: {p.liability_change}</p>}
+                        {p.obfuscation_detected && <span className="text-amber-400 text-[10px] font-bold">⚠ OBFUSCATION</span>}
+                      </Row>
+                    ))}
+                  </div>
+                ))}
+              </Card>
+            )}
+
+            {/* LOG */}
+            {log.length > 0 && (
+              <Card title="Agent Log">
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {log.map((l, i) => (
+                    <p key={i} className="text-slate-600 text-xs font-mono">
+                      <span className="text-slate-500">[{l.speaker}]</span> {l.message}
+                    </p>
                   ))}
                 </div>
-                <motion.div key={state.activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="p-6">
-                  {state.activeTab === 'log' && <LogStream logs={state.logs} />}
-                  {state.activeTab === 'json' && <JsonExport data={state.result} ticker={state.result.ticker} />}
-                </motion.div>
-              </motion.section>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {!state.result && !state.loading && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="text-center py-20">
-            {state.error ? <p className="text-red-400 text-lg font-medium">Error: {state.error}</p> : <p className="text-slate-700 text-lg font-medium">Ready — click Analyze</p>}
-            <p className="text-slate-800 text-sm mt-2">or press Enter</p><p className="text-slate-600 text-xs mt-1">Debug: ticker={ticker}, selected={JSON.stringify(selected)}, loading={String(state.loading)}</p>
-          </motion.div>
+              </Card>
+            )}
+          </div>
         )}
-      </main>
-    </>
-  );
+      </div>
+    </div>
+  )
+}
+
+// Simple components
+function ScoreBox({ label, score, signal }) {
+  const colors = { BULLISH: '#22C55E', NEUTRAL: '#F59E0B', BEARISH: '#EF4444', HOLD: '#F59E0B' }
+  const color = colors[signal] || '#F59E0B'
+  return (
+    <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 text-center">
+      <div className="text-5xl font-black mb-2" style={{ color }}>{Math.round(score)}%</div>
+      <div className="text-slate-400 text-sm font-medium">{label}</div>
+      <div className="text-xs mt-1" style={{ color }}>{signal}</div>
+    </div>
+  )
+}
+
+function Card({ title, subtitle, children }) {
+  return (
+    <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6">
+      <h3 className="text-xl font-bold mb-1">{title}</h3>
+      {subtitle && <p className="text-slate-500 text-sm mb-4">{subtitle}</p>}
+      <div className="space-y-3">{children}</div>
+    </div>
+  )
+}
+
+function Row({ badge, badgeText, meta, children }) {
+  const colors = {
+    RED: 'bg-red-500/10 text-red-400', YELLOW: 'bg-amber-500/10 text-amber-400', GREEN: 'bg-emerald-500/10 text-emerald-400',
+    KEPT: 'bg-emerald-500/10 text-emerald-400', PARTIAL: 'bg-amber-500/10 text-amber-400', BROKEN: 'bg-red-500/10 text-red-400',
+    PENDING: 'bg-slate-500/10 text-slate-400', UNRESOLVED: 'bg-slate-500/10 text-slate-400',
+    NEW: 'bg-red-500/10 text-red-400', ESCALATED: 'bg-red-500/10 text-red-400', SETTLED: 'bg-emerald-500/10 text-emerald-400',
+    DISMISSED: 'bg-emerald-500/10 text-emerald-400', UNCHANGED: 'bg-slate-500/10 text-slate-400', QUIETLY_REMOVED: 'bg-amber-500/10 text-amber-400',
+  }
+  return (
+    <div className="border border-white/[0.04] rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        {badge && <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${colors[badge] || 'bg-slate-500/10 text-slate-400'}`}>{badgeText || badge}</span>}
+        {meta && <span className="text-slate-600 text-[10px] ml-auto">{meta}</span>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Quote({ text, url, label }) {
+  if (!text) return null
+  const words = text.split(' ').slice(0, 5).join(' ') + '...'
+  return (
+    <div className="text-slate-400 text-sm flex items-center gap-2">
+      <span className="text-slate-600 text-[10px] uppercase font-semibold">{label || 'Source'}</span>
+      <span className="italic">"{words}"</span>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-[10px] hover:underline">View ↗</a>
+      )}
+    </div>
+  )
 }
