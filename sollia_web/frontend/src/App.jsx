@@ -62,7 +62,9 @@ export default function App() {
       .catch(() => {
         // Keep default hardcoded agents on error — no change needed
       });
-    
+  }, []);  // Only run once on mount
+
+  useEffect(() => {
     const handleEnter = (e) => {
       if (e.key === 'Enter' && ticker.trim() && selected.length > 0 && !state.loading) {
         runAnalysis();

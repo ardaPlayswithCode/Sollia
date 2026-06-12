@@ -14,7 +14,7 @@ app = FastAPI(title="Sollia API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://localhost:5176", "http://localhost:5177", "http://localhost:5178"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
