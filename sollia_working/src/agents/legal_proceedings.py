@@ -252,7 +252,7 @@ class LegalProceedingsTracker:
                     if curr_text and prev_text:
                         # Build specialized prompt
                         if doc_type == "10-K":
-                            prompt = f"""Compare legal proceedings in 10-K filings.
+                            prompt = f"""Compare legal proceedings in 10-K filings. Be concise. Only output JSON.
 
 PRIOR ({prev['filing_date']}):
 {prev_text[:4000]}
@@ -260,7 +260,7 @@ PRIOR ({prev['filing_date']}):
 CURRENT ({curr['filing_date']}):
 {curr_text[:4000]}
 
-Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown code blocks. JSON only:
+Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT use markdown code blocks. Do NOT write Python code. Do NOT explain. Return ONLY the JSON object, nothing else:
 {{
   "proceedings": [
     {{
@@ -275,7 +275,7 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
 }}"""
 
                         elif doc_type == "10-Q":
-                            prompt = f"""Compare legal proceedings in 10-Q filings.
+                            prompt = f"""Compare legal proceedings in 10-Q filings. Be concise. Only output JSON.
 
 PRIOR ({prev['filing_date']}):
 {prev_text[:3000]}
@@ -283,7 +283,7 @@ PRIOR ({prev['filing_date']}):
 CURRENT ({curr['filing_date']}):
 {curr_text[:3000]}
 
-Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown code blocks. JSON only:
+Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT use markdown code blocks. Do NOT write Python code. Do NOT explain. Return ONLY the JSON object, nothing else:
 {{
   "proceedings": [
     {{
@@ -306,7 +306,7 @@ PRIOR ({prev['filing_date']}):
 CURRENT ({curr['filing_date']}):
 {curr_text[:4000]}
 
-Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown code blocks. JSON only:
+Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT use markdown code blocks. Do NOT write Python code. Do NOT explain. Return ONLY the JSON object, nothing else:
 {{
   "events": [
     {{

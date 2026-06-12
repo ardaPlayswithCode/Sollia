@@ -653,6 +653,12 @@ class PromiseAuditAgent:
             p["evidence_text"] = match.get("evidence_text")
             p["evidence_filing"] = match.get("evidence_filing")
             p["evidence_date"] = match.get("evidence_date")
+            # Look up htm_url from evidence candidates
+            ev_id = match.get("evidence_id", "")
+            for ev in unique_evidence:
+                if ev.get("evidence_id", ev.get("sentence", "")) == ev_id:
+                    p["evidence_url"] = ev.get("htm_url", "")
+                    break
             p["confidence"] = match.get("confidence", "low")
             p["reasoning"] = match.get("reasoning", "")
             
