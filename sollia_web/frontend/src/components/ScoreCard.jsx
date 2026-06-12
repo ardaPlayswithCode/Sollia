@@ -20,10 +20,10 @@ function AnimatedNumber({ value, duration = 2 }) {
   return <span>{display}</span>
 }
 
-export default function ScoreCard({ result }) {
+export default function ScoreCard({ result, score, label, signal, signal_color }) {
   const cardRef = useRef(null)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
-  const colors = glowColors[result.signal_color] || glowColors['#F59E0B']
+  const colors = glowColors[signal_color || "#F59E0B"] || glowColors['#F59E0B']
 
   const handleMouseMove = (e) => {
     if (!cardRef.current) return
@@ -73,7 +73,7 @@ export default function ScoreCard({ result }) {
         style={{ transform: 'translateZ(30px)' }}
       >
         <span className={`text-8xl sm:text-9xl lg:text-[10rem] font-black tracking-tighter bg-gradient-to-r ${colors.text} bg-clip-text text-transparent`}>
-          <AnimatedNumber value={Math.round(result.score)} />
+          <AnimatedNumber value={Math.round(score || 0)} />
           <span className="text-5xl sm:text-6xl">%</span>
         </span>
       </motion.div>

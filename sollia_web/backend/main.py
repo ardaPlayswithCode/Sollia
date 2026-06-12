@@ -54,6 +54,14 @@ async def run_analysis(req: AnalysisRequest):
             return [strip_embeddings(i) for i in obj]
         return obj
     
+    # Compute overall agent3_score for legal_proceedings
+    lp_data = results.get("legal_proceedings", {})
+    if lp_data and lp_data.get("findings"):
+        scores = [f.get("agent3_score", 50) for f in lp_data["findings"]]
+        lp_data["agent3_score"] = sum(scores) / len(scores) if scores else 50
+    elif lp_data:
+        lp_data["agent3_score"] = 50
+
     return {
         "ticker": ticker,
         "company": ticker,
