@@ -22,3 +22,4 @@ sollia_working/.cache/
 src/.cache/
 *.bak
 *.last
+*.backup*

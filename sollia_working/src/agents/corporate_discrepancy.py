@@ -670,7 +670,32 @@ def _build_discrepancy_prompt(batch):
         for i, s in enumerate(sents):
             prompt += '[%d] "%s"\n' % (i, s)
         prompt += "\n"
-    prompt += """## Discrepancy Types
+    prompt += """
+## CRITICAL: DOCUMENT CADENCES — READ BEFORE COMPARING (READ FIRST)
+Each document type has a DIFFERENT reporting period. Numbers from different cadences are NOT discrepancies.
+
+| Document  | Cadence              | Time Period Covered          |
+|-----------|----------------------|------------------------------|
+| 10-K      | ANNUAL (1 per year)  | FULL FISCAL YEAR (12 months) |
+| 10-Q      | QUARTERLY (3 per yr) | SINGLE QUARTER (3 months)    |
+| 8-K       | EVENT-DRIVEN         | Single material event/date   |
+| DEF 14A   | ANNUAL (1 per year)  | Snapshot for annual meeting  |
+| Earnings  | QUARTERLY (4 per yr) | Discussion of quarter ended  |
+
+**TIME PERIOD MISMATCH EXAMPLES — DO NOT FLAG THESE:**
+- 10-K says "$100B annual revenue" vs 10-Q says "$25B Q1 revenue" → NOT a discrepancy (annual vs quarterly)
+- 10-K says "18% annual growth" vs earnings call says "22% Q3 growth" → NOT a discrepancy (different windows)
+- 10-Q says "$5B operating income this quarter" vs 10-K says "$20B operating income this year" → NOT a discrepancy
+
+**ONLY FLAG WHEN BOTH DOCUMENTS REFER TO THE SAME TIME PERIOD:**
+- Both explicitly say "full year" / "fiscal year" / "annual"
+- Both explicitly say the same quarter (e.g., "Q3 2024")
+- Both refer to the same specific date or event
+- The comparison is clearly apples-to-apples based on surrounding context
+
+**When in doubt about the time period, DO NOT flag. Err on the side of caution.**
+
+## Discrepancy Types
 "numerical_contradiction" — Same metric with different values (weight: 100)
 "narrative_contradiction" — Statements that cannot both be true (weight: 80)
 "omission_discrepancy" — Material claim in one doc, absent in the other (weight: 60)
