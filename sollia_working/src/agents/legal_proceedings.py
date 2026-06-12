@@ -234,6 +234,7 @@ class LegalProceedingsTracker:
         return max(0, min(100, score))
 
     def track(self, ticker: str) -> Dict:
+        cik = self.get_cik(ticker)
         results = {"ticker": ticker, "timestamp": datetime.now().isoformat(), "findings": []}
 
         for doc_type in ["10-K", "10-Q", "8-K"]:
