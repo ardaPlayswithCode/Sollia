@@ -20,7 +20,7 @@ function AnimatedNumber({ value, duration = 2 }) {
   return <span>{display}</span>
 }
 
-export default function ScoreCard({ result, score, label, signal, signal_color }) {
+export default function ScoreCard({ result, score, label, signal, signal_color, company, summary, agents_run }) {
   const cardRef = useRef(null)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
   const colors = glowColors[signal_color || "#F59E0B"] || glowColors['#F59E0B']
@@ -87,7 +87,7 @@ export default function ScoreCard({ result, score, label, signal, signal_color }
         className="mt-4"
       >
         <span className={`inline-block px-6 py-2 rounded-full text-xl font-bold tracking-wide border ${colors.badge}`}>
-          {result.signal}
+          {signal || "HOLD"}
         </span>
       </motion.div>
 
@@ -99,7 +99,7 @@ export default function ScoreCard({ result, score, label, signal, signal_color }
         style={{ transform: 'translateZ(10px)' }}
         className="text-slate-400 mt-4 text-xl font-medium"
       >
-        {result.company}
+        {company || ""}
       </motion.p>
 
       {/* Summary */}
@@ -110,10 +110,10 @@ export default function ScoreCard({ result, score, label, signal, signal_color }
         style={{ transform: 'translateZ(10px)' }}
         className="text-slate-500 mt-6 max-w-2xl mx-auto text-base leading-relaxed"
       >
-        {result.summary}
+        {summary || ""}
       </motion.p>
 
-      {result.agents_run?.length === 1 && (
+      {agents_run || []?.length === 1 && (
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-slate-700 text-sm mt-3 tracking-wide">
           Single Agent Mode
         </motion.p>
