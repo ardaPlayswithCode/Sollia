@@ -93,7 +93,7 @@ export default function App() {
           setTimeout(() => dispatch({ type: 'LOG', payload: l }), i * 15);
         });
       }
-      setTimeout(() => runningRef.current = false; dispatch({ type: 'RESULT', payload: data }), (data.log?.length || 0) * 15 + 300);
+      setTimeout(() => dispatch({ type: 'RESULT', payload: data }); runningRef.current = false, (data.log?.length || 0) * 15 + 300);
     } catch (err) {
       runningRef.current = false; dispatch({ type: 'ERROR', payload: err.message });
     }
