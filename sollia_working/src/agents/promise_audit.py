@@ -614,6 +614,13 @@ class PromiseAuditAgent:
                 unique_evidence.append(ev)
         
         self._add_log("STAGE2_DETERMINISTIC", f"Found {len(unique_evidence)} unique evidence candidates")
+          
+          # Build URL lookup from evidence candidates for later matching
+          evidence_url_lookup = {}
+          for ev in unique_evidence:
+              key = ev.get("sentence", "")[:100].lower()
+              if key:
+                  evidence_url_lookup[key] = ev.get("htm_url", "")
         
         # Stage 2 LLM matching (unified call, split if >10k words)
         evidence_results = []
