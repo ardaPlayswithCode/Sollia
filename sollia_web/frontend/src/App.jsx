@@ -1,4 +1,4 @@
-import { useState, useReducer, useEffect, useCallback } from 'react';
+import { useState, useReducer, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Background3D from './components/Background3D';
 import TickerInput from './components/TickerInput';
@@ -49,6 +49,7 @@ export default function App() {
   const [ticker, setTicker] = useState('');
   const [year, setYear] = useState(2023);
   const [state, dispatch] = useReducer(reducer, initialState);
+  const runningRef = useRef(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/agents`)
@@ -76,6 +77,8 @@ export default function App() {
 
   const runAnalysis = useCallback(async () => {
     if (!ticker || selected.length === 0) return;
+    if (runningRef.current) return;
+    runningRef.current = true;
     dispatch({ type: 'START' }); dispatch({ type: 'ERROR', payload: null });
     try {
       const response = await fetch(`${API_BASE}/api/analyze`, {
@@ -90,9 +93,9 @@ export default function App() {
           setTimeout(() => dispatch({ type: 'LOG', payload: l }), i * 15);
         });
       }
-      setTimeout(() => dispatch({ type: 'RESULT', payload: data }), (data.log?.length || 0) * 15 + 300);
+      setTimeout(() => runningRef.current = false; dispatch({ type: 'RESULT', payload: data }), (data.log?.length || 0) * 15 + 300);
     } catch (err) {
-      dispatch({ type: 'ERROR', payload: err.message });
+      runningRef.current = false; dispatch({ type: 'ERROR', payload: err.message });
     }
   }, [ticker, selected]);
 
