@@ -341,10 +341,14 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                             # Add SEC links to proceedings
             for proc in proceedings_list:
                 if curr.get("accession"):
-                    cik_int_clean = int(curr.get("cik", cik))
-                    acc_no_dash = curr["accession"].replace("-", "")
-                    doc = curr.get("primary_document", "")
-                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}" if doc else ""
+                    try:
+                        cik_int_clean = int(curr.get("cik", cik))
+                        acc_no_dash = curr["accession"].replace("-", "")
+                        doc = curr.get("primary_document", "")
+                        if doc:
+                            proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}"
+                    except:
+                        pass
             results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
@@ -358,10 +362,14 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                             # Add SEC links to proceedings
             for proc in proceedings_list:
                 if curr.get("accession"):
-                    cik_int_clean = int(curr.get("cik", cik))
-                    acc_no_dash = curr["accession"].replace("-", "")
-                    doc = curr.get("primary_document", "")
-                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}" if doc else ""
+                    try:
+                        cik_int_clean = int(curr.get("cik", cik))
+                        acc_no_dash = curr["accession"].replace("-", "")
+                        doc = curr.get("primary_document", "")
+                        if doc:
+                            proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}"
+                    except:
+                        pass
             results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
