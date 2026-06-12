@@ -76,7 +76,7 @@ export default function App() {
 
   const runAnalysis = useCallback(async () => {
     if (!ticker || selected.length === 0) return;
-    dispatch({ type: 'START' });
+    dispatch({ type: 'START' }); dispatch({ type: 'ERROR', payload: null });
     try {
       const response = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
@@ -98,6 +98,7 @@ export default function App() {
 
   const toggleAgent = (id) => {
     setSelected(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+    dispatch({ type: 'ERROR', payload: null });
   };
 
   return (
