@@ -56,7 +56,8 @@ export default function App() {
       .then(data => {
         if (data.agents && data.agents.length > 0) {
           setAgents(data.agents);
-          setSelected(data.agents.map(a => a.id));
+          // Only auto-select if user hasn't changed selection yet (first load)
+          setSelected(prev => prev.length === 3 ? data.agents.map(a => a.id) : prev);
         }
       })
       .catch(() => {
