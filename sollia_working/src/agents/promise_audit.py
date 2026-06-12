@@ -448,8 +448,25 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
             try:
                 data = json.loads(match.group(0))
             except json.JSONDecodeError:
-                logger.warning("Failed to parse Stage 1 response JSON")
-                return []
+                logger.warning("Failed to parse Stage 1 response JSON — using deterministic fallback")
+                # Generate promises with deterministic search_terms from the candidate sentences
+                fallback_promises = []
+                for s in batch:
+                    text = s.get("text", s.get("sentence", ""))
+                    if not text:
+                        continue
+                    words = [w.strip(".,;:!?()[]{}"'") for w in text.lower().split() if len(w) > 3]
+                    search_terms = list(set(words[:8])) if words else [text[:30]]
+                    fallback_promises.append({
+                        "is_promise": True,
+                        "text": text,
+                        "category": "other",
+                        "severity": 5,
+                        "deadline": None,
+                        "measurable_outcome": "",
+                        "search_terms": search_terms
+                    })
+                return fallback_promises
         else:
             logger.warning("No JSON array found in Stage 1 response")
             return []
