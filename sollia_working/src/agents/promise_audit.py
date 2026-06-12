@@ -495,6 +495,8 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
                 "fiscal_year": source.get("fiscal_year", 0),
                 "section": source.get("section", ""),
                 "sentence_index": source.get("index", 0),
+                "htm_url": source.get("htm_url", ""),
+                "accession": source.get("accession", ""),
             }
         })
     
