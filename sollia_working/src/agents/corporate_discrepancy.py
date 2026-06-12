@@ -191,17 +191,17 @@ class SECFilingFetcher:
         if not cik:
             return None, f"CIK not found for {ticker}"
         filings = self._get_all_filings(cik)
-        ten_ks = [f for f in filings if f["form"] == "10-K" and f["period_of_report"] and f["period_of_report"][:4] == str(year)]
+        ten_ks = [f for f in filings if f["form"] == "10-K" and f.get("period_of_report", "") and f.get("period_of_report", "")[:4] == str(year)]
         if not ten_ks:
             return None, f"No 10-K found for {ticker} in {year}"
-        ten_k = max(ten_ks, key=lambda f: f["period_of_report"])
+        ten_k = max(ten_ks, key=lambda f: f.get("period_of_report", ""))
         F = date.fromisoformat(ten_k["period_of_report"])
         F_minus_1y = F.replace(year=F.year - 1)
-        ten_qs = [f for f in filings if f["form"] == "10-Q" and f["period_of_report"] and F_minus_1y < date.fromisoformat(f["period_of_report"]) <= F]
-        def14as = [f for f in filings if "14A" in f["form"] and f["filingDate"] and date.fromisoformat(f["filingDate"]) > F]
-        def14a = min(def14as, key=lambda f: abs((date.fromisoformat(f["filingDate"]) - F).days)) if def14as else None
-        eight_ks = [f for f in filings if f["form"] == "8-K" and f["filingDate"] and date.fromisoformat(f["filingDate"]) <= F and any(code in (f.get("items") or "") for code in ["2.02", "1.01", "5.02"])]
-        eight_k = max(eight_ks, key=lambda f: f["filingDate"]) if eight_ks else None
+        ten_qs = [f for f in filings if f["form"] == "10-Q" and f.get("period_of_report", "") and F_minus_1y < date.fromisoformat(f.get("period_of_report", "")) <= F]
+        def14as = [f for f in filings if "14A" in f["form"] and f["filing_date"] and date.fromisoformat(f["filing_date"]) > F]
+        def14a = min(def14as, key=lambda f: abs((date.fromisoformat(f["filing_date"]) - F).days)) if def14as else None
+        eight_ks = [f for f in filings if f["form"] == "8-K" and f["filing_date"] and date.fromisoformat(f["filing_date"]) <= F and any(code in (f.get("items") or "") for code in ["2.02", "1.01", "5.02"])]
+        eight_k = max(eight_ks, key=lambda f: f["filing_date"]) if eight_ks else None
         transcripts = self._fetch_transcripts(ticker, cik, ten_qs, F, filings)
         missing = []
         if not ten_qs: missing.append("10-Q")
@@ -215,10 +215,10 @@ class SECFilingFetcher:
     def _fetch_transcripts(self, ticker: str, cik: str, ten_qs: List[dict], F: date, filings: List[dict]) -> List[dict]:
         all_transcripts = []
         for f in filings:
-            if f["form"] != "8-K" or "2.02" not in (f.get("items") or "") or not f["filingDate"]:
+            if f["form"] != "8-K" or "2.02" not in (f.get("items") or "") or not f["filing_date"]:
                 continue
-            acc = f["accessionNumber"]
-            doc = f["primaryDocument"]
+            acc = f["accession_number"]
+            doc = f["primary_document"]
             if not acc or not doc:
                 continue
             content = self._fetch_ex99(cik, acc.replace("-", ""))
@@ -227,7 +227,7 @@ class SECFilingFetcher:
                 if html:
                     content = _strip_html(html)
             if content and len(content) > 500:
-                all_transcripts.append({"date": f["filingDate"], "content": content, "source": "SEC-8K"})
+                all_transcripts.append({"date": f["filing_date"], "content": content, "source": "SEC-8K"})
         assigned = []
         used_dates = set()
         for q in ten_qs:
@@ -540,7 +540,7 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
     
     # 10-K text
     ten_k = result["ten_k"]
-    html = fetcher._fetch_htm(cik, ten_k["accessionNumber"], ten_k["primaryDocument"])
+    html = fetcher._fetch_htm(cik, ten_k["accession_number"], ten_k["primary_document"])
     result["ten_k_text"] = _strip_html(html) if html else ""
     # Also try to extract MD&A immediately
     if result["ten_k_text"]:
@@ -550,7 +550,7 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
     result["ten_q_texts"] = []
     result["ten_q_clean"] = []
     for q in result["ten_qs"]:
-        html = fetcher._fetch_htm(cik, q["accessionNumber"], q["primaryDocument"])
+        html = fetcher._fetch_htm(cik, q["accession_number"], q["primary_document"])
         text = _strip_html(html) if html else ""
         result["ten_q_texts"].append(text)
         result["ten_q_clean"].append(clean_10q(text) if text else "")
@@ -560,21 +560,21 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
     # The alignment already picked the best by date. If it's a PX14A6G, try to find a real DEF 14A nearby
     if "PX14A6G" in def14a.get("form", ""):
         # Search for a real DEF 14A within 90 days
-        all_def14as = [f for f in fetcher._get_all_filings(cik) if "14A" in f["form"] and f["filingDate"]]
+        all_def14as = [f for f in fetcher._get_all_filings(cik) if "14A" in f["form"] and f["filing_date"]]
         F_date = date.fromisoformat(result["fiscal_end"])
         better = [f for f in all_def14as if "DEF 14A" in f["form"] and "PX" not in f["form"] 
-                  and abs((date.fromisoformat(f["filingDate"]) - F_date).days) < 90]
+                  and abs((date.fromisoformat(f["filing_date"]) - F_date).days) < 90]
         if better:
-            def14a = min(better, key=lambda f: abs((date.fromisoformat(f["filingDate"]) - F_date).days))
+            def14a = min(better, key=lambda f: abs((date.fromisoformat(f["filing_date"]) - F_date).days))
             result["def14a"] = def14a
-    html = fetcher._fetch_htm(cik, def14a["accessionNumber"], def14a["primaryDocument"])
+    html = fetcher._fetch_htm(cik, def14a["accession_number"], def14a["primary_document"])
     result["def14a_text"] = _strip_html(html) if html else ""
     if result["def14a_text"]:
         result["def14a_clean"] = clean_def14a(result["def14a_text"])
     
     # 8-K text
     eight_k = result["eight_k"]
-    html = fetcher._fetch_htm(cik, eight_k["accessionNumber"], eight_k["primaryDocument"])
+    html = fetcher._fetch_htm(cik, eight_k["accession_number"], eight_k["primary_document"])
     result["eight_k_text"] = _strip_html(html) if html else ""
     if result["eight_k_text"]:
         result["eight_k_clean"] = clean_8k(result["eight_k_text"])
