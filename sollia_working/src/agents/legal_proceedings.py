@@ -17,7 +17,7 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.llm_config import call_llm
+from src.config.llm_config import call_llm
 
 logger = logging.getLogger(__name__)
 

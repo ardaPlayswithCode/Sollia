@@ -41,7 +41,7 @@ const fadeUp = {
 
 export default function App() {
   const [agents, setAgents] = useState([]);
-  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit']);
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings']);
   const [ticker, setTicker] = useState('');
   const [year, setYear] = useState(2023);
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -51,15 +51,24 @@ export default function App() {
       .then(r => r.json())
       .then(data => {
         setAgents(data.agents || []);
-        setSelected(data.agents?.map(a => a.id) || ['corporate_discrepancy', 'promise_audit']);
+        setSelected(data.agents?.map(a => a.id) || ['corporate_discrepancy', 'promise_audit', 'legal_proceedings']);
       })
       .catch(() => {
         setAgents([
           { id: 'corporate_discrepancy', name: 'Corporate Discrepancy', description: 'Cross-document contradiction finder across 5 SEC filings' },
-          { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' }
+          { id: 'promise_audit', name: 'Promise Audit', description: 'Tracks management promises and verifies follow-through' },
+          { id: 'legal_proceedings', name: 'Legal Proceedings', description: 'Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings' }
         ]);
       });
-  }, []);
+    
+    const handleEnter = (e) => {
+      if (e.key === 'Enter' && ticker.trim() && selected.length > 0 && !state.loading) {
+        runAnalysis();
+      }
+    };
+    window.addEventListener('keydown', handleEnter);
+    return () => window.removeEventListener('keydown', handleEnter);
+  }, [ticker, selected, state.loading]);
 
   const runAnalysis = useCallback(async () => {
     if (!ticker || selected.length === 0) return;
@@ -105,15 +114,19 @@ export default function App() {
                   maxLength={5}
                   className="bg-[#06080D] border border-white/10 rounded-xl px-5 py-4 text-white text-3xl font-black tracking-[0.15em] placeholder-slate-700 transition-all w-full sm:w-44 text-center"
                 />
-                <span className="text-xs text-slate-500 uppercase tracking-[0.2em] mt-2 block sm:hidden">Year</span>
-                <input
-                  type="number"
-                  value={year}
-                  onChange={e => setYear(parseInt(e.target.value) || 2023)}
-                  min={2016}
-                  max={2026}
-                  className="bg-[#06080D] border border-white/10 rounded-xl px-4 py-4 text-white text-xl font-bold placeholder-slate-700 transition-all w-full sm:w-24 text-center"
-                />
+                {selected.includes('corporate_discrepancy') && (
+                  <>
+                    <span className="text-xs text-slate-500 uppercase tracking-[0.2em] mt-2 block sm:hidden">Year</span>
+                    <input
+                      type="number"
+                      value={year}
+                      onChange={e => setYear(parseInt(e.target.value) || 2023)}
+                      min={2016}
+                      max={2026}
+                      className="bg-[#06080D] border border-white/10 rounded-xl px-4 py-4 text-white text-xl font-bold placeholder-slate-700 transition-all w-full sm:w-24 text-center"
+                    />
+                  </>
+                )}
                 <motion.button
                   onClick={runAnalysis}
                   disabled={state.loading || !ticker.trim() || selected.length === 0}
@@ -167,6 +180,13 @@ export default function App() {
                     signal={state.result.promise_audit.score >= 70 ? 'BULLISH' : state.result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'}
                   />
                 )}
+                {state.result.legal_proceedings && (
+                  <ScoreCard
+                    score={state.result.legal_proceedings.agent3_score || 50}
+                    label="Legal Proceedings"
+                    signal={state.result.legal_proceedings.agent3_score >= 60 ? 'BULLISH' : state.result.legal_proceedings.agent3_score <= 40 ? 'BEARISH' : 'NEUTRAL'}
+                  />
+                )}
               </motion.section>
 
               {/* Agent cards */}
@@ -213,6 +233,29 @@ export default function App() {
                     }))}
                     type="promise_audit"
                     index={1}
+                  />
+                )}
+                
+                {state.result.legal_proceedings && (
+                  <AgentCard
+                    title="Legal Proceedings"
+                    label={`${state.result.legal_proceedings.findings?.length || 0} filing types compared`}
+                    conclusion={`Legal score: ${state.result.legal_proceedings.agent3_score || 50}%`}
+                    topSignals={(state.result.legal_proceedings.findings || []).flatMap(f => 
+                      (f.proceedings || []).map(p => ({
+                        status: p.status || p.change_type || 'UNCHANGED',
+                        case_name: p.case_name || '',
+                        doc_type: f.doc_type || '',
+                        prior_quote: p.prior_quote || p.prior_text || '',
+                        current_quote: p.current_quote || p.current_text || '',
+                        liability_change: p.liability_change || '',
+                        summary: f.summary || '',
+                        obfuscation_detected: p.obfuscation_detected || false,
+                        priority: p.priority || 'MEDIUM'
+                      }))
+                    )}
+                    type="legal_proceedings"
+                    index={2}
                   />
                 )}
               </motion.section>

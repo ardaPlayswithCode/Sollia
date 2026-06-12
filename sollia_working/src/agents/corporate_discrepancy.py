@@ -4,7 +4,7 @@ Layer 0: Fiscal year alignment + data fetching with 3-tier fallback per document
 """
 from __future__ import annotations
 
-from config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model
+from src.config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model
 
 import logging
 import re

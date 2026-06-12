@@ -7,6 +7,16 @@ const sevBadge = {
   'GREEN': 'badge-green',
 }
 
+
+const legalStatusConfig = {
+  NEW:              { icon: '+', color: '#EF4444', bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
+  ESCALATED:        { icon: '↑', color: '#EF4444', bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
+  SETTLED:          { icon: '✓', color: '#22C55E', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  DISMISSED:        { icon: '✓', color: '#22C55E', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  UNCHANGED:        { icon: '=', color: '#6B7280', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
+  QUIETLY_REMOVED:  { icon: '⚠', color: '#F59E0B', bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
+  NO_UPDATE:        { icon: '○', color: '#6B7280', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
+}
 const statusConfig = {
   KEPT:       { icon: '✓', color: '#22C55E', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
   PARTIAL:    { icon: '◐', color: '#F59E0B', bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
@@ -39,7 +49,8 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
   const isForensic = type === 'forensic' || type === 'corporate_discrepancy'
   const isPromise = type === 'promise_audit'
-  const accent = isForensic ? 'from-blue-400 to-cyan-400' : 'from-emerald-400 to-teal-400'
+  const isLegal = type === 'legal_proceedings'
+  const accent = isForensic ? 'from-blue-400 to-cyan-400' : isPromise ? 'from-emerald-400 to-teal-400' : 'from-purple-400 to-violet-400'
 
   const handleMouseMove = (e) => {
     if (!cardRef.current) return
@@ -118,6 +129,40 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
                   </div>
 
                   <p className="text-slate-500 text-xs leading-relaxed">{s.reasoning}</p>
+                </>
+              ) : isLegal ? (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-sm font-bold"
+                      style={{ backgroundColor: (legalStatusConfig[s.status] || legalStatusConfig.UNCHANGED).bg, color: (legalStatusConfig[s.status] || legalStatusConfig.UNCHANGED).color }}
+                    >
+                      {(legalStatusConfig[s.status] || legalStatusConfig.UNCHANGED).icon}
+                    </span>
+                    <span
+                      className="text-xs uppercase tracking-wider font-semibold px-2 py-0.5 rounded-md"
+                      style={{ backgroundColor: (legalStatusConfig[s.status] || legalStatusConfig.UNCHANGED).bg, color: (legalStatusConfig[s.status] || legalStatusConfig.UNCHANGED).color }}
+                    >
+                      {s.status}
+                    </span>
+                    <span className="text-slate-500 text-[10px] ml-auto">{s.doc_type} · {s.case_name}</span>
+                    {s.priority && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${s.priority === 'HIGH' ? 'bg-red-500/10 text-red-400' : 'bg-slate-500/10 text-slate-400'}`}>{s.priority}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <QuoteExcerpt text={s.prior_quote} docType="Prior" />
+                    <QuoteExcerpt text={s.current_quote} docType="Current" />
+                  </div>
+                  {s.liability_change && (
+                    <p className="text-slate-500 text-xs mb-2 leading-relaxed">Liability: {s.liability_change}</p>
+                  )}
+                  {s.summary && (
+                    <p className="text-slate-500 text-xs leading-relaxed">{s.summary}</p>
+                  )}
+                  {s.obfuscation_detected && (
+                    <span className="inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">OBFUSCATION DETECTED</span>
+                  )}
                 </>
               ) : (
                 <div className="text-slate-300 text-sm">
