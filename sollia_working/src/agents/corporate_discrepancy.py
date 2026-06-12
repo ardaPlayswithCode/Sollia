@@ -1033,6 +1033,7 @@ def build_citations(documents):
                     "sentence_index": idx,
                     "sentence_text": sents[idx] if idx < len(sents) else "",
                     "edgar_url": edgar_url,
+            "htm_link": edgar_url,
                     "year": year,
                     "ticker": ticker
                 }

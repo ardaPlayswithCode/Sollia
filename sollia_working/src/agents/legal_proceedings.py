@@ -338,7 +338,14 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                             # Add score
                             score = self._calculate_score(proceedings_list)
                             # Store in findings with score
-                            results["findings"].append({
+                            # Add SEC links to proceedings
+            for proc in proceedings_list:
+                if curr.get("accession"):
+                    cik_int_clean = int(curr.get("cik", cik))
+                    acc_no_dash = curr["accession"].replace("-", "")
+                    doc = curr.get("primary_document", "")
+                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}" if doc else ""
+            results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
                                 "current_date": curr['filing_date'],
@@ -348,7 +355,14 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                             })
                         except Exception as e:
                             # Fallback: store raw response
-                            results["findings"].append({
+                            # Add SEC links to proceedings
+            for proc in proceedings_list:
+                if curr.get("accession"):
+                    cik_int_clean = int(curr.get("cik", cik))
+                    acc_no_dash = curr["accession"].replace("-", "")
+                    doc = curr.get("primary_document", "")
+                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{doc}" if doc else ""
+            results["findings"].append({
                                 "doc_type": doc_type,
                                 "prior_date": prev['filing_date'],
                                 "current_date": curr['filing_date'],
@@ -356,6 +370,12 @@ Output ONLY valid JSON. Do not include any explanatory text. Do not use markdown
                                 "error": str(e),
                                 "agent3_score": 50
                             })
+        # Limit to top 5 proceedings per finding by priority
+            for finding in results["findings"]:
+                if len(finding["proceedings"]) > 5:
+                    priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+                    finding["proceedings"].sort(key=lambda x: priority_order.get(x.get("priority", "MEDIUM"), 1))
+                    finding["proceedings"] = finding["proceedings"][:5]
         return results
 
 
