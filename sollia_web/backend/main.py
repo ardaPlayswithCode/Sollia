@@ -67,6 +67,7 @@ async def run_analysis(req: AnalysisRequest):
         "agent_scores": merged.get("agent_scores", {}),
         "corporate_discrepancy": strip_embeddings(results.get("corporate_discrepancy")),
         "promise_audit": strip_embeddings(results.get("promise_audit")),
+        "legal_proceedings": strip_embeddings(results.get("legal_proceedings")),
         "log": [{"speaker": "Sollia", "message": l} for l in merged.get("log", [])],
     }
 
