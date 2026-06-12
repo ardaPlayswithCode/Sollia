@@ -653,8 +653,8 @@ class PromiseAuditAgent:
                 self._add_log("STAGE2_LLM", f"Split across {len(categories)} categories, matched {len(evidence_results)}")
         else:
             self._add_log("STAGE2_LLM", "No evidence candidates found — all promises unresolved")
-        else:
-            # Deterministic fallback: if LLM fails, try text-based matching directly
+        
+        # Deterministic fallback: if LLM returned no results, try text-based matching directly
             if not evidence_results:
                 self._add_log("STAGE2_LLM", "LLM returned no results — using deterministic fallback")
                 for p in promises:
