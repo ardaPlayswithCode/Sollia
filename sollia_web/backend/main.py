@@ -33,7 +33,17 @@ async def run_analysis(req: AnalysisRequest):
     ticker = req.ticker.upper()
     selected = [a for a in req.agents if a in AGENTS]
     
-    results, weights, logs = run_selected_agents(ticker, selected, req.year)
+    try:
+        results, weights, logs = run_selected_agents(ticker, selected, req.year)
+    except Exception as e:
+        return {
+            "ticker": ticker, "company": ticker,
+            "score": 50, "signal": "ERROR", "signal_color": "#EF4444",
+            "summary": f"Analysis failed: {str(e)[:100]}",
+            "agents_run": selected, "log": [{"speaker": "Sollia", "message": f"Error: {str(e)[:200]}"}],
+            "corporate_discrepancy": None, "promise_audit": None, "legal_proceedings": None,
+            "agent_weights": {}, "agent_scores": {}, "similarity": 0
+        }
 
     if not results:
         return {
