@@ -175,6 +175,7 @@ export default function App() {
                   <ScoreCard
                     score={state.result.corporate_discrepancy.final_score || state.result.corporate_discrepancy.score || 0}
                     label="Corporate Discrepancy"
+                    signal_color={state.result.corporate_discrepancy.signal_color || (state.result.corporate_discrepancy.score >= 70 ? "#EF4444" : state.result.corporate_discrepancy.score >= 50 ? "#F59E0B" : "#22C55E")}
                     signal={state.result.corporate_discrepancy.signal || (state.result.corporate_discrepancy.score >= 70 ? 'BEARISH' : state.result.corporate_discrepancy.score >= 50 ? 'NEUTRAL' : 'BULLISH')}
                   />
                 )}
@@ -182,6 +183,7 @@ export default function App() {
                   <ScoreCard
                     score={state.result.promise_audit.score || 50}
                     label="Promise Audit"
+                    signal_color={state.result.promise_audit.score >= 70 ? "#22C55E" : state.result.promise_audit.score >= 40 ? "#F59E0B" : "#EF4444"}
                     signal={state.result.promise_audit.score >= 70 ? 'BULLISH' : state.result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'}
                   />
                 )}
@@ -189,6 +191,7 @@ export default function App() {
                   <ScoreCard
                     score={state.result.legal_proceedings.agent3_score || 50}
                     label="Legal Proceedings"
+                    signal_color={state.result.legal_proceedings.agent3_score >= 60 ? "#22C55E" : state.result.legal_proceedings.agent3_score <= 40 ? "#EF4444" : "#F59E0B"}
                     signal={state.result.legal_proceedings.agent3_score >= 60 ? 'BULLISH' : state.result.legal_proceedings.agent3_score <= 40 ? 'BEARISH' : 'NEUTRAL'}
                   />
                 )}
