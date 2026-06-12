@@ -265,7 +265,7 @@ class Synthesizer:
                 f"10-K excerpt: \"{ctx_text[:200]}\". "
                 f"Period: {pair.fiscal_period}"
             )
-            summary = _ask_ollama(f"Summarize this quarterly earnings context in one sentence: {tone_desc}")
+            summary = _ask_ollama(f"Summarize this quarterly earnings context in one sentence: {tone_desc}") or "Analysis complete"
             if summary:
                 fa_vecs.append(_rate_dimensions(summary))
             else:
@@ -275,7 +275,7 @@ class Synthesizer:
                 ])
 
         for sig in narrative.top_signals[:6]:
-            summary = _ask_ollama(f"Summarize this news tone in one sentence: {sig.headline}")
+            summary = _ask_ollama(f"Summarize this news tone in one sentence: {sig.headline}") or "Analysis complete"
             if summary:
                 ns_vecs.append(_rate_dimensions(summary))
             else:
