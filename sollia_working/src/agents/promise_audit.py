@@ -455,7 +455,7 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
                     text = s.get("text", s.get("sentence", ""))
                     if not text:
                         continue
-                    words = [w.strip(".,;:!?()[]{}"'") for w in text.lower().split() if len(w) > 3]
+                    words = [w.strip('.,;:!?()[]{}') for w in text.lower().split() if len(w) > 3]
                     search_terms = list(set(words[:8])) if words else [text[:30]]
                     fallback_promises.append({
                         "is_promise": True,
