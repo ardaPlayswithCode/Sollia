@@ -1,1 +1,0 @@
-[{"pair": "10-Q_vs_EARNINGS_CALL_3", "is_discrepancy": true, "discrepancy_type": "numerical_contradiction", "severity": "high", "weight": 100, "reasoning": "short", "sentence_index_a": 0, "sentence_index_b": 0, "quoted_phrase_a": "$13.14 billion", "quoted_phrase_b": "$13.14 billion"}]

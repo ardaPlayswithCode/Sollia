@@ -10,7 +10,7 @@ sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Soll
 from src.agents.corporate_discrepancy import run_discrepancy_agent as run_corporate_discrepancy
 from src.agents.forensic_accountant import ForensicAccountant
 
-from src.agents.follow_through import FollowThroughAgent as PromiseAuditAgent
+from src.agents.promise_audit import PromiseAuditAgent
 from src.schemas import AgentLogMessage
 
 @dataclass
@@ -79,3 +79,8 @@ def run_selected_agents(
             ))
 
     return results, weights, all_logs
+
+# Import shared LLM config for agents to use
+import sys
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Sollia/sollia_working/src')
+from config.llm_config import LLM_PROVIDERS, call_llm, get_primary_model

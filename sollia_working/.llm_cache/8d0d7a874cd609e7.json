@@ -1,1 +1,0 @@
-[{"pair": "10-K_vs_10-Q", "is_discrepancy": true, "discrepancy_type": "numerical_contradiction", "severity": "high", "weight": 100, "reasoning": "short", "sentence_index_a": 0, "sentence_index_b": 0, "quoted_phrase_a": "Revenue grew 18% to $45.2B.", "quoted_phrase_b": "Quarterly revenue $26.1B, up 14%."}]

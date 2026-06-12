@@ -151,33 +151,73 @@ export default function App() {
         <AnimatePresence>
           {state.result && !state.loading && (
             <div className="space-y-8 pb-16">
-              <motion.section custom={0} variants={fadeUp} initial="hidden" animate="show">
-                <ScoreCard result={state.result} />
-              </motion.section>
-
-              <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {state.result.corporate_discrepancy && <AgentCard title="Corporate Discrepancy" label={state.result.corporate_discrepancy.top_discrepancies?.[0]?.discrepancy_type || 'No discrepancies found'} conclusion={state.result.corporate_discrepancy.top_discrepancies?.[0]?.reasoning || 'Analysis complete'} topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({ severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN', final_score: d.final_score, discrepancy_type: d.discrepancy_type, pair: d.pair, description: d.reasoning, transcript_citation: d.source_a?.sentence_text || '', filing_citation: d.source_b?.sentence_text || '', source_a_type: d.source_a?.document_type || 'Source A', source_b_type: d.source_b?.document_type || 'Source B', transcript_url: d.source_a?.edgar_url || '', htm_link: d.source_b?.edgar_url || '' }))} type="corporate_discrepancy" index={0} />}
-                
+              {/* Score cards: one per agent, no merged score */}
+              <motion.section custom={0} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {state.result.corporate_discrepancy && (
+                  <ScoreCard
+                    score={state.result.corporate_discrepancy.final_score || state.result.corporate_discrepancy.score || 0}
+                    label="Corporate Discrepancy"
+                    signal={state.result.corporate_discrepancy.signal || (state.result.corporate_discrepancy.score >= 70 ? 'BEARISH' : state.result.corporate_discrepancy.score >= 50 ? 'NEUTRAL' : 'BULLISH')}
+                  />
+                )}
                 {state.result.promise_audit && (
-                  <AgentCard
-                    title="Promise Audit"
-                    label={`Score: ${state.result.promise_audit.score}% — ${state.result.promise_audit.promises?.length || 0} promises tracked`}
-                    conclusion={state.result.promise_audit.conclusion || 'Promise tracking complete' || 'Top promises from company history'}
-                    topSignals={(state.result.promise_audit.promises || []).map(p => ({
-                      severity: p.status === 'EVIDENCE_FOUND' ? 'GREEN' : 'RED',
-                      severity_color: p.status === 'EVIDENCE_FOUND' ? '#22C55E' : '#EF4444',
-                      description: `[${p.status}] ${p.text?.slice(0, 100)}...`,
-                      transcript_citation: p.evidence?.slice(0, 100) || 'No evidence found',
-                      filing_citation: `Severity: ${p.severity}/10 | ${p.source || 'unknown'} | ${p.date || ''}`,
-                      transcript_url: '',
-                      htm_link: ''
-                    }))}
-                    type="promise_audit"
-                    index={2}
+                  <ScoreCard
+                    score={state.result.promise_audit.score || 50}
+                    label="Promise Audit"
+                    signal={state.result.promise_audit.score >= 70 ? 'BULLISH' : state.result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'}
                   />
                 )}
               </motion.section>
 
+              {/* Agent cards */}
+              <motion.section custom={1} variants={fadeUp} initial="hidden" animate="show" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {state.result.corporate_discrepancy && (
+                  <AgentCard
+                    title="Corporate Discrepancy"
+                    label={`Score: ${state.result.corporate_discrepancy.final_score || state.result.corporate_discrepancy.score || '—'}`}
+                    conclusion={state.result.corporate_discrepancy.conclusion || 'Cross-document analysis complete'}
+                    topSignals={(state.result.corporate_discrepancy.top_discrepancies || []).map(d => ({
+                      severity: d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN',
+                      final_score: d.final_score,
+                      discrepancy_type: d.discrepancy_type,
+                      pair: d.pair,
+                      description: d.reasoning,
+                      transcript_citation: d.source_a?.sentence_text || '',
+                      filing_citation: d.source_b?.sentence_text || '',
+                      source_a_type: d.source_a?.document_type || 'Source A',
+                      source_b_type: d.source_b?.document_type || 'Source B',
+                      transcript_url: d.source_a?.edgar_url || '',
+                      htm_link: d.source_b?.edgar_url || ''
+                    }))}
+                    type="corporate_discrepancy"
+                    index={0}
+                  />
+                )}
+                
+                {state.result.promise_audit && (
+                  <AgentCard
+                    title="Promise Audit"
+                    label={`${state.result.promise_audit.total_promises_extracted || 0} promises · ${state.result.promise_audit.total_kept || 0} kept · ${state.result.promise_audit.total_broken || 0} broken`}
+                    conclusion={`Credibility score: ${state.result.promise_audit.score || 50}%`}
+                    topSignals={(state.result.promise_audit.top_promises || []).map(p => ({
+                      status: p.status || 'UNRESOLVED',
+                      category: p.category || 'other',
+                      severity: p.severity || 5,
+                      text: p.text || '',
+                      evidence_text: p.evidence_text || '',
+                      promise_url: p.promise_url || '',
+                      evidence_url: p.evidence_url || '',
+                      promise_source: p.promise_source || 'Filing',
+                      evidence_source: p.evidence_filing || '',
+                      reasoning: p.reasoning || ''
+                    }))}
+                    type="promise_audit"
+                    index={1}
+                  />
+                )}
+              </motion.section>
+
+              {/* Log / JSON tabs */}
               <motion.section custom={2} variants={fadeUp} initial="hidden" animate="show" className="glass-card overflow-hidden">
                 <div className="flex border-b border-white/5">
                   {[

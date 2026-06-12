@@ -1,1 +1,0 @@
-[{"pair": "10-Q_vs_EARNINGS_CALL_0", "is_discrepancy": true, "discrepancy_type": "narrative_contradiction", "severity": "medium", "weight": 80, "reasoning": "short", "sentence_index_a": 0, "sentence_index_b": 0, "quoted_phrase_a": "Adoption of New and Recently Issued Accounting Pronouncements", "quoted_phrase_b": "CFO Commentary on Third Quarter Fiscal 2020 Results"}]

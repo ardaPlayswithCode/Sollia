@@ -1,4 +1,4 @@
-"""Transcript provider — fallback chain: SEC 8-K → StockAnalysis → Nasdaq → Yahoo Finance."""
+"""Transcript provider — fallback chain: SEC 8-K EX-99.1 → Nasdaq.com."""
 from __future__ import annotations
 
 import re
@@ -82,7 +82,7 @@ def _extract_speakers(text: str) -> List[Dict[str, str]]:
 class FMPTranscriptProvider:
     """
     Earnings call transcript provider.
-    Chain: SEC EDGAR 8-K → StockAnalysis → Nasdaq → Yahoo Finance
+    Chain: SEC 8-K EX-99.1 → SEC Atom feed (8-K) → Nasdaq.com
     """
 
     def __init__(self) -> None:
@@ -94,7 +94,7 @@ class FMPTranscriptProvider:
         
         # Check disk cache first
         import json as _json, os as _os
-        cache_dir = _os.path.join(_os.path.dirname(__file__), '..', '..', '.transcript_cache')
+        cache_dir = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', '..', '.cache', 'transcripts')
         _os.makedirs(cache_dir, exist_ok=True)
         cache_file = _os.path.join(cache_dir, '%s.json' % ticker)
         
@@ -111,7 +111,7 @@ class FMPTranscriptProvider:
         except Exception:
             pass
         
-        for method in (self._nasdaq, self._yahoo_finance, self._sec_8k, self._stock_analysis):
+        for method in (self._sec_8k, self._nasdaq):
             try:
                 results = method(ticker)
                 if results:
@@ -227,61 +227,6 @@ class FMPTranscriptProvider:
         results.sort(key=lambda x: x.date, reverse=True)
         return results
 
-    # ── Source 2: StockAnalysis.com ───────────────────────────────────────────
-
-    def _stock_analysis(self, ticker: str) -> List[TranscriptResult]:
-        """Scrape transcript listing from stockanalysis.com with date validation."""
-        url = f"https://stockanalysis.com/stocks/{ticker.lower()}/earnings/call-transcript/"
-        resp = requests.get(url, headers=_BROWSER_HEADERS, timeout=15)
-        if resp.status_code != 200:
-            return []
-
-        # Extract relative transcript links
-        link_pattern = rf'/stocks/{re.escape(ticker.lower())}/transcripts/[^"/#]+'
-        links = list(dict.fromkeys(re.findall(link_pattern, resp.text, re.IGNORECASE)))
-        if not links:
-            return []
-
-        results: List[TranscriptResult] = []
-        for rel_link in links[:15]:
-            if len(results) >= 24:
-                break
-            t_url = f"https://stockanalysis.com{rel_link}"
-            try:
-                time.sleep(0.3)
-                t_resp = requests.get(t_url, headers=_BROWSER_HEADERS, timeout=15)
-                if t_resp.status_code != 200:
-                    continue
-                html = t_resp.text
-                clean = _strip_html(html)
-                if len(clean) < 500:
-                    continue
-
-                q, yr = _parse_quarter_year(html)
-                date_m = re.search(r"(\d{4}-\d{2}-\d{2})", html)
-                date_str = date_m.group(1) if date_m else ""
-
-                # Validate date within ±90 days of expected reporting month
-                if not _date_ok(date_str, q, yr):
-                    logger.debug("SA date mismatch ticker=%s yr=%s q=%s date=%s", ticker, yr, q, date_str)
-                    continue
-
-                fp = f"{yr} Q{q}" if q and yr else rel_link.rstrip("/").split("/")[-1]
-                results.append(TranscriptResult(
-                    ticker=ticker,
-                    fiscal_period=fp,
-                    fiscal_period_end=date_str,
-                    date=date_str,
-                    content=clean[:50000],
-                    source="StockAnalysis",
-                    speaker_sections=_extract_speakers(clean)[:20],
-                ))
-            except Exception:
-                pass
-
-        results.sort(key=lambda x: x.date, reverse=True)
-        return results
-
     # ── Source 3: Nasdaq.com ──────────────────────────────────────────────────
 
     def _nasdaq(self, ticker: str) -> List[TranscriptResult]:
@@ -329,48 +274,4 @@ class FMPTranscriptProvider:
                 pass
         return results
 
-    # ── Source 4: Yahoo Finance ───────────────────────────────────────────────
 
-    def _yahoo_finance(self, ticker: str) -> List[TranscriptResult]:
-        """Try Yahoo Finance RSS for earnings call transcript mentions."""
-        url = (
-            f"https://feeds.finance.yahoo.com/rss/2.0/headline"
-            f"?s={ticker}&region=US&lang=en-US"
-        )
-        resp = requests.get(url, headers=_BROWSER_HEADERS, timeout=15)
-        if resp.status_code != 200:
-            return []
-
-        items = re.findall(r"<item>(.*?)</item>", resp.text, re.DOTALL)
-        results: List[TranscriptResult] = []
-        for item in items[:30]:
-            title_m = re.search(r"<title>(.*?)</title>", item, re.DOTALL)
-            link_m = re.search(r"<link>(.*?)</link>", item, re.DOTALL)
-            date_m = re.search(r"<pubDate>(.*?)</pubDate>", item, re.DOTALL)
-            if not title_m:
-                continue
-            title = re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1)).strip()
-            if "transcript" not in title.lower() and "earnings call" not in title.lower():
-                continue
-            link = link_m.group(1).strip() if link_m else ""
-            date_str = ""
-            if date_m:
-                raw = date_m.group(1).strip()
-                # "Mon, 29 Apr 2026 12:00:00 +0000"
-                try:
-                    dt = datetime.strptime(raw[:16], "%a, %d %b %Y")
-                    date_str = dt.strftime("%Y-%m-%d")
-                except Exception:
-                    pass
-            q, yr = _parse_quarter_year(title)
-            fp = f"{yr} Q{q}" if q and yr else "Unknown"
-            results.append(TranscriptResult(
-                ticker=ticker,
-                fiscal_period=fp,
-                fiscal_period_end=date_str,
-                date=date_str,
-                content=title,
-                source="Yahoo Finance",
-                speaker_sections=[],
-            ))
-        return results

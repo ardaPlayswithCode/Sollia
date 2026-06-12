@@ -7,11 +7,99 @@ from typing import Dict, List, Optional, Tuple
 import requests
 
 logger = logging.getLogger(__name__)
+# ── Unified cache paths (shared across all agents) ─────────────────────────
+import os as _os
+_CACHE_ROOT = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', '..', '..', '.cache')
+_FILINGS_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'filings')
+_TEXTS_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'texts')
+_LLM_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'llm')
+for _d in (_CACHE_ROOT, _FILINGS_CACHE_DIR, _TEXTS_CACHE_DIR, _LLM_CACHE_DIR):
+    _os.makedirs(_d, exist_ok=True)
+
 
 SEC_BASE = "https://data.sec.gov"
 EDGAR_BASE = "https://www.sec.gov"
 _HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate"}
 _DATA_HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate", "Host": "data.sec.gov"}
+
+
+
+# ── Universal cache helpers ────────────────────────────────────────────────
+
+def _load_json(path: str):
+    """Load JSON file, return None if missing/corrupt."""
+    import json as _json
+    try:
+        if _os.path.exists(path):
+            with open(path) as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return None
+
+def _save_json(path: str, data) -> bool:
+    """Save data as JSON. Returns True on success."""
+    import json as _json
+    try:
+        _os.makedirs(_os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            _json.dump(data, f, default=str)
+        return True
+    except Exception:
+        return False
+
+def get_cached_filings(ticker: str) -> dict | None:
+    """Load cached filing metadata for a ticker. Returns dict keyed by accession_number."""
+    path = _os.path.join(_FILINGS_CACHE_DIR, f'{ticker.upper()}_filings.json')
+    return _load_json(path)
+
+def cache_filings(ticker: str, filings: list[dict]) -> bool:
+    """Cache filing metadata keyed by accession_number."""
+    cache = {}
+    for f in filings:
+        acc = f.get('accession_number', '')
+        if acc:
+            cache[acc] = {
+                'cik': f.get('cik', ''),
+                'form': f.get('form', ''),
+                'filing_date': f.get('filing_date', ''),
+                'period_of_report': f.get('period_of_report', ''),
+                'primary_doc': f.get('primary_doc', ''),
+                'htm_url': f.get('htm_url', ''),
+                'accession_nodash': f.get('accession_nodash', ''),
+            }
+    path = _os.path.join(_FILINGS_CACHE_DIR, f'{ticker.upper()}_filings.json')
+    return _save_json(path, cache)
+
+def get_cached_text(ticker: str, accession_number: str) -> str | None:
+    """Load cached cleaned text for a specific filing."""
+    # Text cache is a single JSON dict keyed by accession
+    path = _os.path.join(_TEXTS_CACHE_DIR, f'{ticker.upper()}_texts.json')
+    all_texts = _load_json(path) or {}
+    return all_texts.get(accession_number)
+
+def cache_text(ticker: str, accession_number: str, text: str) -> bool:
+    """Cache cleaned text for a specific filing (merges into existing dict)."""
+    path = _os.path.join(_TEXTS_CACHE_DIR, f'{ticker.upper()}_texts.json')
+    all_texts = _load_json(path) or {}
+    all_texts[accession_number] = text
+    return _save_json(path, all_texts)
+
+def get_cached_llm(prompt_hash: str) -> dict | None:
+    """Load cached LLM response. Returns {prompt, response, model, timestamp} or None."""
+    path = _os.path.join(_LLM_CACHE_DIR, f'{prompt_hash}.json')
+    return _load_json(path)
+
+def cache_llm(prompt_hash: str, prompt: str, response: str, model: str) -> bool:
+    """Cache LLM prompt+response with metadata."""
+    from datetime import datetime as _dt
+    path = _os.path.join(_LLM_CACHE_DIR, f'{prompt_hash}.json')
+    return _save_json(path, {
+        'prompt': prompt,
+        'response': response,
+        'model': model,
+        'timestamp': _dt.now().isoformat(),
+    })
 
 
 class SECEdgarProvider:
@@ -56,6 +144,15 @@ class SECEdgarProvider:
             return ticker
 
     def get_10k_filings(self, ticker: str) -> List[dict]:
+        """Get 10-K filings only (backwards compatible)."""
+        return [f for f in self.get_all_filings(ticker) if f.get('form', '') in ('10-K', '10-K/A')]
+
+    def get_10q_filings(self, ticker: str) -> List[dict]:
+        """Get 10-Q filings only."""
+        return [f for f in self.get_all_filings(ticker) if f.get('form', '') in ('10-Q', '10-Q/A')]
+
+    def get_all_filings(self, ticker: str) -> List[dict]:
+        """Get ALL 10-K and 10-Q filings (no year filter)."""
         cik = self.get_cik(ticker)
         if not cik:
             return []
@@ -80,7 +177,7 @@ class SECEdgarProvider:
         periods = block.get("reportDate", [])
         primary = block.get("primaryDocument", [])
         for i, form in enumerate(forms):
-            if form in ("10-K", "10-K/A"):
+            if form in ("10-K", "10-K/A", "10-Q", "10-Q/A", "8-K", "8-K/A") or "14A" in form:
                 acc_dash = accs[i] if i < len(accs) else ""
                 acc_nd = acc_dash.replace("-", "")
                 pd = primary[i] if i < len(primary) else ""
@@ -98,7 +195,7 @@ class SECEdgarProvider:
         return out
 
     def fetch_html(self, cik: str, acc_nd: str, doc: str, ticker: str = "") -> str:
-        """Fetch filing HTML with 3-tier fallback: SEC .htm -> Last10K -> EDGAR full-text."""
+        """Fetch filing HTML with 3-tier fallback: SEC .htm -> SEC retry -> EDGAR full-text."""
         # Source 1: SEC EDGAR direct .htm (primary, ~0.2s)
         url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
         try:
@@ -110,19 +207,18 @@ class SECEdgarProvider:
         except Exception as exc:
             logger.debug("SEC .htm failed: %s", exc)
 
-        # Source 2: Last10K.com (fast mirror, ~0.1s when cached)
+        # Source 2: SEC direct retry with alternate User-Agent
         if ticker:
-            doc_id = doc.replace('.htm', '').replace('.html', '')
-            lk_url = f"https://last10k.com/sec-filings/{ticker.lower()}/{doc_id}"
+            retry_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
             try:
-                resp = requests.get(lk_url, headers={**_HEADERS, "User-Agent": "Mozilla/5.0"}, timeout=15)
+                resp = requests.get(retry_url, headers={**_HEADERS, "User-Agent": "Mozilla/5.0"}, timeout=30)
                 if resp.status_code == 200 and len(resp.text) > 5000:
-                    return self._strip_html(resp.text)
+                    return resp.text
             except Exception as exc:
-                logger.debug("Last10K failed: %s", exc)
+                logger.debug("SEC retry failed: %s", exc)
 
-        # Source 3: EDGAR full-text search (slowest, ~1.1s)
-        efts_url = "https://efts.sec.gov/LATEST/search-index?q=&dateRange=custom&startdt=2015-01-01&enddt=2026-12-31&forms=10-K"
+        # Source 3: EDGAR full-text search (SEC-approved, 2016+)
+        efts_url = f"https://efts.sec.gov/LATEST/search-index?q={ticker}&dateRange=custom&startdt=2002-01-01&enddt=2026-12-31&forms=10-K,10-Q"
         try:
             resp = requests.get(efts_url, headers=_HEADERS, timeout=15)
             if resp.status_code == 200 and len(resp.text) > 5000:

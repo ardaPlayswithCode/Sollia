@@ -7,9 +7,18 @@ const sevBadge = {
   'GREEN': 'badge-green',
 }
 
+const statusConfig = {
+  KEPT:       { icon: '✓', color: '#22C55E', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400' },
+  PARTIAL:    { icon: '◐', color: '#F59E0B', bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' },
+  BROKEN:     { icon: '✗', color: '#EF4444', bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400' },
+  PENDING:    { icon: '○', color: '#6B7280', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
+  UNRESOLVED: { icon: '?', color: '#6B7280', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-400' },
+  STALE:      { icon: '⏤', color: '#F97316', bg: 'bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-400' },
+}
+
 function QuoteExcerpt({ text, url, docType }) {
   if (!text) return <span className="text-slate-700 italic">—</span>
-  const words = text.split(' ').slice(0, 8).join(' ')
+  const words = text.split(' ').slice(0, 5).join(' ')
   const truncated = text.length > words.length ? `${words}...` : words
   return (
     <div className="text-slate-300 text-sm leading-relaxed">
@@ -29,6 +38,7 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
   const cardRef = useRef(null)
   const [tilt, setTilt] = useState({ x: 0, y: 0 })
   const isForensic = type === 'forensic' || type === 'corporate_discrepancy'
+  const isPromise = type === 'promise_audit'
   const accent = isForensic ? 'from-blue-400 to-cyan-400' : 'from-emerald-400 to-teal-400'
 
   const handleMouseMove = (e) => {
@@ -63,25 +73,52 @@ export default function AgentCard({ title, label, conclusion, topSignals, type, 
               style={{ transitionDelay: `${0.3 + i * 0.06}s` }}
               className="border border-white/[0.04] rounded-xl p-4 hover:bg-white/[0.02] transition-colors"
             >
-              <div className="flex items-center gap-3 mb-3">
-                <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold ${sevBadge[s.severity] || 'badge-green'}`}>
-                  {s.final_score || s.severity}
-                </span>
-                <span className="text-slate-400 text-xs uppercase tracking-wider font-medium">
-                  {s.discrepancy_type || s.description?.split('] ')[0]?.replace('[', '')}
-                </span>
-                {s.pair && (
-                  <span className="text-slate-600 text-[10px] ml-auto">{s.pair.replace(/_/g, ' ')}</span>
-                )}
-              </div>
-
-              <p className="text-slate-500 text-xs mb-3 leading-relaxed">{s.description}</p>
-
               {isForensic ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <QuoteExcerpt text={s.transcript_citation} url={s.transcript_url} docType={s.source_a_type || 'Source A'} />
-                  <QuoteExcerpt text={s.filing_citation} url={s.htm_link} docType={s.source_b_type || 'Source B'} />
-                </div>
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold ${sevBadge[s.severity] || 'badge-green'}`}>
+                      {s.final_score || s.severity}
+                    </span>
+                    <span className="text-slate-400 text-xs uppercase tracking-wider font-medium">
+                      {s.discrepancy_type || s.description?.split('] ')[0]?.replace('[', '')}
+                    </span>
+                    {s.pair && (
+                      <span className="text-slate-600 text-[10px] ml-auto">{s.pair.replace(/_/g, ' ')}</span>
+                    )}
+                  </div>
+                  <p className="text-slate-500 text-xs mb-3 leading-relaxed">{s.description}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <QuoteExcerpt text={s.transcript_citation} url={s.transcript_url} docType={s.source_a_type || 'Source A'} />
+                    <QuoteExcerpt text={s.filing_citation} url={s.htm_link} docType={s.source_b_type || 'Source B'} />
+                  </div>
+                </>
+              ) : isPromise ? (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-sm font-bold"
+                      style={{ backgroundColor: (statusConfig[s.status] || statusConfig.UNRESOLVED).bg, color: (statusConfig[s.status] || statusConfig.UNRESOLVED).color }}
+                    >
+                      {(statusConfig[s.status] || statusConfig.UNRESOLVED).icon}
+                    </span>
+                    <span
+                      className="text-xs uppercase tracking-wider font-semibold px-2 py-0.5 rounded-md"
+                      style={{ backgroundColor: (statusConfig[s.status] || statusConfig.UNRESOLVED).bg, color: (statusConfig[s.status] || statusConfig.UNRESOLVED).color }}
+                    >
+                      {s.status}
+                    </span>
+                    <span className="text-slate-500 text-[10px] ml-auto">
+                      {s.category} · severity {s.severity}/10
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                    <QuoteExcerpt text={s.text} url={s.promise_url} docType={s.promise_source || 'Promise'} />
+                    <QuoteExcerpt text={s.evidence_text} url={s.evidence_url} docType={s.evidence_source || 'Evidence'} />
+                  </div>
+
+                  <p className="text-slate-500 text-xs leading-relaxed">{s.reasoning}</p>
+                </>
               ) : (
                 <div className="text-slate-300 text-sm">
                   {s.url ? (
