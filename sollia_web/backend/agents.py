@@ -6,11 +6,10 @@ from typing import Any
 
 # Import agents
 import sys
-sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Sollia/sollia_working')
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda\u2019s Mac Studio/Sollia/sollia_working')
 from src.agents.corporate_discrepancy import run_discrepancy_agent as run_corporate_discrepancy
-from src.agents.forensic_accountant import ForensicAccountant
-
 from src.agents.promise_audit import PromiseAuditAgent
+from src.agents.legal_proceedings import track_legal
 from src.schemas import AgentLogMessage
 
 @dataclass
@@ -21,13 +20,13 @@ class AgentDefinition:
     runner: object
     weight: float = 1.0
 
-# Registry
+# Registry — all 3 MVP agents
 AGENTS: Dict[str, AgentDefinition] = {
     "corporate_discrepancy": AgentDefinition(
         id="corporate_discrepancy",
         name="Corporate Discrepancy",
         description="Cross-document contradiction finder across 5 SEC filings",
-        runner=ForensicAccountant(),
+        runner=run_corporate_discrepancy,
         weight=1.0,
     ),
     "promise_audit": AgentDefinition(
@@ -35,7 +34,14 @@ AGENTS: Dict[str, AgentDefinition] = {
         name="Promise Audit",
         description="Tracks management promises and verifies follow-through",
         runner=PromiseAuditAgent(),
-        weight=0.5,  # Half weight: 1/(2N) where N=2 → 0.25 normalized to 0.33
+        weight=0.5,
+    ),
+    "legal_proceedings": AgentDefinition(
+        id="legal_proceedings",
+        name="Legal Proceedings",
+        description="Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings",
+        runner=track_legal,
+        weight=0.5,
     ),
 }
 
@@ -57,7 +63,7 @@ def run_selected_agents(
 
     if "corporate_discrepancy" in selected:
         agent = AGENTS["corporate_discrepancy"]
-        result = run_corporate_discrepancy(ticker, year)
+        result = agent.runner(ticker, year)
         if "error" not in result:
             results["corporate_discrepancy"] = result
             weights["corporate_discrepancy"] = agent.weight
@@ -78,9 +84,21 @@ def run_selected_agents(
                 message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"
             ))
 
+    if "legal_proceedings" in selected:
+        agent = AGENTS["legal_proceedings"]
+        result = agent.runner(ticker)
+        if "error" not in result:
+            results["legal_proceedings"] = result
+            weights["legal_proceedings"] = agent.weight
+            agent3_score = result.get("agent3_score", 50)
+            all_logs.append(AgentLogMessage(
+                speaker="Legal Proceedings",
+                message=f"Legal analysis complete. Score: {agent3_score:.1f}%"
+            ))
+
     return results, weights, all_logs
 
 # Import shared LLM config for agents to use
 import sys
-sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Sollia/sollia_working/src')
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda\u2019s Mac Studio/Sollia/sollia_working/src')
 from config.llm_config import LLM_PROVIDERS, call_llm, get_primary_model
