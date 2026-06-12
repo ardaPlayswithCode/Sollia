@@ -1,5 +1,6 @@
 """Synthesizer — two-track combination of Forensic Accountant and Narrative Scout."""
 from __future__ import annotations
+from config.llm_config import call_llm
 import os
 
 import math

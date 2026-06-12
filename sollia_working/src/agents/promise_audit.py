@@ -372,70 +372,23 @@ def _set_llm_cache(prompt_hash: str, prompt: str, response: str, model: str):
 
 
 def _call_llm(prompt: str, max_tokens: int = 2000) -> Tuple[str, str]:
-    """Call LLM with provider priority list. Returns (response_text, model_used)."""
+    """Call LLM using universal config. Returns (response_text, model_used)."""
+    import hashlib
+    import json as _json
     prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
-    
-    # Check cache first
-    cached = _get_llm_cache(prompt_hash)
-    if cached and cached.get("response"):
-        logger.debug("LLM cache hit: %s", prompt_hash)
-        return cached["response"], cached.get("model", "cached")
-    
-    global _last_llm_call
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
-    
-    for provider, model in LLM_PRIORITY:
-        with _llm_lock:
-            elapsed = time.time() - _last_llm_call
-            if elapsed < _MIN_LLM_INTERVAL:
-                time.sleep(_MIN_LLM_INTERVAL - elapsed)
-            _last_llm_call = time.time()
-        
-        try:
-            if provider == "groq" and api_key:
-                from groq import Groq
-                client = Groq(api_key=api_key)
-                resp = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    max_tokens=max_tokens,
-                    timeout=30,
-                )
-                text = resp.choices[0].message.content.strip()
-                # Only cache if we got a meaningful response (not error, not empty)
-                if text and len(text) > 10 and not text.startswith('Error'):
-                    _set_llm_cache(prompt_hash, prompt, text, model)
-                return text, model
-            
-            elif provider == "openrouter" and openrouter_key:
-                resp = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {openrouter_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.0,
-                        "max_tokens": max_tokens,
-                    },
-                    timeout=30,
-                )
-                if resp.status_code == 200:
-                    text = resp.json()["choices"][0]["message"]["content"].strip()
-                    if text and len(text) > 10 and not text.startswith('Error'):
-                        _set_llm_cache(prompt_hash, prompt, text, model)
-                    return text, model
-        except Exception as e:
-            logger.warning("LLM call failed (%s/%s): %s", provider, model, str(e)[:80])
-            continue
-    
-    logger.error("All LLM providers failed for prompt hash %s", prompt_hash)
-    return "", "none"
 
+    cached = _get_llm_cache(prompt_hash)
+    if cached:
+        return cached["response"], cached.get("model", "cached")
+
+    try:
+        text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0)
+        model = meta.get("model", "unknown")
+        _set_llm_cache(prompt_hash, prompt, text, model)
+        return text, model
+    except Exception as e:
+        logger.warning("LLM call failed: %s", str(e)[:80])
+        raise
 
 def _build_stage1_prompt(batch: List[Dict[str, Any]]) -> str:
     """Build the Stage 1 LLM prompt for promise extraction."""
@@ -557,11 +510,11 @@ class PromiseAuditAgent:
         import sys as _sys
         _sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
         from src.providers.filings.sec_edgar import SECEdgarProvider, cache_filings
-        from src.providers.transcripts.fmp import FMPTranscriptProvider
+        from src.providers.transcripts.sec_transcript import SECTranscriptProvider
         from src.utils.fiscal_alignment import get_fy_bundles_in_window
         
         edgar = SECEdgarProvider()
-        fmp = FMPTranscriptProvider()
+        sec_trans = SECTranscriptProvider()
         
         # ── Step 1: Fetch all filings ────────────────────────────────────
         self._add_log("FETCH", f"Fetching all filings for {ticker}...")
@@ -576,7 +529,7 @@ class PromiseAuditAgent:
         
         # ── Step 2: Fetch transcripts ────────────────────────────────────
         self._add_log("FETCH", "Fetching transcripts...")
-        transcripts_raw = fmp.get_transcripts(ticker)
+        transcripts_raw = sec_trans.get_transcripts(ticker)
         transcripts = [t for t in transcripts_raw if str(t.date) >= str(ten_years_ago)]
         self._add_log("FETCH", f"Fetched {len(transcripts_raw)} total, {len(transcripts)} within 10yr window")
         
@@ -865,7 +818,7 @@ def extract_promises_from_documents(
         candidates = filter_candidate_sentences(annotated)
         all_candidates.extend(candidates)
     
-    # Also process transcripts (already cleaned by fmp.py, but run through our pipeline)
+    # Also process transcripts (cleaned via SEC EDGAR pipeline)
     for t in transcripts:
         content = getattr(t, 'content', '') or ''
         if not content or len(content) < 200:

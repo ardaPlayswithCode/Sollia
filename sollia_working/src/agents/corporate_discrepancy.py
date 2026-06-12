@@ -4,6 +4,8 @@ Layer 0: Fiscal year alignment + data fetching with 3-tier fallback per document
 """
 from __future__ import annotations
 
+from config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model
+
 import logging
 import re
 import time
@@ -20,7 +22,6 @@ DATA_HEADERS = {"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov
 BROWSER_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 SEC_BASE = "https://data.sec.gov"
 EDGAR_BASE = "https://www.sec.gov"
-RATE_LIMIT = 0.15
 MAX_YEARS_BACK = 10
 
 
@@ -699,49 +700,11 @@ CRITICAL: sentence_index_a/b must match the [N] label. quoted_phrase must be exa
     return prompt
 
 def _call_llm(prompt, provider_idx=0, max_tokens=400):
-    """Call LLM with fallback through providers. Caches responses by prompt hash."""
-    import os, requests, json, hashlib
-    
-    # Check cache
-    prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
-    cache_dir = os.path.join(os.path.dirname(__file__), "..", "..", ".llm_cache")
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_file = os.path.join(cache_dir, f"{prompt_hash}.json")
-    if os.path.exists(cache_file):
-        with open(cache_file) as f:
-            return json.load(f)
-    
-    for idx in range(provider_idx, len(LLM_PROVIDERS)):
-        provider = LLM_PROVIDERS[idx]
-        key = os.environ.get(provider["key_env"], "")
-        if not key:
-            continue
-        for attempt in range(2):
-            try:
-                headers = {"Authorization": "Bearer %s" % key, "Content-Type": "application/json"}
-                if provider["name"] == "OpenRouter":
-                    headers["HTTP-Referer"] = "https://sollia.app"
-                    headers["X-Title"] = "Sollia"
-                r = requests.post(provider["url"], headers=headers,
-                    json={"model": provider["model"], "messages": [{"role": "user", "content": prompt}],
-                          "temperature": 0, "max_tokens": max_tokens}, timeout=60)
-                if r.status_code == 200:
-                    body = r.json()["choices"][0]["message"]["content"]
-                    clean = body.strip()
-                    if clean.startswith("```"): clean = clean.split("\n", 1)[1].rsplit("```", 1)[0]
-                    result = json.loads(clean)
-                    # Cache the result
-                    with open(cache_file, 'w') as f:
-                        json.dump(result, f)
-                    return result
-                elif r.status_code == 429:
-                    if attempt == 0:
-                        import time; time.sleep(1.0)
-                    continue
-            except Exception:
-                if attempt == 0:
-                    import time; time.sleep(0.5)
-    return []
+    """Call LLM using shared config — delegates to llm_config.call_llm."""
+    try:
+        return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx)
+    except Exception:
+        return "", {"cached": False, "provider": "failed"}
 
 def _validate_llm_response(response, batch):
     """Validate LLM response: minimal checks, trust LLM sentence indices.

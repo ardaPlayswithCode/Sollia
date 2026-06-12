@@ -17,3 +17,8 @@ sollia_working/.cache/
 sollia_working/.llm_cache/
 .cache/
 sollia_working/.cache/
+.filing_cache/
+.filing_text_cache/
+src/.cache/
+*.bak
+*.last
