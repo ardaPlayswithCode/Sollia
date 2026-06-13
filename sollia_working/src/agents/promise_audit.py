@@ -727,10 +727,20 @@ class PromiseAuditAgent:
                     matched_ev = ev
                     break
             if matched_ev:
-                p["evidence_text"] = matched_ev.get("sentence", "")
-                p["evidence_filing"] = match.get("evidence_filing") or matched_ev.get("filing_type", "")
-                p["evidence_date"] = match.get("evidence_date") or matched_ev.get("filing_date", "")
-                p["evidence_url"] = matched_ev.get("htm_url", "")
+                ev_url = matched_ev.get("htm_url", "")
+                # Skip if same filing as promise
+                if ev_url and ev_url == p.get("promise_url", ""):
+                    p["evidence_text"] = ""
+                    p["evidence_filing"] = ""
+                    p["evidence_date"] = ""
+                    p["evidence_url"] = ""
+                    p["status"] = "PENDING"
+                    p["reasoning"] = "Evidence from same filing as promise — excluded"
+                else:
+                    p["evidence_text"] = matched_ev.get("sentence", "")
+                    p["evidence_filing"] = match.get("evidence_filing") or matched_ev.get("filing_type", "")
+                    p["evidence_date"] = match.get("evidence_date") or matched_ev.get("filing_date", "")
+                    p["evidence_url"] = ev_url
             else:
                 p["evidence_text"] = match.get("evidence_text", "")
                 p["evidence_filing"] = match.get("evidence_filing", "")
