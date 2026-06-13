@@ -31,12 +31,7 @@ os.makedirs(LLM_CACHE_DIR, exist_ok=True)
 _last_request_time = 0
 _request_lock = None
 
-def _get_lock():
-    global _request_lock
-    if _request_lock is None:
-        import threading
-        _request_lock = threading.Lock()
-    return _request_lock
+# Threading lock removed — using simple time-based rate limiting
 
 def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0, provider_idx: int = 0) -> Tuple[str, Dict]:
     cache_key = hashlib.sha256(f"{prompt}_{max_tokens}_{temperature}".encode()).hexdigest()[:16]
@@ -50,12 +45,11 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0, provi
         except:
             pass
     
-    with _get_lock():
-        global _last_request_time
-        elapsed = time.time() - _last_request_time
-        if elapsed < RATE_LIMIT:
-            time.sleep(RATE_LIMIT - elapsed)
-        _last_request_time = time.time()
+    global _last_request_time
+    elapsed = time.time() - _last_request_time
+    if elapsed < RATE_LIMIT:
+        time.sleep(RATE_LIMIT - elapsed)
+    _last_request_time = time.time()
     
     for idx in range(provider_idx, len(LLM_PROVIDERS)):
         provider = LLM_PROVIDERS[idx]
