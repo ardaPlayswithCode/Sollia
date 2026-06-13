@@ -694,6 +694,7 @@ class PromiseAuditAgent:
                             "evidence_text": best_ev.get("sentence", ""),
                             "evidence_filing": best_ev.get("filing_type", ""),
                             "evidence_date": best_ev.get("filing_date", ""),
+                            "evidence_url": best_ev.get("htm_url", ""),
                             "evidence_id": "",
                             "confidence": "low",
                             "reasoning": "Deterministic keyword match"
