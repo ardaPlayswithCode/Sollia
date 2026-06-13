@@ -792,6 +792,14 @@ class PromiseAuditAgent:
                 status_counts[s] += 1
         
         # ── Step 8: Select top 5 ─────────────────────────────────────────
+        # Filter out same-filing evidence before selecting top promises
+        for p in promises:
+            if p.get('evidence_url') and p.get('promise_url') and p['evidence_url'] == p['promise_url']:
+                p['evidence_url'] = ''
+                p['evidence_text'] = ''
+                p['status'] = 'PENDING'
+                p['reasoning'] = 'Evidence from same filing as promise — excluded'
+
         top5 = select_top_promises(promises, 5)
         
         # Build output
