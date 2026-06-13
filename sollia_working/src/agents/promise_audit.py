@@ -737,6 +737,12 @@ class PromiseAuditAgent:
                 p["evidence_date"] = match.get("evidence_date", "")
                 p["evidence_url"] = ""
             p["confidence"] = match.get("confidence", "low")
+            # If evidence URL matches promise URL, mark as UNRESOLVED (same filing)
+            if p.get("evidence_url") and p.get("promise_url") and p["evidence_url"] == p["promise_url"]:
+                p["evidence_url"] = ""
+                p["evidence_text"] = ""
+                p["status"] = "PENDING"
+                p["reasoning"] = "Evidence from same filing as promise — excluded" 
             p["reasoning"] = match.get("reasoning", "")
             
             # If no evidence match and deadline is in the past, mark as BROKEN
@@ -1072,6 +1078,11 @@ def _search_evidence_fast(
     for filing in all_filings:
         if filing.get('filing_date', '') <= promise_date:
             continue
+        # Skip the same filing the promise came from
+        promise_acc = promise.get('source', {}).get('accession', '')
+        if promise_acc and filing.get('accession_number', '') == promise_acc:
+            continue
+            continue
         acc = filing.get('accession_number', '')
         sents = tokenized_cache.get(acc, [])
         for i, sent in enumerate(sents):
@@ -1140,6 +1151,11 @@ def search_evidence_candidates(
     # Search 10-K and 10-Q filings dated AFTER the promise
     for filing in all_filings:
         if filing.get('filing_date', '') <= promise_date:
+            continue
+        # Skip the same filing the promise came from
+        promise_acc = promise.get('source', {}).get('accession', '')
+        if promise_acc and filing.get('accession_number', '') == promise_acc:
+            continue
             continue
         
         # Get text (from cache or skip for now — in production, fetch MD&A)
