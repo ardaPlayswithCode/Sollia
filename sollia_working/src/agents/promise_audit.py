@@ -737,13 +737,13 @@ class PromiseAuditAgent:
                 p["evidence_date"] = match.get("evidence_date", "")
                 p["evidence_url"] = ""
             p["confidence"] = match.get("confidence", "low")
-            # If evidence URL matches promise URL, mark as UNRESOLVED (same filing)
+            p["reasoning"] = match.get("reasoning", "")
+            # If evidence URL matches promise URL, mark as PENDING (same filing)
             if p.get("evidence_url") and p.get("promise_url") and p["evidence_url"] == p["promise_url"]:
                 p["evidence_url"] = ""
                 p["evidence_text"] = ""
                 p["status"] = "PENDING"
                 p["reasoning"] = "Evidence from same filing as promise — excluded" 
-            p["reasoning"] = match.get("reasoning", "")
             
             # If no evidence match and deadline is in the past, mark as BROKEN
             if p["status"] == "UNRESOLVED" and p.get("deadline_date"):
