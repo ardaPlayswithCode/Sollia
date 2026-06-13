@@ -745,7 +745,7 @@ class PromiseAuditAgent:
                     p["evidence_text"] = matched_ev.get("sentence", "")
                     p["evidence_filing"] = match.get("evidence_filing") or matched_ev.get("filing_type", "")
                     p["evidence_date"] = match.get("evidence_date") or matched_ev.get("filing_date", "")
-                    p["evidence_url"] = ev_url
+                    if ev_url and ev_url != p.get("promise_url", ""): p["evidence_url"] = ev_url
             else:
                 p["evidence_text"] = match.get("evidence_text", "")
                 p["evidence_filing"] = match.get("evidence_filing", "")
@@ -831,7 +831,7 @@ class PromiseAuditAgent:
                     "promise_url": p.get("source", {}).get("htm_url", ""),
                     "evidence_text": p.get("evidence_text"),
                     "evidence_filing": p.get("evidence_filing"),
-                    "evidence_url": p.get("evidence_url", ""),
+                    "evidence_url": p.get("evidence_url", "") if p.get("evidence_url") != p.get("source", {}).get("htm_url", "") else "",
                     "evidence_date": p.get("evidence_date"),
                     "confidence": p.get("confidence", "low"),
                     "reasoning": p.get("reasoning", ""),
