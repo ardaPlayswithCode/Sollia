@@ -645,7 +645,7 @@ class PromiseAuditAgent:
         
         # Stage 2 LLM matching (unified call, split if >10k words)
         evidence_results = []
-        if unique_evidence:
+        if unique_evidence and False:  # Skip LLM, use deterministic only
             prompt = build_stage2_prompt(promises, unique_evidence)
             words = len(prompt.split())
             
