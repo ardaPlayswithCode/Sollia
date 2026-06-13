@@ -750,7 +750,7 @@ class PromiseAuditAgent:
                 p["evidence_text"] = match.get("evidence_text", "")
                 p["evidence_filing"] = match.get("evidence_filing", "")
                 p["evidence_date"] = match.get("evidence_date", "")
-                p["evidence_url"] = ""
+                p["evidence_url"] = match.get("evidence_url", "")
             p["confidence"] = match.get("confidence", "low")
             p["reasoning"] = match.get("reasoning", "")
             # If evidence URL matches promise URL, mark as PENDING (same filing)
