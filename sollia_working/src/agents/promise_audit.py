@@ -688,13 +688,18 @@ class PromiseAuditAgent:
                             best_score = overlap
                             best_ev = ev
                     if best_ev and best_score >= 2:
+                        ev_url = best_ev.get("htm_url", "")
+                        promise_url = p.get("promise_url", "")
+                        if ev_url and ev_url == promise_url:
+                            # Same filing — skip
+                            continue
                         evidence_results.append({
                             "promise_id": p.get("promise_id", ""),
                             "status": "KEPT",
                             "evidence_text": best_ev.get("sentence", ""),
                             "evidence_filing": best_ev.get("filing_type", ""),
                             "evidence_date": best_ev.get("filing_date", ""),
-                            "evidence_url": best_ev.get("htm_url", ""),
+                            "evidence_url": ev_url,
                             "evidence_id": "",
                             "confidence": "low",
                             "reasoning": "Deterministic keyword match"
