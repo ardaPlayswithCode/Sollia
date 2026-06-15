@@ -559,7 +559,11 @@ class PromiseAuditAgent:
         all_filings_raw = edgar.get_all_filings(ticker)
         if not all_filings_raw:
             return {"error": f"No filings available for {ticker}"}
-        cache_filings(ticker, all_filings_raw)
+        # NOTE: intentionally NOT calling cache_filings(ticker, all_filings_raw) here.
+        # cache_filings() writes a keyed-by-accession schema to {ticker}_filings.json, but
+        # Agent 1 & Agent 3 read that SAME file as RAW SEC submissions JSON
+        # ({"filings":{"recent":{...}}}). Writing the keyed schema corrupted their reads
+        # (zero filings -> Agent 1 "No 10-K" error, Agent 3 zero findings).
         
         ten_years_ago = date.today() - timedelta(days=365.25 * 10)
         all_filings = [f for f in all_filings_raw if f.get('filing_date', '') >= str(ten_years_ago)]

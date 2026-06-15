@@ -53,8 +53,17 @@ async def run_analysis(req: AnalysisRequest):
             "agents_run": [], "log": []
         }
 
-    synth = Synthesizer()
-    merged = synth.run(results, weights, ticker, ticker)
+    try:
+        synth = Synthesizer()
+        merged = synth.run(results, weights, ticker, ticker)
+    except Exception as e:
+        # Synthesizer must never crash the endpoint (spec: never crash; return error in response)
+        merged = {
+            "score": 50, "signal": "HOLD", "signal_color": "#F59E0B",
+            "summary": f"Synthesis failed: {str(e)[:120]}",
+            "agents_run": list(results.keys()),
+            "agent_weights": {}, "agent_scores": {}, "similarity": 0, "log": [],
+        }
 
     # Strip embedding arrays from response to avoid bloat
     def strip_embeddings(obj):

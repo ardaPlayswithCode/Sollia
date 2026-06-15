@@ -22,6 +22,10 @@ from src.config.llm_config import call_llm
 
 logger = logging.getLogger(__name__)
 
+# Module-level CIK cache — avoids re-downloading company_tickers.json on every call.
+# get_filings() invokes get_cik() once per doc_type (3x), plus once in track() = 4x/request.
+_CIK_CACHE: Dict[str, str] = {}
+
 
 class LegalProceedingsTracker:
     def __init__(self):
@@ -30,13 +34,18 @@ class LegalProceedingsTracker:
         os.makedirs(f"{self.cache_root}/texts", exist_ok=True)
 
     def get_cik(self, ticker: str) -> Optional[str]:
+        key = ticker.upper()
+        if key in _CIK_CACHE:
+            return _CIK_CACHE[key]
         try:
             url = "https://www.sec.gov/files/company_tickers.json"
             resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app"})
             data = resp.json()
             for item in data.values():
-                if item.get("ticker", "").upper() == ticker.upper():
-                    return str(item["cik_str"]).zfill(10)
+                if item.get("ticker", "").upper() == key:
+                    cik = str(item["cik_str"]).zfill(10)
+                    _CIK_CACHE[key] = cik
+                    return cik
         except:
             pass
         return None

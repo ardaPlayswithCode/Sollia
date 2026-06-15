@@ -32,13 +32,20 @@ EDGAR_BASE = "https://www.sec.gov"
 MAX_YEARS_BACK = 10
 
 
+_CIK_CACHE: Dict[str, str] = {}
+
 def get_cik(ticker: str) -> Optional[str]:
+    key = ticker.upper()
+    if key in _CIK_CACHE:
+        return _CIK_CACHE[key]
     try:
         r = requests.get("https://www.sec.gov/files/company_tickers.json", headers=HEADERS, timeout=15)
         r.raise_for_status()
         for item in r.json().values():
-            if str(item.get("ticker", "")).upper() == ticker.upper():
-                return str(item["cik_str"]).zfill(10)
+            if str(item.get("ticker", "")).upper() == key:
+                cik = str(item["cik_str"]).zfill(10)
+                _CIK_CACHE[key] = cik
+                return cik
     except Exception as e:
         logger.error("CIK lookup failed for %s: %s", ticker, e)
     return None
@@ -514,15 +521,15 @@ def chunk_all(documents: dict) -> dict:
     """Chunk all cleaned documents."""
     ticker = documents["ticker"]
     year = documents["year"]
-    documents["chunks_10k"] = build_chunks(documents["ten_k_clean"], "10-K", ticker, year, documents.get("ten_k", {}).get("accessionNumber", ""), documents.get("ten_k", {}).get("primaryDocument", ""))
+    documents["chunks_10k"] = build_chunks(documents["ten_k_clean"], "10-K", ticker, year, documents.get("ten_k", {}).get("accession_number", ""), documents.get("ten_k", {}).get("primary_document", ""))
     documents["chunks_10q"] = []
     for i, text in enumerate(documents["ten_q_clean"]):
         ten_q_list = documents.get("ten_qs", [])
-        acc = ten_q_list[i].get("accessionNumber", "") if i < len(ten_q_list) else ""
-        doc = ten_q_list[i].get("primaryDocument", "") if i < len(ten_q_list) else ""
+        acc = ten_q_list[i].get("accession_number", "") if i < len(ten_q_list) else ""
+        doc = ten_q_list[i].get("primary_document", "") if i < len(ten_q_list) else ""
         documents["chunks_10q"].extend(build_chunks(text, f"10-Q_{i}", ticker, year, acc, doc))
-    documents["chunks_def14a"] = build_chunks(documents["def14a_clean"], "DEF14A", ticker, year, documents.get("def14a", {}).get("accessionNumber", ""), documents.get("def14a", {}).get("primaryDocument", ""))
-    documents["chunks_8k"] = build_chunks(documents["eight_k_clean"], "8-K", ticker, year, documents.get("eight_k", {}).get("accessionNumber", ""), documents.get("eight_k", {}).get("primaryDocument", ""))
+    documents["chunks_def14a"] = build_chunks(documents["def14a_clean"], "DEF14A", ticker, year, documents.get("def14a", {}).get("accession_number", ""), documents.get("def14a", {}).get("primary_document", ""))
+    documents["chunks_8k"] = build_chunks(documents["eight_k_clean"], "8-K", ticker, year, documents.get("eight_k", {}).get("accession_number", ""), documents.get("eight_k", {}).get("primary_document", ""))
     documents["chunks_transcript"] = []
     for i, text in enumerate(documents["transcript_clean"]):
         documents["chunks_transcript"].extend(build_chunks(text, f"EARNINGS_CALL_{i}", ticker, year, "", ""))
@@ -783,6 +790,29 @@ Return ONLY a JSON array. Omit pairs with no discrepancy. If none, return [].
 CRITICAL: sentence_index_a/b must match the [N] label. quoted_phrase must be exact text. Temperature is zero."""
     return prompt
 
+def _parse_discrepancy_array(text):
+    """Parse LLM response text into a list of discrepancy dicts.
+    Strips markdown code fences and extracts the JSON array. Returns [] on failure."""
+    import json as _json
+    if not text or not isinstance(text, str):
+        return []
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
+    try:
+        data = _json.loads(cleaned)
+    except Exception:
+        m = re.search(r'\[.*\]', cleaned, re.DOTALL)
+        if not m:
+            return []
+        try:
+            data = _json.loads(m.group(0))
+        except Exception:
+            return []
+    return data if isinstance(data, list) else []
+
+
 def _call_llm(prompt, provider_idx=0, max_tokens=400):
     """Call LLM using shared config — delegates to llm_config.call_llm."""
     try:
@@ -915,8 +945,9 @@ def classify_discrepancies(documents):
     
     def process_batch(key, batch):
         prompt = _build_discrepancy_prompt(batch)
-        response = _call_llm(prompt)
-        valid = _validate_llm_response(response, batch)
+        response_text, _meta = _call_llm(prompt)
+        parsed = _parse_discrepancy_array(response_text)
+        valid = _validate_llm_response(parsed, batch)
         for v in valid:
             v["batch_key"] = key
             # Store minimal batch info without embeddings
@@ -1020,8 +1051,8 @@ def build_citations(documents):
                 cik_int = int(cik) if cik else 0
                 # Build direct .htm URL using CIK + accession
                 # Accession format: 0001045810-23-000017 -> 000104581023000017
-                acc = meta.get("accessionNumber", "")
-                doc = meta.get("primaryDocument", "")
+                acc = meta.get("accession_number", "")
+                doc = meta.get("primary_document", "")
                 cik_stripped = str(cik_int)
                 acc_no_dashes = acc.replace("-", "")
                 edgar_url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/{doc}" if cik and acc and doc else ""
