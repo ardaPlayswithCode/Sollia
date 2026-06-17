@@ -539,11 +539,23 @@ class PromiseAuditAgent:
         self._log.append({"timestamp": datetime.now().isoformat(), "step": step, "detail": detail})
         logger.info("[Agent2] %s: %s", step, detail)
     
-    def run(self, ticker: str) -> Dict[str, Any]:
-        """Run the full promise audit pipeline — Stage 1 + Stage 2 + Scoring."""
+    def run(self, ticker: str, progress=None) -> Dict[str, Any]:
+        """Run the full promise audit pipeline — Stage 1 + Stage 2 + Scoring.
+
+        progress: optional callback(message, kind) for live, human-readable
+        milestone updates (WS5)."""
         self._log = []
         ticker = ticker.upper()
-        
+
+        def _emit(msg, kind="info"):
+            if progress:
+                try:
+                    progress(msg, kind)
+                except Exception:
+                    pass
+
+        _emit("Gathering filings and earnings calls for %s..." % ticker, "search")
+
         # Import providers (lazy to avoid circular imports at module level)
         import sys as _sys
         _sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -581,13 +593,15 @@ class PromiseAuditAgent:
         self._add_log("ALIGN", f"Built {len(bundles)} FY bundles")
         
         # ── Step 4: Stage 1 — Extract promises ───────────────────────────
+        _emit("Extracting forward-looking promises from management commentary...", "analyze")
         self._add_log("STAGE1", "Starting Stage 1: Promise extraction...")
         promises, stage1_logs = extract_promises_from_documents(ticker, all_filings, transcripts, bundles)
         self._log.extend(stage1_logs)
-        
+
         total_promises = len(promises)
         self._add_log("STAGE1", f"Extracted {total_promises} promises")
-        
+        _emit("Identified %d forward-looking promises to verify" % total_promises, "info")
+
         if not promises:
             return {
                 "ticker": ticker,
@@ -603,6 +617,7 @@ class PromiseAuditAgent:
             }
         
         # ── Step 5: Stage 2 — Evidence search ────────────────────────────
+        _emit("Checking which promises were kept, broken, or still pending...", "analyze")
         self._add_log("STAGE2", "Starting Stage 2: Evidence search...")
         
         # Pre-tokenize all documents ONCE for fast evidence search
@@ -787,6 +802,7 @@ class PromiseAuditAgent:
         
         score, breakdown = calculate_score(promises)
         self._add_log("SCORE", f"Calculated credibility score: {score}")
+        _emit("Scored management's promise track record: %.0f/100" % score, "info")
         
         # Count statuses
         status_counts = {"KEPT": 0, "PARTIAL": 0, "BROKEN": 0, "PENDING": 0, "UNRESOLVED": 0, "STALE": 0}
@@ -805,7 +821,8 @@ class PromiseAuditAgent:
                 p['reasoning'] = 'Evidence from same filing as promise — excluded'
 
         top5 = select_top_promises(promises, 5)
-        
+        _emit("Promise audit complete — surfaced %d notable promises" % len(top5), "done")
+
         # Build output
         return {
             "ticker": ticker,
@@ -1473,9 +1490,13 @@ def calculate_score(promises: List[Dict[str, Any]]) -> Tuple[float, Dict[str, fl
 
 
 def select_top_promises(promises: List[Dict[str, Any]], n: int = 5) -> List[Dict[str, Any]]:
-    """Select top N promises by weighted importance, prioritizing BROKEN > PARTIAL > KEPT > PENDING."""
+    """Select top N promises by priority (BROKEN > PARTIAL > KEPT > PENDING) and
+    weighted importance, enforcing DIVERSITY so the list isn't 5 copies of the
+    same finding (WS4): no duplicate promise text (first 100 chars) and no repeated
+    evidence URL. A second relaxed pass keeps promise-text uniqueness only, so we
+    still return N distinct promises when evidence sources are scarce."""
     status_priority = {"BROKEN": 0, "STALE": 0, "PARTIAL": 1, "KEPT": 2, "PENDING": 3, "UNRESOLVED": 4}
-    
+
     sorted_promises = sorted(
         promises,
         key=lambda p: (
@@ -1483,8 +1504,49 @@ def select_top_promises(promises: List[Dict[str, Any]], n: int = 5) -> List[Dict
             -p.get("weighted_importance", 0),
         )
     )
-    
-    return sorted_promises[:n]
+
+    selected: List[Dict[str, Any]] = []
+    selected_ids = set()
+    seen_text = set()
+    seen_evidence = set()
+
+    def _text_key(p):
+        return (p.get("text") or "").strip().lower()[:100]
+
+    def _ev_key(p):
+        return (p.get("evidence_url") or "").strip()
+
+    # Pass 1: unique promise text AND unique evidence URL
+    for p in sorted_promises:
+        tk, ek = _text_key(p), _ev_key(p)
+        if tk and tk in seen_text:
+            continue
+        if ek and ek in seen_evidence:
+            continue
+        selected.append(p)
+        selected_ids.add(id(p))
+        if tk:
+            seen_text.add(tk)
+        if ek:
+            seen_evidence.add(ek)
+        if len(selected) >= n:
+            return selected
+
+    # Pass 2: relax evidence-URL constraint, keep promise-text uniqueness
+    for p in sorted_promises:
+        if id(p) in selected_ids:
+            continue
+        tk = _text_key(p)
+        if tk and tk in seen_text:
+            continue
+        selected.append(p)
+        selected_ids.add(id(p))
+        if tk:
+            seen_text.add(tk)
+        if len(selected) >= n:
+            break
+
+    return selected[:n]
 
 
 # Module-level run function for backend/agents.py compatibility

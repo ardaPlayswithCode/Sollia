@@ -1,16 +1,26 @@
-"""FastAPI backend — serves agent pipeline."""
+"""FastAPI backend — serves the agent pipeline with live streaming (WS5) and
+parallel execution (WS6)."""
 import sys
 import os
+import json
+import asyncio
+import threading
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda\u2019s Mac Studio/Sollia/sollia_working')
-from src.agents.synthesizer import Synthesizer
-from backend.agents import get_agents_meta, run_selected_agents, AGENTS
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SOLLIA_WEB = os.path.dirname(_HERE)
+sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Sollia/sollia_working')
+sys.path.insert(0, _SOLLIA_WEB)  # ensure the 'backend' package resolves
 
-app = FastAPI(title="Sollia API", version="2.0.0")
+from backend import runs
+from backend.agents import get_agents_meta, AGENTS
+
+app = FastAPI(title="Sollia API", version="2.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,86 +29,96 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 class AnalysisRequest(BaseModel):
     ticker: str
     agents: list[str] = ["corporate_discrepancy", "promise_audit"]
     year: int = 2023
 
+
+def _parse_request(req: AnalysisRequest):
+    return req.ticker.upper(), [a for a in req.agents if a in AGENTS]
+
+
 @app.get("/api/agents")
 async def list_agents():
     return {"agents": get_agents_meta()}
 
+
 @app.post("/api/analyze")
 async def run_analysis(req: AnalysisRequest):
-    ticker = req.ticker.upper()
-    selected = [a for a in req.agents if a in AGENTS]
-    
-    try:
-        results, weights, logs = run_selected_agents(ticker, selected, req.year)
-    except Exception as e:
-        return {
-            "ticker": ticker, "company": ticker,
-            "score": 50, "signal": "ERROR", "signal_color": "#EF4444",
-            "summary": f"Analysis failed: {str(e)[:100]}",
-            "agents_run": selected, "log": [{"speaker": "Sollia", "message": f"Error: {str(e)[:200]}"}],
-            "corporate_discrepancy": None, "promise_audit": None, "legal_proceedings": None,
-            "agent_weights": {}, "agent_scores": {}, "similarity": 0
-        }
+    """Blocking analysis. Runs the pipeline in a worker thread (so the event loop
+    stays free for concurrent streams) and returns the rich UI result plus the
+    clean export. Kept for backward compatibility / non-streaming clients."""
+    ticker, selected = _parse_request(req)
+    run_id = runs.new_run(ticker, selected, req.year)
+    rich, export = await asyncio.to_thread(runs.run_pipeline, run_id, ticker, selected, req.year)
+    out = dict(rich)
+    out["export"] = export
+    out["run_id"] = run_id
+    return out
 
-    if not results:
-        return {
-            "ticker": ticker, "company": ticker,
-            "score": 50, "signal": "HOLD", "signal_color": "#F59E0B",
-            "summary": "No agents produced results.",
-            "agents_run": [], "log": []
-        }
 
-    try:
-        synth = Synthesizer()
-        merged = synth.run(results, weights, ticker, ticker)
-    except Exception as e:
-        # Synthesizer must never crash the endpoint (spec: never crash; return error in response)
-        merged = {
-            "score": 50, "signal": "HOLD", "signal_color": "#F59E0B",
-            "summary": f"Synthesis failed: {str(e)[:120]}",
-            "agents_run": list(results.keys()),
-            "agent_weights": {}, "agent_scores": {}, "similarity": 0, "log": [],
-        }
+@app.post("/api/analyze/start")
+async def start_analysis(req: AnalysisRequest):
+    """Start an analysis in the background and return a run_id to stream from."""
+    ticker, selected = _parse_request(req)
+    run_id = runs.new_run(ticker, selected, req.year)
+    threading.Thread(
+        target=runs.run_pipeline,
+        args=(run_id, ticker, selected, req.year),
+        daemon=True,
+    ).start()
+    return {"run_id": run_id, "ticker": ticker, "year": req.year, "agents": selected}
 
-    # Strip embedding arrays from response to avoid bloat
-    def strip_embeddings(obj):
-        if isinstance(obj, dict):
-            return {k: strip_embeddings(v) for k, v in obj.items() if k != "embedding"}
-        elif isinstance(obj, list):
-            return [strip_embeddings(i) for i in obj]
-        return obj
-    
-    # Compute overall agent3_score for legal_proceedings
-    lp_data = results.get("legal_proceedings", {})
-    if lp_data and lp_data.get("findings"):
-        scores = [f.get("agent3_score", 50) for f in lp_data["findings"]]
-        lp_data["agent3_score"] = sum(scores) / len(scores) if scores else 50
-    elif lp_data:
-        lp_data["agent3_score"] = 50
 
-    return {
-        "ticker": ticker,
-        "company": ticker,
-        "score": merged["score"],
-        "signal": merged["signal"],
-        "signal_color": merged["signal_color"],
-        "summary": merged["summary"],
-        "agents_run": merged["agents_run"],
-        "similarity": merged.get("similarity", 0),
-        "agent_weights": merged.get("agent_weights", {}),
-        "agent_scores": merged.get("agent_scores", {}),
-        "corporate_discrepancy": strip_embeddings(results.get("corporate_discrepancy")),
-        "promise_audit": strip_embeddings(results.get("promise_audit")),
-        "legal_proceedings": strip_embeddings(results.get("legal_proceedings")),
-        "log": [{"speaker": "Sollia", "message": l} for l in merged.get("log", [])],
-    }
+@app.get("/api/analyze/stream/{run_id}")
+async def stream_analysis(run_id: str):
+    """Server-sent events: live per-agent milestones, then a final 'complete'
+    event carrying the rich result + clean export."""
+    async def event_gen():
+        since = 0
+        ticks = 0
+        yield "retry: 2000\n\n"
+        while True:
+            snap = runs.snapshot_since(run_id, since)
+            if snap is None:
+                yield "data: %s\n\n" % json.dumps({"type": "error", "message": "Unknown run id"})
+                return
+            since = snap["max_seq"]
+            yield "data: %s\n\n" % json.dumps({"type": "progress", "agents": snap["agents"]})
+            if snap["status"] == "complete":
+                yield "data: %s\n\n" % json.dumps({
+                    "type": "complete", "result": snap.get("result"), "export": snap.get("export")})
+                return
+            if snap["status"] == "error":
+                yield "data: %s\n\n" % json.dumps({
+                    "type": "error", "message": snap.get("error"),
+                    "result": snap.get("result"), "export": snap.get("export")})
+                return
+            ticks += 1
+            if ticks > 2400:  # ~12 min safety cap
+                yield "data: %s\n\n" % json.dumps({"type": "error", "message": "Stream timed out"})
+                return
+            await asyncio.sleep(0.3)
 
-frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@app.get("/api/runs/{run_id}")
+async def get_run(run_id: str):
+    """Polling fallback — full current state of a run (all log lines)."""
+    snap = runs.snapshot_since(run_id, 0)
+    if snap is None:
+        return {"status": "error", "error": "Unknown run id"}
+    return snap
+
+
+frontend_dist = os.path.join(_HERE, '..', 'frontend', 'dist')
 if os.path.exists(frontend_dist):
     app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
 

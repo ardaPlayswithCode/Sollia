@@ -517,17 +517,57 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
     return chunks
 
 
+def _quarter_label(period_iso: str, fiscal_end_iso: str) -> str:
+    """Map a 10-Q period_of_report to its fiscal quarter (Q1/Q2/Q3) relative to
+    the fiscal year end, so chunk labels read 'Q1' instead of an array index.
+    Handles non-calendar fiscal years (uses month offset from the fiscal end)."""
+    try:
+        p = date.fromisoformat(period_iso)
+        fye = date.fromisoformat(fiscal_end_iso)
+        months_before = (fye.month - p.month) % 12
+        q = 4 - (months_before // 3)
+        return "Q%d" % q if 1 <= q <= 4 else ""
+    except Exception:
+        return ""
+
+
+def _display_doc_type(doc_type: str, year=None) -> str:
+    """Human-readable filing label for citations, e.g. '10-Q_Q1' -> '10-Q (Q1 2025)',
+    'EARNINGS_CALL_0' -> 'Earnings Call', 'DEF14A' -> 'DEF 14A'."""
+    if not doc_type:
+        return ""
+    yr = str(year) if year else ""
+    if doc_type.startswith("10-Q_"):
+        suffix = doc_type[len("10-Q_"):]
+        if re.match(r'^Q[1-4]$', suffix):
+            return ("10-Q (%s %s)" % (suffix, yr)).strip()
+        return "10-Q"
+    if doc_type.startswith("EARNINGS_CALL"):
+        return "Earnings Call"
+    if doc_type.startswith("DEF14A"):
+        return "DEF 14A"
+    if doc_type.startswith("8-K"):
+        return "8-K"
+    if doc_type.startswith("10-K"):
+        return "10-K"
+    return doc_type
+
+
 def chunk_all(documents: dict) -> dict:
     """Chunk all cleaned documents."""
     ticker = documents["ticker"]
     year = documents["year"]
     documents["chunks_10k"] = build_chunks(documents["ten_k_clean"], "10-K", ticker, year, documents.get("ten_k", {}).get("accession_number", ""), documents.get("ten_k", {}).get("primary_document", ""))
     documents["chunks_10q"] = []
+    fiscal_end = documents.get("fiscal_end", "")
     for i, text in enumerate(documents["ten_q_clean"]):
         ten_q_list = documents.get("ten_qs", [])
         acc = ten_q_list[i].get("accession_number", "") if i < len(ten_q_list) else ""
         doc = ten_q_list[i].get("primary_document", "") if i < len(ten_q_list) else ""
-        documents["chunks_10q"].extend(build_chunks(text, f"10-Q_{i}", ticker, year, acc, doc))
+        period = ten_q_list[i].get("period_of_report", "") if i < len(ten_q_list) else ""
+        q = _quarter_label(period, fiscal_end)
+        suffix = q if q else str(i)
+        documents["chunks_10q"].extend(build_chunks(text, f"10-Q_{suffix}", ticker, year, acc, doc))
     documents["chunks_def14a"] = build_chunks(documents["def14a_clean"], "DEF14A", ticker, year, documents.get("def14a", {}).get("accession_number", ""), documents.get("def14a", {}).get("primary_document", ""))
     documents["chunks_8k"] = build_chunks(documents["eight_k_clean"], "8-K", ticker, year, documents.get("eight_k", {}).get("accession_number", ""), documents.get("eight_k", {}).get("primary_document", ""))
     documents["chunks_transcript"] = []
@@ -601,8 +641,88 @@ def fetch_all_documents(ticker: str, year: int) -> Tuple[Optional[dict], Optiona
 # LAYER 2: Embedding
 # ============================================================================
 
+import hashlib
+
+# Disk cache for FinBERT embeddings — keyed by a hash of the (normalized) chunk
+# text so identical content is never re-embedded across runs. This turns a cold
+# ~90-180s embedding pass into a <1s cache load on warm re-runs.
+_EMB_CACHE_DIR = os.path.join(CACHE_DIR, 'embeddings')
+os.makedirs(_EMB_CACHE_DIR, exist_ok=True)
+_EMB_MODEL_TAG = "finbert-mean-v1"
+
+# WS1: boilerplate-opener stripping was TESTED (ws1_align_test.py) and found
+# ineffective on F 2025 — only ~5% of chunks open with boilerplate and stripping
+# left alignment essentially unchanged (319 -> 319 pairs). The real false-positive
+# driver is FinBERT anisotropy, fixed by mean-centering at alignment time (see
+# _apply_mean_centering). Stripping is kept as an opt-in normalization but is OFF
+# by default so embeddings (and their disk cache keys) match the raw chunk text.
+STRIP_BOILERPLATE_FOR_EMBEDDING = False
+
+_BOILERPLATE_OPENER_RE = re.compile(
+    r'^(?:\s*(?:'
+    r'subject to|we (?:may|believe|expect|anticipate|intend|are|have|will|continue|do not|cannot|plan to|seek to)|'
+    r'in addition|as a result|from time to time|as of|during the|'
+    r'for the (?:three|nine|six|twelve|year|quarter|period|fiscal)|'
+    r"the company(?:'s)?|management(?:'s)?|"
+    r'these (?:forward[- ]looking )?statements|forward[- ]looking statements|'
+    r'this (?:quarterly |annual )?report|see note|refer to|pursuant to|in accordance with|certain|'
+    r'our (?:results|business|operations|revenues?|net|total|consolidated)'
+    r')\b[^,.;]{0,80}[,;]\s*)+',
+    re.IGNORECASE,
+)
+
+
+def _embedding_text(text: str) -> str:
+    """Normalize chunk text for embedding by stripping leading boilerplate
+    clause(s). Falls back to the original text when stripping would remove too
+    much (keeps >=40 chars and >=40% of the content)."""
+    if not text:
+        return text
+    stripped = _BOILERPLATE_OPENER_RE.sub('', text, count=1).strip()
+    if len(stripped) >= max(40, int(len(text) * 0.4)):
+        return stripped
+    return text
+
+
+def _emb_cache_path(emb_input: str) -> str:
+    key = hashlib.sha256((_EMB_MODEL_TAG + "\n" + emb_input).encode("utf-8")).hexdigest()[:24]
+    return os.path.join(_EMB_CACHE_DIR, key + ".json")
+
+
+def _get_cached_embedding(emb_input: str):
+    path = _emb_cache_path(emb_input)
+    if os.path.exists(path):
+        try:
+            import json as _json
+            with open(path) as f:
+                return _json.load(f)
+        except Exception:
+            return None
+    return None
+
+
+def _cache_embedding(emb_input: str, embedding) -> None:
+    """Write embedding atomically (temp + rename) so concurrent runs never see a
+    half-written file."""
+    path = _emb_cache_path(emb_input)
+    try:
+        import json as _json
+        tmp = "%s.%d.tmp" % (path, os.getpid())
+        with open(tmp, "w") as f:
+            _json.dump(embedding, f)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+_EMBEDDER = None
+
 def get_embedder():
-    """Lazy-load FinBERT embedder."""
+    """Lazy-load + memoize the FinBERT embedder so the model is loaded once and
+    reused across runs (and concurrent runs) instead of reloaded every time (WS6)."""
+    global _EMBEDDER
+    if _EMBEDDER is not None:
+        return _EMBEDDER
     try:
         from transformers import AutoTokenizer, AutoModel
         import torch
@@ -613,18 +733,32 @@ def get_embedder():
             with torch.no_grad():
                 outputs = model(**inputs)
             return outputs.last_hidden_state.mean(dim=1).squeeze().tolist()
+        _EMBEDDER = embed
         return embed
     except ImportError:
         return None
 
 def embed_all_chunks(documents, embed_fn):
-    """Embed all chunks across all document types."""
+    """Embed all chunks across all document types, backed by a disk cache so
+    re-runs skip FinBERT entirely (WS6)."""
     all_chunks = (documents.get("chunks_10k", []) + documents.get("chunks_10q", []) +
                   documents.get("chunks_def14a", []) + documents.get("chunks_8k", []) +
                   documents.get("chunks_transcript", []))
+    hits = misses = 0
     for c in all_chunks:
-        if c.get("embedding") is None:
-            c["embedding"] = embed_fn(c["text"])
+        if c.get("embedding") is not None:
+            continue
+        emb_input = _embedding_text(c["text"]) if STRIP_BOILERPLATE_FOR_EMBEDDING else c["text"]
+        cached = _get_cached_embedding(emb_input)
+        if cached is not None:
+            c["embedding"] = cached
+            hits += 1
+        else:
+            emb = embed_fn(emb_input)
+            c["embedding"] = emb
+            _cache_embedding(emb_input, emb)
+            misses += 1
+    documents["_embed_stats"] = {"cache_hits": hits, "cache_misses": misses}
     return documents
 
 
@@ -654,10 +788,29 @@ def _section_boost(sec_a, sec_b):
             return 0.05
     return 0.0
 
+def _apply_mean_centering(all_chunks):
+    """WS1: mean-center embeddings (anisotropy correction). FinBERT embeddings are
+    highly anisotropic — a dominant component shared by all finance text inflates
+    every cosine, so topically-unrelated passages that merely share boilerplate
+    align. Subtracting the corpus mean removes that shared component. On F 2025 this
+    cut false-positive alignments from ~40% to ~0% at the 0.86 threshold while
+    retaining genuine topical matches (319 -> 92 aligned pairs). Stores the centered
+    vector on each chunk as '_emb_c'."""
+    import numpy as np
+    embs = [c["embedding"] for c in all_chunks if c.get("embedding") is not None]
+    if len(embs) < 2:
+        return
+    mean = np.mean(np.array(embs, dtype=float), axis=0)
+    for c in all_chunks:
+        if c.get("embedding") is not None:
+            c["_emb_c"] = (np.array(c["embedding"], dtype=float) - mean).tolist()
+
+
 def _compute_similarity_matrix(chunks_a, chunks_b):
     import numpy as np
-    emb_a = np.array([c["embedding"] for c in chunks_a])
-    emb_b = np.array([c["embedding"] for c in chunks_b])
+    # Prefer mean-centered embeddings (_emb_c) when present (WS1).
+    emb_a = np.array([c.get("_emb_c", c["embedding"]) for c in chunks_a], dtype=float)
+    emb_b = np.array([c.get("_emb_c", c["embedding"]) for c in chunks_b], dtype=float)
     norms_a = np.linalg.norm(emb_a, axis=1, keepdims=True)
     norms_b = np.linalg.norm(emb_b, axis=1, keepdims=True)
     a_norm = emb_a / np.maximum(norms_a, 1e-10)
@@ -704,7 +857,10 @@ def align_all_pairs(documents):
     all_chunks = (documents.get("chunks_10k", []) + documents.get("chunks_10q", []) +
                   documents.get("chunks_def14a", []) + documents.get("chunks_8k", []) +
                   documents.get("chunks_transcript", []))
-    
+
+    # WS1: anisotropy correction before any pairwise similarity is computed.
+    _apply_mean_centering(all_chunks)
+
     all_aligned = []
     for doc_a, doc_b, tier in DOCUMENT_PAIRS:
         chunks_a = _get_chunks_by_type(all_chunks, doc_a)
@@ -771,6 +927,13 @@ Each document type has a DIFFERENT reporting period. Numbers from different cade
 
 **When in doubt about the time period, DO NOT flag. Err on the side of caution.**
 
+## IGNORE SHARED BOILERPLATE
+Many passages open with identical generic phrasing ("Subject to...", "We may...",
+"As a result,...", "Forward-looking statements...", "The Company..."). A shared
+opener is NOT a discrepancy. Look PAST identical boilerplate openers and compare
+only the substantive claims, figures, and facts that follow. If the only thing two
+passages share is generic phrasing, return no discrepancy for that pair.
+
 ## Discrepancy Types
 "numerical_contradiction" — Same metric with different values (weight: 100)
 "narrative_contradiction" — Statements that cannot both be true (weight: 80)
@@ -785,9 +948,9 @@ Each document type has a DIFFERENT reporting period. Numbers from different cade
 ## Output Format
 Return ONLY a JSON array. Omit pairs with no discrepancy. If none, return [].
 
-[{"pair":"10-K_vs_10-Q","is_discrepancy":true,"discrepancy_type":"numerical_contradiction","severity":"high","weight":100,"reasoning":"short","sentence_index_a":0,"sentence_index_b":0,"quoted_phrase_a":"...","quoted_phrase_b":"..."}]
+[{"pair":"10-K_vs_10-Q","is_discrepancy":true,"discrepancy_type":"numerical_contradiction","severity":"high","weight":100,"reasoning":"<one full sentence naming the specific conflicting facts or figures>","sentence_index_a":0,"sentence_index_b":0,"quoted_phrase_a":"...","quoted_phrase_b":"..."}]
 
-CRITICAL: sentence_index_a/b must match the [N] label. quoted_phrase must be exact text. Temperature is zero."""
+CRITICAL: reasoning must be a complete, specific sentence (never the literal word "short"). sentence_index_a/b must match the [N] label. quoted_phrase must be exact text. Temperature is zero."""
     return prompt
 
 def _parse_discrepancy_array(text):
@@ -886,7 +1049,17 @@ def _validate_llm_response(response, batch):
             if key_b and key_b.lower() in s.lower():
                 entry["sentence_index_b"] = i
                 break
-        
+
+        # WS2: guarantee a substantive reasoning string. The LLM sometimes echoes
+        # the example placeholder ("short") or returns an empty/truncated value.
+        reasoning = (entry.get("reasoning") or "").strip()
+        if len(reasoning) < 20 or reasoning.lower() in ("short", "n/a", "none", "...", "tbd"):
+            dtype = entry.get("discrepancy_type", "discrepancy").replace("_", " ")
+            entry["reasoning"] = (
+                'Potential %s between %s and %s: "%s" vs "%s".'
+                % (dtype, doc_a, doc_b, (qa or "")[:120], (qb or "")[:120])
+            ).strip()
+
         valid.append(entry)
     return valid
 
@@ -984,11 +1157,29 @@ def rank_discrepancies(documents):
     if not discrepancies:
         documents["top_discrepancies"] = []
         return documents
-    
+
+    # WS2: build a chunk lookup so we can detect "same-filing" discrepancies
+    # (both sides resolve to the same SEC accession) — almost always a false
+    # positive — and penalize them before the top-5 selection.
+    _chunk_lookup = {}
+    for _key in ["chunks_10k", "chunks_10q", "chunks_def14a", "chunks_8k", "chunks_transcript"]:
+        for _chunk in documents.get(_key, []):
+            _chunk_lookup[_chunk["chunk_id"]] = _chunk
+
+    def _accession_for(disc, doc_label):
+        chunk_ids = disc.get("batch", {}).get("chunk_ids", {})
+        cid = chunk_ids.get(doc_label, "")
+        if not cid:
+            for ck in chunk_ids:
+                if ck == doc_label or ck.startswith(doc_label + "_"):
+                    cid = chunk_ids[ck]
+                    break
+        return (_chunk_lookup.get(cid, {}).get("metadata", {}) or {}).get("accession_number", "")
+
     for d in discrepancies:
         sev = severity_map.get(d.get("severity", "low"), 15)
         typ = type_map.get(d.get("discrepancy_type", "qualitative_tension"), 30)
-        
+
         tier = 2
         similarity = 0.86
         for pair in documents.get("aligned_pairs", []):
@@ -998,13 +1189,27 @@ def rank_discrepancies(documents):
                 break
         pair_score = tier_map.get(tier, 70)
         confidence = similarity * 100
-        
-        d["final_score"] = round(0.35 * sev + 0.30 * typ + 0.15 * pair_score + 0.20 * confidence, 1)
+
+        # Same-filing detection
+        parts = d.get("pair", "").split("_vs_")
+        same_filing = False
+        if len(parts) == 2:
+            acc_a = _accession_for(d, parts[0])
+            acc_b = _accession_for(d, parts[1])
+            same_filing = bool(acc_a) and acc_a == acc_b
+        d["same_filing"] = same_filing
+
+        score = 0.35 * sev + 0.30 * typ + 0.15 * pair_score + 0.20 * confidence
+        if same_filing:
+            score *= 0.4  # de-prioritize: both quotes come from the same document
+            d["severity"] = {"high": "medium", "medium": "low", "low": "low"}.get(d.get("severity", "low"), "low")
+        d["final_score"] = round(score, 1)
         d["score_components"] = {
-            "severity": sev, "type_objectivity": typ, 
-            "pair_importance": pair_score, "confidence": round(confidence, 1)
+            "severity": sev, "type_objectivity": typ,
+            "pair_importance": pair_score, "confidence": round(confidence, 1),
+            "same_filing": same_filing,
         }
-    
+
     ranked = sorted(discrepancies, key=lambda x: x.get("final_score", 0), reverse=True)
     top5 = ranked[:5]
     for i, d in enumerate(top5):
@@ -1057,7 +1262,8 @@ def build_citations(documents):
                 acc_no_dashes = acc.replace("-", "")
                 edgar_url = f"https://www.sec.gov/Archives/edgar/data/{cik_stripped}/{acc_no_dashes}/{doc}" if cik and acc and doc else ""
                 source = {
-                    "document_type": doc_type,
+                    "document_type": _display_doc_type(doc_type, year),
+                    "document_type_raw": doc_type,
                     "section": meta.get("section", ""),
                     "page_number": meta.get("page_number", 1),
                     "paragraph_index": meta.get("paragraph_index", 0),
@@ -1069,13 +1275,18 @@ def build_citations(documents):
                     "ticker": ticker
                 }
             else:
-                source = {"document_type": doc_label, "sentence_text": "", "edgar_url": "", "year": year, "ticker": ticker}
-            
+                source = {"document_type": _display_doc_type(doc_label, year), "document_type_raw": doc_label, "sentence_text": "", "edgar_url": "", "year": year, "ticker": ticker}
+
             if side == 0:
                 d["source_a"] = source
             else:
                 d["source_b"] = source
-        
+
+        # Clean, human-readable pair label for the UI (e.g. "10-K vs 10-Q (Q3 2025)")
+        sa = (d.get("source_a") or {}).get("document_type", "")
+        sb = (d.get("source_b") or {}).get("document_type", "")
+        if sa and sb:
+            d["pair_display"] = "%s vs %s" % (sa, sb)
         d.pop("batch", None)
     
     return documents
@@ -1087,21 +1298,35 @@ def build_citations(documents):
 # LAYER 7: Output + Main run() function
 # ============================================================================
 
-def run_discrepancy_agent(ticker: str, year: int) -> dict:
-    """Run the full Corporate Discrepancy agent pipeline."""
+def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
+    """Run the full Corporate Discrepancy agent pipeline.
+
+    progress: optional callback(message:str, kind:str) for live, human-readable
+    milestone updates (WS5). Never exposes internal pipeline mechanics."""
     import datetime, time
     t0 = time.time()
     log = []
-    
+
     def add_log(step, detail):
         log.append({"timestamp": datetime.datetime.utcnow().isoformat(), "step": step, "detail": detail})
-    
+
+    def _emit(msg, kind="info"):
+        if progress:
+            try:
+                progress(msg, kind)
+            except Exception:
+                pass
+
     add_log("START", "Agent 1 initiated for %s %d" % (ticker, year))
-    
+    _emit("Pulling FY%d filings for %s..." % (year, ticker), "search")
+
     # Layer 0: Fetch
     documents, error = fetch_all_texts(ticker, year)
     if error:
+        _emit("Could not assemble a complete filing set: %s" % error, "flag")
         return {"ticker": ticker, "year": year, "error": error, "agent_log": log}
+    _emit("Found 10-K, %d 10-Qs, 8-K, DEF 14A, %d earnings transcripts" % (
+        len(documents.get("ten_qs", [])), len(documents.get("transcripts", []))), "fetch")
     add_log("FETCH", "Fetched all 5 document types")
     
     # Layer 0.5: Clean
@@ -1120,20 +1345,26 @@ def run_discrepancy_agent(ticker: str, year: int) -> dict:
     embed_fn = get_embedder()
     if embed_fn is None:
         return {"ticker": ticker, "year": year, "error": "FinBERT not available. Install transformers and torch.", "agent_log": log}
+    _emit("Reading and aligning passages across the filing set...", "align")
     documents = embed_all_chunks(documents, embed_fn)
     add_log("EMBED", "Embedded all chunks with FinBERT")
-    
+
     # Layer 3: Align
     documents = align_all_pairs(documents)
-    add_log("ALIGN", "Found %d aligned pairs" % len(documents.get("aligned_pairs", [])))
-    
+    n_pairs = len(documents.get("aligned_pairs", []))
+    add_log("ALIGN", "Found %d aligned pairs" % n_pairs)
+    _emit("Matched %d related passages to cross-examine" % n_pairs, "info")
+
     # Layer 4: LLM Classify
+    _emit("Cross-referencing claims across the 10-K, 10-Qs, and earnings calls...", "analyze")
     documents = classify_discrepancies(documents)
     add_log("CLASSIFY", "LLM found %d discrepancies" % len(documents.get("discrepancies", [])))
-    
+
     # Layer 5: Rank
     documents = rank_discrepancies(documents)
-    add_log("RANK", "Selected top %d discrepancies" % len(documents.get("top_discrepancies", [])))
+    n_top = len(documents.get("top_discrepancies", []))
+    add_log("RANK", "Selected top %d discrepancies" % n_top)
+    _emit("Flagged %d potential discrepancies for review" % n_top, "flag")
     
     # Layer 6: Citations
     documents = build_citations(documents)
@@ -1145,6 +1376,7 @@ def run_discrepancy_agent(ticker: str, year: int) -> dict:
     
     elapsed = time.time() - t0
     add_log("OUTPUT", "Complete in %.1fs" % elapsed)
+    _emit("Corporate discrepancy scan complete (%.0fs)" % elapsed, "done")
     
     return {
         "ticker": ticker, "year": year,

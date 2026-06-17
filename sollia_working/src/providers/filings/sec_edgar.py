@@ -38,12 +38,15 @@ def _load_json(path: str):
     return None
 
 def _save_json(path: str, data) -> bool:
-    """Save data as JSON. Returns True on success."""
+    """Save data as JSON atomically (temp + rename) so concurrent agent threads
+    (WS6) never observe a half-written cache file. Returns True on success."""
     import json as _json
     try:
         _os.makedirs(_os.path.dirname(path), exist_ok=True)
-        with open(path, 'w') as f:
+        tmp = "%s.%d.tmp" % (path, _os.getpid())
+        with open(tmp, 'w') as f:
             _json.dump(data, f, default=str)
+        _os.replace(tmp, path)
         return True
     except Exception:
         return False

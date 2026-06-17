@@ -156,8 +156,12 @@ class LegalProceedingsTracker:
                         else:
                             texts = {}
                         texts[filing["accession"]] = text
-                        with open(cache_file, 'w') as f:
+                        # Atomic write — Agent 1 and Agent 3 share this texts cache
+                        # file and may run concurrently (WS6).
+                        tmp = "%s.%d.tmp" % (cache_file, os.getpid())
+                        with open(tmp, 'w') as f:
                             json.dump(texts, f)
+                        os.replace(tmp, cache_file)
                         return text
         except:
             pass
@@ -242,12 +246,40 @@ class LegalProceedingsTracker:
         score = 50 + (total * 5)
         return max(0, min(100, score))
 
-    def track(self, ticker: str) -> Dict:
+    def track(self, ticker: str, progress=None) -> Dict:
         cik = self.get_cik(ticker)
         results = {"ticker": ticker, "timestamp": datetime.now().isoformat(), "findings": []}
 
+        def _emit(msg, kind="info"):
+            if progress:
+                try:
+                    progress(msg, kind)
+                except Exception:
+                    pass
+
+        _emit("Scanning legal proceedings across 10-K, 10-Q, and 8-K filings...", "search")
+
+        def _empty_finding(dt, prv, cur, reason):
+            """WS3: a placeholder finding so a doc type with no legal content is
+            shown explicitly ('No legal proceedings in 10-Q') instead of omitted."""
+            return {
+                "doc_type": dt,
+                "prior_date": (prv or {}).get("filing_date", ""),
+                "current_date": (cur or {}).get("filing_date", ""),
+                "proceedings": [],
+                "summary": reason,
+                "agent3_score": 50,
+                "empty": True,
+                "cik": cik,
+                "current_accession": (cur or {}).get("accession", ""),
+                "current_primary_doc": (cur or {}).get("primary_document", ""),
+                "prior_accession": (prv or {}).get("accession", ""),
+                "prior_primary_doc": (prv or {}).get("primary_document", ""),
+            }
+
         for doc_type in ["10-K", "10-Q", "8-K"]:
             filings = self.get_filings(ticker, doc_type)
+            _emit("Reviewing %s legal disclosures for changes..." % doc_type, "analyze")
             if len(filings) >= 2:
                 curr = filings[0]
                 prev = filings[1]
@@ -359,6 +391,9 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                                 "agent3_score": score,
                                 "current_accession": curr.get("accession", ""),
                                 "current_primary_doc": curr.get("primary_document", ""),
+                                "prior_accession": prev.get("accession", ""),
+                                "prior_primary_doc": prev.get("primary_document", ""),
+                                "empty": False,
                                 "cik": cik
                             })
                         except Exception as e:
@@ -368,40 +403,63 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                                 "prior_date": prev['filing_date'],
                                 "current_date": curr['filing_date'],
                                 "proceedings": [],
+                                "summary": "Could not parse legal proceedings for %s." % doc_type,
                                 "error": str(e),
-                                "agent3_score": 50
+                                "agent3_score": 50,
+                                "empty": True,
+                                "current_accession": curr.get("accession", ""),
+                                "current_primary_doc": curr.get("primary_document", ""),
+                                "prior_accession": prev.get("accession", ""),
+                                "prior_primary_doc": prev.get("primary_document", ""),
+                                "cik": cik,
                             })
+                    else:
+                        # WS3: legal section absent for this doc type — surface it.
+                        results["findings"].append(_empty_finding(
+                            doc_type, prev, curr,
+                            "No legal proceedings disclosed in %s." % doc_type))
+                else:
+                    results["findings"].append(_empty_finding(
+                        doc_type, prev, curr,
+                        "No legal proceedings in %s — filing text unavailable." % doc_type))
+            else:
+                _prev = filings[1] if len(filings) > 1 else None
+                _curr = filings[0] if filings else None
+                results["findings"].append(_empty_finding(
+                    doc_type, _prev, _curr,
+                    "No legal proceedings in %s — not enough filings to compare." % doc_type))
         # Limit to top 5 proceedings per finding by priority
             for finding in results["findings"]:
                 if len(finding["proceedings"]) > 5:
                     priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
                     finding["proceedings"].sort(key=lambda x: priority_order.get(x.get("priority", "MEDIUM"), 1))
                     finding["proceedings"] = finding["proceedings"][:5]
-        # Add SEC links to all proceedings
-        for finding in results["findings"]:
-            for proc in finding.get("proceedings", []):
-                # Build URL from the current filing info stored in the finding
-                curr_acc = finding.get("current_accession", "")
-                if curr_acc:
-                    cik_int_clean = int(cik) if cik else 0
-                    acc_no_dash = curr_acc.replace("-", "")
-                    primary_doc = finding.get("primary_document", "")
-                    if cik_int_clean and acc_no_dash and primary_doc:
-                        proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int_clean}/{acc_no_dash}/{primary_doc}"
-        # Add EDGAR links to all proceedings
+        # WS3: attach separate current + prior EDGAR URLs to each finding and each
+        # proceeding, so the UI can render two links per row (prior quote + current
+        # quote), each pointing at its own filing.
         for finding in results["findings"]:
             cik_int = int(finding.get("cik", "0")) if finding.get("cik") else 0
-            acc = finding.get("current_accession", "")
-            doc = finding.get("current_primary_doc", "")
-            if cik_int and acc and doc:
-                acc_no_dash = acc.replace("-", "")
-                for proc in finding.get("proceedings", []):
-                    proc["edgar_url"] = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_no_dash}/{doc}"
+            curr_acc = finding.get("current_accession", "")
+            curr_doc = finding.get("current_primary_doc", "")
+            prior_acc = finding.get("prior_accession", "")
+            prior_doc = finding.get("prior_primary_doc", "")
+            curr_url = ""
+            prior_url = ""
+            if cik_int and curr_acc and curr_doc:
+                curr_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{curr_acc.replace('-', '')}/{curr_doc}"
+            if cik_int and prior_acc and prior_doc:
+                prior_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{prior_acc.replace('-', '')}/{prior_doc}"
+            finding["current_edgar_url"] = curr_url
+            finding["prior_edgar_url"] = prior_url
+            for proc in finding.get("proceedings", []):
+                proc["edgar_url"] = curr_url
+                proc["prior_edgar_url"] = prior_url
+        _emit("Legal proceedings review complete.", "done")
         return results
 
 
-def track_legal(ticker: str) -> Dict:
-    return LegalProceedingsTracker().track(ticker)
+def track_legal(ticker: str, progress=None) -> Dict:
+    return LegalProceedingsTracker().track(ticker, progress=progress)
 
 
 if __name__ == "__main__":

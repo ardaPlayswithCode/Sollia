@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -7,57 +7,92 @@ const defaultAgents = [
   { id: 'promise_audit', name: 'Promise Audit' },
   { id: 'legal_proceedings', name: 'Legal Proceedings' },
 ]
+const AGENT_LABELS = Object.fromEntries(defaultAgents.map(a => [a.id, a.name]))
+
+// Milestone styling — qualitative kinds emitted by the backend (never internals)
+const KIND_EMOJI = { search: '🔍', fetch: '📑', analyze: '⚖️', align: '🧭', flag: '⚠️', done: '✅', info: '•' }
+const KIND_COLOR = {
+  search: 'text-blue-300', fetch: 'text-cyan-300', analyze: 'text-violet-300',
+  align: 'text-indigo-300', flag: 'text-amber-300', done: 'text-emerald-300', info: 'text-slate-400',
+}
 
 export default function App() {
   const [ticker, setTicker] = useState('F')
   const [year, setYear] = useState(2025)
-  const [selected, setSelected] = useState(['legal_proceedings'])
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings'])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
+  const [exportData, setExportData] = useState(null)
   const [error, setError] = useState(null)
-  const [log, setLog] = useState([])
+  const [agentLogs, setAgentLogs] = useState({})
+  const esRef = useRef(null)
+
+  // Tidy up any open stream on unmount
+  useEffect(() => () => { if (esRef.current) esRef.current.close() }, [])
 
   function toggleAgent(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id])
-    setResult(null)
-    setError(null)
+    setResult(null); setExportData(null); setError(null)
   }
 
-  async function runAnalysis() {
+  function runAnalysis() {
     if (!ticker.trim() || selected.length === 0 || loading) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    setLog([])
-    try {
-      const res = await fetch(`${API_BASE}/api/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year })
+    if (esRef.current) esRef.current.close()
+    setLoading(true); setError(null); setResult(null); setExportData(null)
+
+    const seed = {}
+    selected.forEach(id => { seed[id] = { name: AGENT_LABELS[id] || id, status: 'queued', logs: [] } })
+    setAgentLogs(seed)
+
+    fetch(`${API_BASE}/api/analyze/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year }),
+    })
+      .then(r => { if (!r.ok) throw new Error('Server error: ' + r.status); return r.json() })
+      .then(({ run_id }) => {
+        const es = new EventSource(`${API_BASE}/api/analyze/stream/${run_id}`)
+        esRef.current = es
+        es.onmessage = (e) => {
+          let ev
+          try { ev = JSON.parse(e.data) } catch { return }
+          if (ev.type === 'progress') {
+            setAgentLogs(prev => {
+              const next = { ...prev }
+              for (const [aid, a] of Object.entries(ev.agents || {})) {
+                const cur = next[aid] || { name: a.name, status: a.status, logs: [] }
+                next[aid] = {
+                  name: a.name || cur.name,
+                  status: a.status || cur.status,
+                  logs: a.new_logs && a.new_logs.length ? [...cur.logs, ...a.new_logs] : cur.logs,
+                }
+              }
+              return next
+            })
+          } else if (ev.type === 'complete') {
+            setResult(ev.result); setExportData(ev.export); setLoading(false); es.close()
+          } else if (ev.type === 'error') {
+            setError(ev.message || 'Analysis error')
+            if (ev.result) setResult(ev.result)
+            if (ev.export) setExportData(ev.export)
+            setLoading(false); es.close()
+          }
+        }
+        es.onerror = () => { setError('Stream connection lost'); setLoading(false); es.close() }
       })
-      if (!res.ok) throw new Error('Server error: ' + res.status)
-      const data = await res.json()
-      setResult(data)
-      if (data.log) {
-        data.log.forEach((l, i) => setTimeout(() => setLog(prev => [...prev, l]), i * 30))
-      }
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+      .catch(e => { setError(e.message); setLoading(false) })
   }
 
-  // Keyboard shortcut
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Enter' && ticker.trim() && selected.length > 0 && !loading) runAnalysis()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [ticker, selected, loading])
+  }, [ticker, selected, loading, year])
 
   const showYear = selected.includes('corporate_discrepancy')
+  const hasActivity = Object.keys(agentLogs).length > 0
 
   return (
     <div className="min-h-screen bg-[#06080D] text-white font-sans">
@@ -122,10 +157,24 @@ export default function App() {
         )}
 
         {/* EMPTY STATE */}
-        {!result && !loading && !error && (
+        {!result && !loading && !error && !hasActivity && (
           <div className="text-center py-20">
             <p className="text-slate-600 text-lg">Enter a ticker, select agents, and click Analyze</p>
             <p className="text-slate-800 text-sm mt-2">or press Enter</p>
+          </div>
+        )}
+
+        {/* AGENT ACTIVITY — per-agent collapsible live logs (default collapsed) */}
+        {hasActivity && (
+          <div className="mb-6">
+            <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">
+              Agent Activity {loading && <span className="text-blue-400 normal-case tracking-normal ml-1">· live</span>}
+            </label>
+            <div className="space-y-2">
+              {selected.filter(id => agentLogs[id]).map(id => (
+                <AgentLog key={id} agent={agentLogs[id]} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -135,24 +184,28 @@ export default function App() {
             {/* SCORE CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {result.corporate_discrepancy && (
-                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.final_score || result.corporate_discrepancy.score || 50} signal={result.corporate_discrepancy.score >= 70 ? 'BEARISH' : result.corporate_discrepancy.score >= 50 ? 'NEUTRAL' : 'BULLISH'} />
+                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score || 50} signal={(result.corporate_discrepancy.score || 50) >= 62 ? 'BEARISH' : (result.corporate_discrepancy.score || 50) < 39 ? 'BULLISH' : 'NEUTRAL'} />
               )}
               {result.promise_audit && (
-                <ScoreBox label="Promise Audit" score={result.promise_audit.score || 50} signal={result.promise_audit.score >= 70 ? 'BULLISH' : result.promise_audit.score >= 40 ? 'NEUTRAL' : 'BEARISH'} />
+                <ScoreBox label="Promise Audit" score={result.promise_audit.score || 50} signal={(result.promise_audit.score || 50) >= 62 ? 'BULLISH' : (result.promise_audit.score || 50) < 39 ? 'BEARISH' : 'NEUTRAL'} />
               )}
               {result.legal_proceedings && (
-                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score || 50} signal={result.legal_proceedings.agent3_score >= 60 ? 'BULLISH' : result.legal_proceedings.agent3_score <= 40 ? 'BEARISH' : 'NEUTRAL'} />
+                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score || 50} signal={(result.legal_proceedings.agent3_score || 50) >= 60 ? 'BULLISH' : (result.legal_proceedings.agent3_score || 50) <= 40 ? 'BEARISH' : 'NEUTRAL'} />
               )}
             </div>
 
             {/* AGENT 1 - Corporate Discrepancy */}
             {result.corporate_discrepancy && (
-              <Card title="Corporate Discrepancy" subtitle={`Score: ${result.corporate_discrepancy.final_score || result.corporate_discrepancy.score || '—'}`}>
+              <Card title="Corporate Discrepancy" subtitle={`Score: ${result.corporate_discrepancy.score ?? '—'} · ${result.corporate_discrepancy.total_aligned_pairs ?? 0} aligned passages`}>
+                {(result.corporate_discrepancy.top_discrepancies || []).length === 0 && (
+                  <p className="text-slate-600 text-sm">No material cross-document discrepancies surfaced.</p>
+                )}
                 {(result.corporate_discrepancy.top_discrepancies || []).slice(0, 5).map((d, i) => (
-                  <Row key={i} badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair?.replace(/_/g, ' ')}>
+                  <Row key={i} badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair_display || d.pair?.replace(/_/g, ' ')}>
+                    {d.same_filing && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400">SAME FILING — DOWNRANKED</span>}
                     <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
-                    <Quote text={d.source_a?.sentence_text} url={d.source_a?.htm_link || d.source_a?.edgar_url} label={d.source_a?.document_type} />
-                    <Quote text={d.source_b?.sentence_text} url={d.source_b?.htm_link || d.source_b?.edgar_url} label={d.source_b?.document_type} />
+                    <Quote text={d.source_a?.sentence_text} url={d.source_a?.edgar_url || d.source_a?.htm_link} label={d.source_a?.document_type} />
+                    <Quote text={d.source_b?.sentence_text} url={d.source_b?.edgar_url || d.source_b?.htm_link} label={d.source_b?.document_type} />
                   </Row>
                 ))}
               </Card>
@@ -161,11 +214,11 @@ export default function App() {
             {/* AGENT 2 - Promise Audit */}
             {result.promise_audit && (
               <Card title="Promise Audit" subtitle={`${result.promise_audit.total_promises_extracted || 0} promises · ${result.promise_audit.total_kept || 0} kept · ${result.promise_audit.total_broken || 0} broken`}>
-                {(result.promise_audit.top_promises || []).slice(0, 5).map((p, i) => (
+                {(result.promise_audit.top_promises || []).map((p, i) => (
                   <Row key={i} badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
                     <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
                     <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
-                    <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>
+                    {p.reasoning && <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>}
                   </Row>
                 ))}
               </Card>
@@ -176,33 +229,30 @@ export default function App() {
               <Card title="Legal Proceedings" subtitle={`${result.legal_proceedings.findings?.length || 0} filing types compared`}>
                 {(result.legal_proceedings.findings || []).map((f, i) => (
                   <div key={i} className="mb-4">
-                    <p className="text-slate-400 text-xs font-semibold mb-2">{f.doc_type}: {f.prior_date} → {f.current_date} | Score: {f.agent3_score}</p>
-                    <p className="text-slate-500 text-xs mb-2">{f.summary}</p>
-                    {(f.proceedings || []).slice(0, 5).map((p, j) => (
-                      <Row key={j} badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name}>
-                        <Quote text={p.prior_quote || p.prior_text} label="Prior" />
-                        <Quote text={p.current_quote || p.current_text} label="Current" url={p.edgar_url} />
-                        {p.liability_change && <p className="text-slate-500 text-xs">Liability: {p.liability_change}</p>}
-                        {p.obfuscation_detected && <span className="text-amber-400 text-[10px] font-bold">⚠ OBFUSCATION</span>}
-                      </Row>
-                    ))}
+                    <p className="text-slate-400 text-xs font-semibold mb-2">
+                      {f.doc_type}{f.prior_date ? `: ${f.prior_date} → ${f.current_date}` : ''} · Score: {f.agent3_score}
+                    </p>
+                    {(!f.proceedings || f.proceedings.length === 0) ? (
+                      <p className="text-slate-600 text-xs italic">{f.summary || `No legal proceedings in ${f.doc_type}`}</p>
+                    ) : (
+                      <>
+                        {f.summary && <p className="text-slate-500 text-xs mb-2">{f.summary}</p>}
+                        {f.proceedings.slice(0, 5).map((p, j) => (
+                          <Row key={j} badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
+                            <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" />
+                            <Quote text={p.current_quote || p.current_text} url={p.edgar_url} label="Current" />
+                            {p.liability_change && <p className="text-slate-500 text-xs mt-1">Liability: {p.liability_change}</p>}
+                          </Row>
+                        ))}
+                      </>
+                    )}
                   </div>
                 ))}
               </Card>
             )}
 
-            {/* LOG */}
-            {log.length > 0 && (
-              <Card title="Agent Log">
-                <div className="max-h-48 overflow-y-auto space-y-1">
-                  {log.map((l, i) => (
-                    <p key={i} className="text-slate-600 text-xs font-mono">
-                      <span className="text-slate-500">[{l.speaker}]</span> {l.message}
-                    </p>
-                  ))}
-                </div>
-              </Card>
-            )}
+            {/* JSON EXPORT — clean, analyst-ready schema */}
+            <JsonPanel data={exportData} ticker={result.ticker} />
           </div>
         )}
       </div>
@@ -210,7 +260,64 @@ export default function App() {
   )
 }
 
-// Simple components
+// ── Inline components ─────────────────────────────────────────────────────────
+
+function AgentLog({ agent }) {
+  const [open, setOpen] = useState(false)
+  const logs = agent.logs || []
+  const last = logs[logs.length - 1]
+  const dot = agent.status === 'running' ? 'text-blue-400' : agent.status === 'complete' ? 'text-emerald-400' : agent.status === 'error' ? 'text-red-400' : 'text-slate-600'
+  const glyph = agent.status === 'running' ? '●' : agent.status === 'complete' ? '✓' : agent.status === 'error' ? '✗' : '○'
+  return (
+    <div className="border border-white/[0.06] rounded-xl overflow-hidden bg-[#0A0B14]">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02] text-left">
+        <span className={`text-[10px] ${dot} ${agent.status === 'running' ? 'animate-pulse' : ''}`}>{glyph}</span>
+        <span className="text-sm font-semibold text-slate-300">{agent.name}</span>
+        <span className="text-slate-600 text-[10px] uppercase tracking-wide">{agent.status}</span>
+        <span className="text-slate-500 text-xs ml-auto truncate max-w-[55%]">{last ? `${KIND_EMOJI[last.kind] || '•'} ${last.message}` : '…'}</span>
+        <span className="text-slate-600 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="px-4 py-2 bg-[#04060C] max-h-56 overflow-y-auto space-y-1 font-mono text-xs border-t border-white/5">
+          {logs.length === 0 && <p className="text-slate-600">No activity yet.</p>}
+          {logs.map((l, i) => (
+            <p key={i} className={KIND_COLOR[l.kind] || 'text-slate-400'}>
+              <span className="text-slate-600">[{l.ts}]</span> {KIND_EMOJI[l.kind] || '•'} {l.message}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function JsonPanel({ data, ticker }) {
+  const [view, setView] = useState(false)
+  const [copied, setCopied] = useState(false)
+  if (!data) return null
+  const text = JSON.stringify(data, null, 2)
+  const download = () => {
+    const blob = new Blob([text], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `sollia_${(ticker || 'export').toLowerCase()}.json`; a.click()
+    URL.revokeObjectURL(url)
+  }
+  const copy = () => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  return (
+    <Card title="Export" subtitle="Clean, analyst-ready JSON — drop into Excel or a terminal">
+      <div className="flex gap-3 mb-3">
+        <button onClick={() => setView(v => !v)} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">{view ? 'Hide' : 'View JSON'}</button>
+        <button onClick={copy} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">{copied ? 'Copied!' : 'Copy'}</button>
+        <button onClick={download} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">Download</button>
+      </div>
+      {view && (
+        <pre className="bg-[#04060C] rounded-xl p-4 max-h-96 overflow-auto text-xs text-emerald-400/80 whitespace-pre-wrap border border-white/5 font-mono">{text}</pre>
+      )}
+    </Card>
+  )
+}
+
 function ScoreBox({ label, score, signal }) {
   const colors = { BULLISH: '#22C55E', NEUTRAL: '#F59E0B', BEARISH: '#EF4444', HOLD: '#F59E0B' }
   const color = colors[signal] || '#F59E0B'
@@ -237,7 +344,7 @@ function Row({ badge, badgeText, meta, children }) {
   const colors = {
     RED: 'bg-red-500/10 text-red-400', YELLOW: 'bg-amber-500/10 text-amber-400', GREEN: 'bg-emerald-500/10 text-emerald-400',
     KEPT: 'bg-emerald-500/10 text-emerald-400', PARTIAL: 'bg-amber-500/10 text-amber-400', BROKEN: 'bg-red-500/10 text-red-400',
-    PENDING: 'bg-slate-500/10 text-slate-400', UNRESOLVED: 'bg-slate-500/10 text-slate-400',
+    PENDING: 'bg-slate-500/10 text-slate-400', UNRESOLVED: 'bg-slate-500/10 text-slate-400', STALE: 'bg-orange-500/10 text-orange-400',
     NEW: 'bg-red-500/10 text-red-400', ESCALATED: 'bg-red-500/10 text-red-400', SETTLED: 'bg-emerald-500/10 text-emerald-400',
     DISMISSED: 'bg-emerald-500/10 text-emerald-400', UNCHANGED: 'bg-slate-500/10 text-slate-400', QUIETLY_REMOVED: 'bg-amber-500/10 text-amber-400',
   }
@@ -245,7 +352,7 @@ function Row({ badge, badgeText, meta, children }) {
     <div className="border border-white/[0.04] rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
         {badge && <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${colors[badge] || 'bg-slate-500/10 text-slate-400'}`}>{badgeText || badge}</span>}
-        {meta && <span className="text-slate-600 text-[10px] ml-auto">{meta}</span>}
+        {meta && <span className="text-slate-600 text-[10px] ml-auto truncate max-w-[60%]">{meta}</span>}
       </div>
       {children}
     </div>
@@ -254,11 +361,12 @@ function Row({ badge, badgeText, meta, children }) {
 
 function Quote({ text, url, label }) {
   if (!text) return null
-  const words = text.split(' ').slice(0, 5).join(' ') + '...'
+  const words = text.split(/\s+/)
+  const shown = words.slice(0, 8).join(' ') + (words.length > 8 ? '…' : '')
   return (
-    <div className="text-slate-400 text-sm flex items-center gap-2">
+    <div className="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
       <span className="text-slate-600 text-[10px] uppercase font-semibold">{label || 'Source'}</span>
-      <span className="italic">"{words}"</span>
+      <span className="italic">"{shown}"</span>
       {url && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-[10px] hover:underline">View ↗</a>
       )}

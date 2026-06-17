@@ -55,46 +55,66 @@ def run_selected_agents(
     ticker: str,
     selected: List[str],
     year: int = 2023,
+    emit=None,
 ):
-    """Run selected agents and return results with weights."""
-    results = {}
+    """Run selected agents CONCURRENTLY and return (results, weights, logs).
+
+    WS6: the agents are independent, so the I/O-bound work in Promise Audit and
+    Legal Proceedings overlaps Corporate Discrepancy's embedding/compute instead of
+    waiting for it — wall-clock time drops to roughly max(agent) instead of the sum.
+    emit(agent_id, message, kind) is an optional live-progress callback (WS5)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _progress_for(agent_id):
+        if emit is None:
+            return None
+        return lambda message, kind="info": emit(agent_id, message, kind)
+
+    runners = {
+        "corporate_discrepancy": lambda: AGENTS["corporate_discrepancy"].runner(
+            ticker, year, progress=_progress_for("corporate_discrepancy")),
+        "promise_audit": lambda: AGENTS["promise_audit"].runner.run(
+            ticker, progress=_progress_for("promise_audit")),
+        "legal_proceedings": lambda: AGENTS["legal_proceedings"].runner(
+            ticker, progress=_progress_for("legal_proceedings")),
+    }
+    to_run = {aid: fn for aid, fn in runners.items() if aid in selected and aid in AGENTS}
+
+    raw: Dict[str, dict] = {}
+    if to_run:
+        with ThreadPoolExecutor(max_workers=len(to_run)) as ex:
+            futures = {ex.submit(fn): aid for aid, fn in to_run.items()}
+            for fut in as_completed(futures):
+                aid = futures[fut]
+                try:
+                    raw[aid] = fut.result()
+                except Exception as e:
+                    raw[aid] = {"error": str(e)}
+                    if emit:
+                        emit(aid, "Run failed: %s" % str(e)[:160], "flag")
+
+    results: Dict[str, dict] = {}
+    weights: Dict[str, float] = {}
     all_logs: List[AgentLogMessage] = []
-    weights = {}
-
-    if "corporate_discrepancy" in selected:
-        agent = AGENTS["corporate_discrepancy"]
-        result = agent.runner(ticker, year)
-        if "error" not in result:
-            results["corporate_discrepancy"] = result
-            weights["corporate_discrepancy"] = agent.weight
+    # Deterministic ordering regardless of which agent finished first.
+    for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings"]:
+        result = raw.get(aid)
+        if not result:
+            continue
+        agent = AGENTS[aid]
+        if "error" in result:
+            if emit:
+                emit(aid, "Could not complete: %s" % str(result.get("error"))[:160], "flag")
+            continue
+        results[aid] = result
+        weights[aid] = agent.weight
+        if aid == "corporate_discrepancy":
             for log_entry in result.get("agent_log", []):
-                all_logs.append(AgentLogMessage(
-                    speaker="Corporate Discrepancy",
-                    message=log_entry.get("detail", "")
-                ))
-
-    if "promise_audit" in selected:
-        agent = AGENTS["promise_audit"]
-        result = agent.runner.run(ticker)
-        if "error" not in result:
-            results["promise_audit"] = result
-            weights["promise_audit"] = agent.weight
-            all_logs.append(AgentLogMessage(
-                speaker="Promise Audit",
-                message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"
-            ))
-
-    if "legal_proceedings" in selected:
-        agent = AGENTS["legal_proceedings"]
-        result = agent.runner(ticker)
-        if "error" not in result:
-            results["legal_proceedings"] = result
-            weights["legal_proceedings"] = agent.weight
-            agent3_score = result.get("agent3_score", 50)
-            all_logs.append(AgentLogMessage(
-                speaker="Legal Proceedings",
-                message=f"Legal analysis complete. Score: {agent3_score:.1f}%"
-            ))
+                all_logs.append(AgentLogMessage(speaker="Corporate Discrepancy", message=log_entry.get("detail", "")))
+        elif aid == "promise_audit":
+            all_logs.append(AgentLogMessage(speaker="Promise Audit", message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"))
+        elif aid == "legal_proceedings":
+            all_logs.append(AgentLogMessage(speaker="Legal Proceedings", message=f"Legal analysis complete. Score: {result.get('agent3_score', 50):.1f}%"))
 
     return results, weights, all_logs
 
