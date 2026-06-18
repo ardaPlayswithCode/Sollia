@@ -28,23 +28,44 @@ _CIK_CACHE: Dict[str, str] = {}
 
 
 def _dedup_proceedings(proceedings: List[Dict]) -> List[Dict]:
-    """Merge duplicate legal proceedings/events that describe the SAME matter.
+    """Merge legal proceedings/events that cite the SAME passage.
 
-    Keyed by case_name (10-K/10-Q) or, for 8-K events, description. When two
-    entries share a key, keep the richer one — the entry carrying BOTH a prior
-    and a current quote beats one that only has the current quote (e.g. the
-    duplicate BlueOval SK DOE Loan 8-K finding). Entries with no usable key are
-    left untouched.
+    The identity of a legal matter is the QUOTE it cites, NOT its label. Keying
+    on case_name caused two opposite failures:
+
+      * Under-merge (duplicate 8-K finding): a single 8-K passage is often
+        extracted under several different item headers — the BlueOval SK DOE Loan
+        appears as "Entry into a Material Definitive Agreement", "Creation of a
+        Direct Financial Obligation" AND "Other Events", all quoting the same
+        sentence. Different case_names => kept as 3 duplicates.
+      * Over-merge (lost sub-findings): several DISTINCT disclosures share one
+        case_name — Ford lists multiple "Asbestos Litigation" passages. Same
+        case_name => the richer entry evicted the others, dropping e.g. "Annual
+        payout and defense costs may become significant in the future."
+
+    Keying on the (normalized) quote fixes both: identical quotes collapse to one
+    matter; distinct quotes are preserved. Quote-less entries fall back to their
+    case label so genuinely empty duplicates still collapse, but a substantial
+    quote is NEVER merged across two different passages. When two entries share a
+    key the richer one (more of prior_quote / current_quote / amount) is kept.
     """
     if not isinstance(proceedings, list):
         return proceedings
 
+    def _norm(value) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
     def _key(item):
         if not isinstance(item, dict):
             return None
-        raw = item.get("case_name") or item.get("description") or ""
-        norm = re.sub(r"[^a-z0-9]+", " ", str(raw).lower()).strip()
-        return norm or None
+        # A substantial cited passage is the strongest identity signal.
+        for field in ("current_quote", "prior_quote"):
+            q = _norm(item.get(field))
+            if len(q) >= 30:
+                return ("quote", q[:160])
+        # No usable quote — fall back to the case/event label.
+        label = _norm(item.get("case_name") or item.get("description"))
+        return ("label", label) if label else None
 
     def _richness(item):
         score = 0
@@ -55,7 +76,7 @@ def _dedup_proceedings(proceedings: List[Dict]) -> List[Dict]:
         return score
 
     result: List[Dict] = []
-    index_by_key: Dict[str, int] = {}
+    index_by_key: Dict[tuple, int] = {}
     for item in proceedings:
         k = _key(item)
         if k is None:

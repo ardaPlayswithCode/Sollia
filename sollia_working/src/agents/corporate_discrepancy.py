@@ -72,6 +72,11 @@ def _strip_html(html: str) -> str:
 class SECFilingFetcher:
     def __init__(self):
         self._last_request = 0.0
+        # Set by align_fiscal_year()/fetch_all_texts() so _get_all_filings() and
+        # _fetch_htm() can hit the shared .cache/ instead of re-downloading from SEC.
+        # Previously this was only ever READ (getattr default None) and NEVER set,
+        # so every run bypassed the cache → 60s SEC download phase + timeouts.
+        self._current_ticker = None
 
     def _rate_limit(self):
         elapsed = time.time() - self._last_request
@@ -194,6 +199,8 @@ class SECFilingFetcher:
         return ""
 
     def align_fiscal_year(self, ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
+        # Enable cache reads in _get_all_filings()/_fetch_htm() for this run.
+        self._current_ticker = ticker
         cik = get_cik(ticker)
         if not cik:
             return None, f"CIK not found for {ticker}"
@@ -585,8 +592,9 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
         return None, error
     
     fetcher = SECFilingFetcher()
+    fetcher._current_ticker = ticker  # enable cache reads in _fetch_htm()/_get_all_filings()
     cik = result["cik"]
-    
+
     # 10-K text
     ten_k = result["ten_k"]
     html = fetcher._fetch_htm(cik, ten_k["accession_number"], ten_k["primary_document"])

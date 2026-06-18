@@ -176,11 +176,24 @@ def normalize_unicode(text: str) -> str:
 
 
 def strip_safe_harbour(text: str) -> str:
-    """Remove safe harbour / forward-looking statement disclaimer paragraphs."""
-    pattern = r'(?i)(this\s+(report|filing|document|presentation|transcript|call).*?forward[- ]?looking.*?(?=\n\n|\n\s*\n|$))'
-    text = re.sub(pattern, '', text, flags=re.DOTALL)
-    pattern2 = r'(?i)(safe\s+harbor?.*?under\s+the\s+private\s+securities.*?(?=\n\n|\n\s*\n|$))'
-    text = re.sub(pattern2, '', text, flags=re.DOTALL)
+    """Remove the safe-harbour / forward-looking-statement disclaimer SENTENCE.
+
+    The spans are length- and boundary-bounded ([^.\\n]{0,N}) so that a document
+    with no paragraph breaks (e.g. HTML-stripped SEC filings, whose whitespace has
+    been collapsed) can never have the disclaimer match run to EOF and delete the
+    entire body. Earlier this used `.*?...(?=\\n\\n|$)` with re.DOTALL, which on a
+    filing with no blank lines greedily consumed everything to the end of the
+    document — collapsing a 2,800-sentence 10-K down to 5 sentences.
+    """
+    # "This report/filing/... contains ... forward-looking statements ..."
+    pattern = (
+        r'(?i)\bthis\s+(?:report|filing|document|annual\s+report|quarterly\s+report|'
+        r'presentation|transcript|call)\b[^.\n]{0,150}?forward[- ]?looking[^.\n]{0,400}?\.'
+    )
+    text = re.sub(pattern, ' ', text)
+    # "Safe harbor ... under the Private Securities Litigation Reform Act ..."
+    pattern2 = r'(?i)\bsafe\s+harbor?\b[^.\n]{0,200}?under\s+the\s+private\s+securities[^.\n]{0,400}?\.'
+    text = re.sub(pattern2, ' ', text)
     return text
 
 
@@ -404,7 +417,11 @@ def _call_llm(prompt: str, max_tokens: int = 2000) -> Tuple[str, str]:
                 return text, "llama-3.1-8b-instant"
         except Exception as e2:
             logger.warning("Direct Groq also failed: %s", str(e2)[:80])
-        raise
+        # Contract: callers (Stage 1 loop, Stage 2 batches) branch on an EMPTY
+        # response and fall through to the deterministic net. A transient provider
+        # failure (e.g. a 429 burst) must degrade gracefully, never crash the whole
+        # agent — previously this re-raised and took Stage 1 down with it.
+        return "", ""
 
 def _build_stage1_prompt(batch: List[Dict[str, Any]]) -> str:
     """Build the Stage 1 LLM prompt for promise extraction."""
