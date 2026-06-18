@@ -664,7 +664,7 @@ class PromiseAuditAgent:
         
         # Stage 2 LLM matching (unified call, split if >10k words)
         evidence_results = []
-        if unique_evidence and False:  # Skip LLM, use deterministic only
+        if unique_evidence:  # Use LLM for evidence matching
             prompt = build_stage2_prompt(promises, unique_evidence)
             words = len(prompt.split())
             
@@ -714,7 +714,7 @@ class PromiseAuditAgent:
                             continue
                         evidence_results.append({
                             "promise_id": p.get("promise_id", ""),
-                            "status": "KEPT",
+                            "status": "UNRESOLVED",
                             "evidence_text": best_ev.get("sentence", ""),
                             "evidence_filing": best_ev.get("filing_type", ""),
                             "evidence_date": best_ev.get("filing_date", ""),
@@ -1207,6 +1207,8 @@ def search_evidence_candidates(
         acc = filing.get('accession_number', '')
         from src.providers.filings.sec_edgar import get_cached_text
         text = get_cached_text(promise.get("source", {}).get("ticker", ""), acc)
+        if text:
+            text = strip_html(text)  # WS: strip XBRL/HTML before sentence splitting
         if not text:
             continue
         
