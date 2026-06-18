@@ -3,15 +3,24 @@ execution, and a clean analyst-facing JSON export schema.
 
 The export schema is intentionally generic: top-level identity + signal + score,
 plus an ``agents`` map. Each agent entry has the same shape
-(``name``/``score``/``signal``/``top_findings[]`` where each finding is
-``type``/``severity``/``summary``/``citations[]`` and each citation is
-``document``/``excerpt``/``url``). Adding more agents just adds keys under
-``agents`` — no schema change, and no internal fields (weights, similarity,
-embeddings, chunk ids, cache keys) ever leak out.
+(``name``/``score``/``signal``/``top_findings[]``). Each finding carries
+``type``/``severity``/``summary``/``citations[]`` plus the context a downstream
+risk system needs to act without opening the UI: ``severity_reason`` (why a
+high/medium finding matters) and one agent-specific qualifier — ``pair`` (which
+two documents were compared), ``evidence_quality`` (how well evidence backs a
+promise), or ``change_direction`` (whether a legal change improves or worsens the
+picture). Each citation carries ``role`` (which side of the comparison it is),
+``document``/``excerpt``/``url``, and ``verified`` (whether the excerpt was
+confirmed present in the cited filing).
+
+Adding more agents just adds keys under ``agents`` — no schema change, and no
+internal fields (weights, similarity, embeddings, chunk ids, score components,
+cache keys, model names, thresholds) ever leak out.
 """
 from __future__ import annotations
 
 import copy
+import re
 import threading
 import time
 import uuid
@@ -154,21 +163,117 @@ def _sev_label(sev) -> str:
     return s if s in ("high", "medium", "low") else "medium"
 
 
+def _sig_words(text: str) -> set:
+    """Significant (4+ char, non-stopword) tokens — used to gauge how strongly a
+    piece of evidence overlaps the claim it is meant to support."""
+    stop = {"that", "this", "with", "from", "have", "will", "were", "which",
+            "their", "would", "there", "about", "than", "these", "those",
+            "been", "into", "such", "also", "they", "them", "your", "our"}
+    return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower())
+            if len(w) > 3 and w not in stop}
+
+
+def _corporate_severity_reason(dtype: str, severity: str) -> str:
+    """One sentence on why a cross-filing discrepancy warrants attention, keyed to
+    the kind of contradiction (no fabricated magnitudes — only what we know)."""
+    reasons = {
+        "numerical_contradiction": "Reported financial figures conflict between the two filings.",
+        "narrative_contradiction": "Management's account of the same matter conflicts between filings.",
+        "omission_discrepancy": "Material information disclosed in one filing is absent from the other.",
+        "qualitative_tension": "The characterization of the same matter diverges between filings.",
+    }
+    return reasons.get(dtype, "Cross-filing inconsistency material enough to warrant review.")
+
+
+def _promise_severity_reason(category: str, status: str) -> str:
+    """One sentence on why a tracked promise matters — its domain plus its outcome."""
+    domain = {
+        "revenue": "revenue commitment", "product": "product roadmap commitment",
+        "margin": "margin commitment", "rd": "R&D commitment",
+        "market": "market-expansion commitment",
+    }.get(str(category or "").lower(), "strategic commitment")
+    s = str(status or "").upper()
+    if s == "KEPT":
+        return "Material %s with confirmed follow-through in a later filing." % domain
+    if s == "BROKEN":
+        return "Material %s with no or contradicting follow-through." % domain
+    if s == "PARTIAL":
+        return "Material %s only partially fulfilled in later filings." % domain
+    if s in ("PENDING", "STALE"):
+        return "Material %s still open with no confirming evidence yet." % domain
+    return "Material %s with no located follow-through evidence." % domain
+
+
+def _legal_severity_reason(status: str) -> str:
+    """One sentence on why a legal disclosure warrants attention. Covers both
+    changes (new/escalated/settled/…) and material proceedings carried forward
+    unchanged, so the wording never contradicts the status."""
+    return {
+        "NEW": "New legal proceeding or material agreement disclosed.",
+        "ESCALATED": "Previously disclosed proceeding escalated in scope or exposure.",
+        "SETTLED": "Legal proceeding reported as settled.",
+        "DISMISSED": "Legal proceeding reported as dismissed.",
+        "QUIETLY_REMOVED": "Previously disclosed proceeding no longer appears, without explanation.",
+        "AMENDED": "Material agreement amended between filings.",
+        "TERMINATED": "Material agreement terminated between filings.",
+        "UNCHANGED": "Material legal proceeding remains open and unresolved between filings.",
+        "NO_UPDATE": "Material legal proceeding remains open and unresolved between filings.",
+    }.get(str(status or "").upper(), "Material legal matter significant enough to warrant review.")
+
+
+# settled/dismissed read as improving; new/escalated/quietly-removed as worsening;
+# everything else neutral. Mirrors Agent 3's own scoring polarity.
+_LEGAL_DIRECTION = {
+    "SETTLED": "positive", "DISMISSED": "positive",
+    "NEW": "negative", "ESCALATED": "negative", "QUIETLY_REMOVED": "negative",
+}
+
+
+def _change_direction(status: str) -> str:
+    return _LEGAL_DIRECTION.get(str(status or "").upper(), "neutral")
+
+
+def _evidence_quality(promise: dict) -> str:
+    """How strongly the located evidence backs the promise: significant-word overlap
+    with the matcher's own confidence as a tie-break. 'strong' clearly confirms,
+    'partial' shares some terms, 'weak' has minimal or no overlap / no evidence."""
+    evidence = (promise.get("evidence_text") or "").strip()
+    if not evidence:
+        return "weak"
+    overlap = len(_sig_words(promise.get("text", "")) & _sig_words(evidence))
+    confidence = str(promise.get("confidence", "")).lower()
+    if overlap >= 5 or confidence == "high":
+        return "strong"
+    if overlap >= 3 or confidence == "medium":
+        return "partial"
+    return "weak"
+
+
 def _findings_corporate(result: dict):
     out = []
     for d in result.get("top_discrepancies", []):
         cits = []
-        for s in (d.get("source_a"), d.get("source_b")):
+        for role, s in (("source_a", d.get("source_a")), ("source_b", d.get("source_b"))):
             if s and (s.get("sentence_text") or s.get("edgar_url")):
-                cits.append({"document": s.get("document_type", ""),
-                             "excerpt": s.get("sentence_text", ""),
-                             "url": s.get("edgar_url", "")})
-        out.append({
-            "type": d.get("discrepancy_type", "discrepancy"),
-            "severity": _sev_label(d.get("severity")),
-            "summary": d.get("reasoning", ""),
-            "citations": cits,
-        })
+                excerpt = s.get("sentence_text", "")
+                cits.append({
+                    "role": role,
+                    "document": s.get("document_type", ""),
+                    "excerpt": excerpt,
+                    "url": s.get("edgar_url", ""),
+                    # sentence_text is pulled verbatim from the parsed filing chunk,
+                    # so a non-empty excerpt is confirmed present in the document.
+                    "verified": bool(excerpt.strip()),
+                })
+        severity = _sev_label(d.get("severity"))
+        dtype = d.get("discrepancy_type", "discrepancy")
+        finding = {"type": dtype, "severity": severity}
+        if severity in ("high", "medium"):
+            finding["severity_reason"] = _corporate_severity_reason(dtype, severity)
+        finding["pair"] = d.get("pair_display") or d.get("pair", "").replace("_vs_", " vs ")
+        finding["summary"] = d.get("reasoning", "")
+        finding["citations"] = cits
+        out.append(finding)
     return out
 
 
@@ -177,17 +282,32 @@ def _findings_promise(result: dict):
     for p in result.get("top_promises", []):
         cits = []
         if p.get("text"):
-            cits.append({"document": p.get("promise_source") or "Promise",
-                         "excerpt": p.get("text", ""), "url": p.get("promise_url", "")})
+            # The extractor only keeps a promise whose text matches a real filing
+            # sentence (verbatim or fuzzy-replaced), so the excerpt is document-backed.
+            cits.append({
+                "role": "promise",
+                "document": p.get("promise_source") or "Promise",
+                "excerpt": p.get("text", ""),
+                "url": p.get("promise_url", ""),
+                "verified": bool((p.get("text") or "").strip()),
+            })
         if p.get("evidence_text"):
-            cits.append({"document": p.get("evidence_filing") or "Evidence",
-                         "excerpt": p.get("evidence_text", ""), "url": p.get("evidence_url", "")})
-        out.append({
-            "type": "promise_" + str(p.get("status", "unresolved")).lower(),
-            "severity": _sev_label(p.get("severity")),
-            "summary": p.get("reasoning") or p.get("text", ""),
-            "citations": cits,
-        })
+            cits.append({
+                "role": "evidence",
+                "document": p.get("evidence_filing") or "Evidence",
+                "excerpt": p.get("evidence_text", ""),
+                "url": p.get("evidence_url", ""),
+                "verified": bool((p.get("evidence_text") or "").strip()),
+            })
+        severity = _sev_label(p.get("severity"))
+        status = str(p.get("status", "unresolved"))
+        finding = {"type": "promise_" + status.lower(), "severity": severity}
+        if severity in ("high", "medium"):
+            finding["severity_reason"] = _promise_severity_reason(p.get("category"), status)
+        finding["evidence_quality"] = _evidence_quality(p)
+        finding["summary"] = p.get("reasoning") or p.get("text", "")
+        finding["citations"] = cits
+        out.append(finding)
     return out
 
 
@@ -196,24 +316,40 @@ def _findings_legal(result: dict):
     for f in result.get("findings", []):
         dt = f.get("doc_type", "")
         if f.get("empty") or not f.get("proceedings"):
-            out.append({"type": "no_change", "severity": "low",
-                        "summary": f.get("summary") or ("No legal proceedings in %s" % dt),
-                        "citations": []})
+            out.append({
+                "type": "no_change", "severity": "low",
+                "change_direction": "neutral",
+                "summary": f.get("summary") or ("No legal proceedings in %s" % dt),
+                "citations": [],
+            })
             continue
         for p in f.get("proceedings", []):
             cits = []
             if p.get("prior_quote"):
-                cits.append({"document": "%s (prior %s)" % (dt, f.get("prior_date", "")),
-                             "excerpt": p.get("prior_quote", ""), "url": p.get("prior_edgar_url", "")})
+                cits.append({
+                    "role": "prior",
+                    "document": "%s (prior %s)" % (dt, f.get("prior_date", "")),
+                    "excerpt": p.get("prior_quote", ""),
+                    "url": p.get("prior_edgar_url", ""),
+                    "verified": bool(p.get("prior_quote_verified")),
+                })
             if p.get("current_quote"):
-                cits.append({"document": "%s (current %s)" % (dt, f.get("current_date", "")),
-                             "excerpt": p.get("current_quote", ""), "url": p.get("edgar_url", "")})
-            out.append({
-                "type": str(p.get("status") or p.get("change_type") or "update").lower(),
-                "severity": _sev_label(p.get("priority")),
-                "summary": p.get("case_name") or p.get("description") or f.get("summary", ""),
-                "citations": cits,
-            })
+                cits.append({
+                    "role": "current",
+                    "document": "%s (current %s)" % (dt, f.get("current_date", "")),
+                    "excerpt": p.get("current_quote", ""),
+                    "url": p.get("edgar_url", ""),
+                    "verified": bool(p.get("current_quote_verified")),
+                })
+            status = p.get("status") or p.get("change_type") or "update"
+            severity = _sev_label(p.get("priority"))
+            finding = {"type": str(status).lower(), "severity": severity}
+            if severity in ("high", "medium"):
+                finding["severity_reason"] = _legal_severity_reason(status)
+            finding["change_direction"] = _change_direction(status)
+            finding["summary"] = p.get("case_name") or p.get("description") or f.get("summary", "")
+            finding["citations"] = cits
+            out.append(finding)
     return out
 
 

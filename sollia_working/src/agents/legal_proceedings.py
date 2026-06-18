@@ -27,6 +27,31 @@ logger = logging.getLogger(__name__)
 _CIK_CACHE: Dict[str, str] = {}
 
 
+def _quote_in_text(quote: Optional[str], source: Optional[str]) -> bool:
+    """True when an LLM-supplied quote is actually present in the source filing text.
+
+    The 10-K/10-Q/8-K comparison prompts ask the model for "exact text", but that is
+    a claim, not a guarantee. We confirm it with a pure string match (normalizing
+    smart quotes, whitespace and case) so the JSON export can mark which citations a
+    consumer can trust without re-reading the filing. For long quotes a representative
+    prefix is enough, so minor trailing edits (ellipses, truncation) aren't penalized.
+    No model call and no cache write — safe to run on every proceeding."""
+    if not quote or not source:
+        return False
+
+    def _norm(s: str) -> str:
+        s = re.sub(r"[‘’“”\"']", "", s)
+        return re.sub(r"\s+", " ", s).strip().lower()
+
+    q, src = _norm(quote), _norm(source)
+    if not q or not src:
+        return False
+    if q in src:
+        return True
+    probe = q[:60]
+    return len(probe) >= 20 and probe in src
+
+
 def _dedup_proceedings(proceedings: List[Dict]) -> List[Dict]:
     """Merge legal proceedings/events that cite the SAME passage.
 
@@ -446,6 +471,14 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             proceedings_list = data.get('proceedings', data.get('events', []))
                             # Merge duplicate findings that describe the same case/event.
                             proceedings_list = _dedup_proceedings(proceedings_list)
+                            # Confirm each LLM-quoted excerpt is actually present in the
+                            # source filing text, so the export can flag trustworthy
+                            # citations. Pure string match — no model call, no cache write.
+                            for _proc in proceedings_list:
+                                _proc["current_quote_verified"] = _quote_in_text(
+                                    _proc.get("current_quote"), curr_text)
+                                _proc["prior_quote_verified"] = _quote_in_text(
+                                    _proc.get("prior_quote"), prev_text)
                             # Add score
                             score = self._calculate_score(proceedings_list)
                             # Store in findings with score
