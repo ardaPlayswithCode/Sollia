@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 STAGE1_BATCH_SIZE = 15
 STAGE2_MAX_WORDS = 10000
 STAGE2_TOP_N_CANDIDATES = 20
+STAGE2_EVIDENCE_CAP = 60  # max evidence sentences per LLM batch (keeps prompt under Groq's limit)
 KEYWORD_MATCH_THRESHOLD = 2
 NUMERIC_TOLERANCE = 0.05
 DUPLICATE_SIMILARITY_THRESHOLD = 0.80
@@ -155,8 +156,9 @@ def normalize_whitespace(text: str) -> str:
 
 
 def normalize_unicode(text: str) -> str:
-    """NFKC normalize + manual fixes for common SEC characters."""
-    import unicodedata
+    """Decode HTML entities, NFKC normalize, + manual fixes for common SEC characters."""
+    import unicodedata, html
+    text = html.unescape(text)  # &#160; / &amp; / &#8217; -> real characters
     text = unicodedata.normalize('NFKC', text)
     replacements = {
         '\xa0': ' ',      # non-breaking space
@@ -629,12 +631,16 @@ class PromiseAuditAgent:
             if acc:
                 text = get_cached_text(ticker, acc)
                 if text:
+                    # Cached text may be raw SEC HTML/XBRL (Agents 1/3 store raw HTML
+                    # under the same accession key). Strip tags, XBRL and entities so
+                    # evidence excerpts read as prose, not <ix:nonFraction>/&#160;.
+                    text = clean_document(text)
                     tokenized_docs[acc] = split_sentences(text)
         for t in transcripts:
             t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
             content_text = getattr(t, 'content', '') or ''
             if content_text and t_date:
-                tokenized_docs[f"TR_{t_date}"] = split_sentences(content_text)
+                tokenized_docs[f"TR_{t_date}"] = split_sentences(clean_document(content_text, doc_type="transcript"))
         self._add_log("STAGE2", f"Pre-tokenized {len(tokenized_docs)} documents")
         
         # Collect all evidence candidates using pre-tokenized cache
@@ -653,6 +659,10 @@ class PromiseAuditAgent:
             if key not in seen_texts:
                 seen_texts.add(key)
                 unique_evidence.append(ev)
+        # Stable GLOBAL evidence id so LLM references resolve even when evidence is
+        # sent in per-category batches (batch-local enumeration would not line up).
+        for _i, _ev in enumerate(unique_evidence):
+            _ev["evid_id"] = f"EVID_{_i:03d}"
         
         self._add_log("STAGE2_DETERMINISTIC", f"Found {len(unique_evidence)} unique evidence candidates")
         # Build URL lookup from evidence candidates for later matching
@@ -662,78 +672,92 @@ class PromiseAuditAgent:
             if key:
                 evidence_url_lookup[key] = ev.get("htm_url", "")
         
-        # Stage 2 LLM matching (unified call, split if >10k words)
+        # ── Stage 2 LLM matching ───────────────────────────────
+        # Always split by category once we have more than 5 promises: the unified
+        # prompt otherwise overflows Groq's context window, the call fails, and we
+        # fall through to the deterministic net. Per-category batches stay small.
         evidence_results = []
-        if unique_evidence:  # Use LLM for evidence matching
-            prompt = build_stage2_prompt(promises, unique_evidence)
-            words = len(prompt.split())
-            
-            if words <= STAGE2_MAX_WORDS:
-                response, model = _call_llm(prompt, max_tokens=4000)
-                if response:
-                    evidence_results = parse_stage2_response(response, promises)
-                    self._add_log("STAGE2_LLM", f"Matched {len(evidence_results)} promises to evidence (model: {model})")
-            else:
-                self._add_log("STAGE2_LLM", f"Prompt too large ({words} words), splitting by category...")
-                # Split by category
-                categories = set(p.get("category", "other") for p in promises)
+
+        def _run_llm_batch(batch_promises, batch_evidence):
+            # Keep the prompt within Groq's window: cap to the most-relevant evidence.
+            if len(batch_evidence) > STAGE2_EVIDENCE_CAP:
+                batch_evidence = sorted(
+                    batch_evidence, key=lambda e: e.get("match_count", 0), reverse=True
+                )[:STAGE2_EVIDENCE_CAP]
+            prompt = build_stage2_prompt(batch_promises, batch_evidence)
+            try:
+                resp, model = _call_llm(prompt, max_tokens=4000)
+            except Exception as e:
+                # An LLM failure must NOT crash the agent — defer to the deterministic
+                # net below so every promise still gets an honest verdict.
+                self._add_log("STAGE2_LLM", f"LLM batch failed ({str(e)[:50]}) — deferring to deterministic net")
+                return []
+            if resp:
+                self._add_log("STAGE2_LLM", f"Matched {len(batch_promises)} promises (model: {model})")
+                return parse_stage2_response(resp, batch_promises)
+            return []
+
+        if unique_evidence:
+            if len(promises) > 5:
+                categories = sorted(set(p.get("category", "other") for p in promises))
+                self._add_log("STAGE2_LLM", f"{len(promises)} promises > 5 — splitting across {len(categories)} categories")
                 for cat in categories:
-                    cat_promises = [p for p in promises if p.get("category") == cat]
-                    cat_evidence = [e for e in unique_evidence 
-                                   if e.get("promise_id") in {p["promise_id"] for p in cat_promises}]
-                    cat_prompt = build_stage2_prompt(cat_promises, cat_evidence)
-                    response, model = _call_llm(cat_prompt, max_tokens=4000)
-                    if response:
-                        cat_results = parse_stage2_response(response, cat_promises)
-                        evidence_results.extend(cat_results)
-                self._add_log("STAGE2_LLM", f"Split across {len(categories)} categories, matched {len(evidence_results)}")
+                    cat_promises = [p for p in promises if p.get("category", "other") == cat]
+                    cat_pids = {p.get("promise_id", "") for p in cat_promises}
+                    cat_evidence = [e for e in unique_evidence if e.get("promise_id") in cat_pids]
+                    evidence_results.extend(_run_llm_batch(cat_promises, cat_evidence))
+                self._add_log("STAGE2_LLM", f"Category-split matching produced {len(evidence_results)} results")
+            else:
+                evidence_results = _run_llm_batch(promises, unique_evidence)
         else:
             self._add_log("STAGE2_LLM", "No evidence candidates found — all promises unresolved")
-        
-        # Deterministic fallback: if LLM returned no results, try text-based matching directly
-            if not evidence_results:
-                self._add_log("STAGE2_LLM", "LLM returned no results — using deterministic fallback")
-                for p in promises:
-                    promise_text = p.get("text", "")[:100].lower()
-                    best_score = 0
-                    best_ev = None
-                    for ev in unique_evidence:
-                        ev_text = ev.get("sentence", "").lower()
-                        # Simple overlap score
-                        words = set(promise_text.split())
-                        ev_words = set(ev_text.split())
-                        overlap = len(words & ev_words)
-                        if overlap > best_score:
-                            best_score = overlap
-                            best_ev = ev
-                    if best_ev and best_score >= 2:
-                        ev_url = best_ev.get("htm_url", "")
-                        promise_url = p.get("promise_url", "")
-                        if ev_url and ev_url == promise_url:
-                            # Same filing — skip
-                            continue
-                        evidence_results.append({
-                            "promise_id": p.get("promise_id", ""),
-                            "status": "UNRESOLVED",
-                            "evidence_text": best_ev.get("sentence", ""),
-                            "evidence_filing": best_ev.get("filing_type", ""),
-                            "evidence_date": best_ev.get("filing_date", ""),
-                            "evidence_url": ev_url,
-                            "evidence_id": "",
-                            "confidence": "low",
-                            "reasoning": "Deterministic keyword match"
-                        })
-                    else:
-                        evidence_results.append({
-                            "promise_id": p.get("promise_id", ""),
-                            "status": "UNRESOLVED",
-                            "evidence_text": "",
-                            "evidence_filing": "",
-                            "evidence_date": "",
-                            "evidence_id": "",
-                            "confidence": "low",
-                            "reasoning": "No evidence found"
-                        })
+
+        # ── Deterministic safety net (3-tier, honest) ────────────────
+        # Runs for any promise the LLM left unmatched (failure, overflow, or no
+        # evidence). NEVER blanket-marks KEPT: tiers by significant-word overlap.
+        #   >= 5 overlap -> KEPT, 3-4 -> PARTIAL, < 3 -> UNRESOLVED.
+        _STOP = {"will", "that", "this", "with", "from", "have", "been", "were",
+                 "into", "your", "their", "would", "shall", "which", "about",
+                 "company", "during", "these", "those", "such", "other"}
+
+        def _sig_words(s):
+            return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower())
+                    if len(w) > 3 and w not in _STOP}
+
+        resolved_pids = {r.get("promise_id", "") for r in evidence_results}
+        unmatched = [p for p in promises if p.get("promise_id", "") not in resolved_pids]
+        if unmatched:
+            self._add_log("STAGE2_FALLBACK", f"Deterministic fallback for {len(unmatched)} unmatched promises")
+            for p in unmatched:
+                p_words = _sig_words(p.get("text", ""))
+                best_score, best_ev = 0, None
+                for ev in unique_evidence:
+                    epid = ev.get("promise_id")
+                    if epid and epid != p.get("promise_id", ""):
+                        continue
+                    overlap = len(p_words & _sig_words(ev.get("sentence", "")))
+                    if overlap > best_score:
+                        best_score, best_ev = overlap, ev
+                # Drop circular self-matches (evidence drawn from the promise's own filing).
+                if best_ev and best_ev.get("htm_url", "") == p.get("promise_url", ""):
+                    best_ev, best_score = None, 0
+                if best_ev and best_score >= 5:
+                    status, reason = "KEPT", "Strong keyword overlap with later filing"
+                elif best_ev and best_score >= 3:
+                    status, reason = "PARTIAL", "Partial keyword overlap with later filing"
+                else:
+                    status, reason, best_ev = "UNRESOLVED", "No corroborating evidence in later filings", None
+                evidence_results.append({
+                    "promise_id": p.get("promise_id", ""),
+                    "status": status,
+                    "evidence_text": best_ev.get("sentence", "") if best_ev else "",
+                    "evidence_filing": best_ev.get("filing_type", "") if best_ev else "",
+                    "evidence_date": best_ev.get("filing_date", "") if best_ev else "",
+                    "evidence_url": best_ev.get("htm_url", "") if best_ev else "",
+                    "evidence_id": "",
+                    "confidence": "low",
+                    "reasoning": reason,
+                })
         
         # ── Step 6: Merge evidence results into promises ──────────────────
         evidence_map = {r["promise_id"]: r for r in evidence_results}
@@ -746,7 +770,7 @@ class PromiseAuditAgent:
             ev_id = match.get("evidence_id", "")
             matched_ev = None
             for ev in unique_evidence:
-                ev_sid = f"EVID_{unique_evidence.index(ev):03d}"
+                ev_sid = ev.get("evid_id") or f"EVID_{unique_evidence.index(ev):03d}"
                 if ev_id == ev_sid:
                     matched_ev = ev
                     break
@@ -779,6 +803,19 @@ class PromiseAuditAgent:
                 p["status"] = "PENDING"
                 p["reasoning"] = "Evidence from same filing as promise — excluded" 
             
+            # Circular self-match: evidence text that is the SAME sentence as the
+            # promise (the disclosure copied verbatim into a later filing) is not
+            # independent confirmation, even when the filing URL differs.
+            _et = re.sub(r"\s+", " ", (p.get("evidence_text") or "")).strip().lower()[:100]
+            _pt = re.sub(r"\s+", " ", (p.get("text") or "")).strip().lower()[:100]
+            if _et and _et == _pt:
+                p["status"] = "UNRESOLVED"
+                p["evidence_text"] = ""
+                p["evidence_url"] = ""
+                p["evidence_filing"] = ""
+                p["evidence_date"] = ""
+                p["reasoning"] = "Same disclosure found in later filing — no independent confirmation."
+
             # If no evidence match and deadline is in the past, mark as BROKEN
             if p["status"] == "UNRESOLVED" and p.get("deadline_date"):
                 try:
@@ -835,6 +872,7 @@ class PromiseAuditAgent:
             "total_partial": status_counts["PARTIAL"],
             "total_pending": status_counts["PENDING"],
             "total_stale": status_counts.get("STALE", 0),
+            "total_unresolved": status_counts["UNRESOLVED"],
             "score": score,
             "top_promises": [
                 {
@@ -1283,8 +1321,8 @@ def build_stage2_prompt(
     # Build evidence section
     evidence_str = ""
     for i, ev in enumerate(all_evidence):
-        eid = f"EVID_{i:03d}"
-        evidence_str += f"{eid} [{ev.get('filing_type', '')} {ev.get('filing_date', '')}]: \"{ev.get('sentence', '')}\"\n\n"
+        eid = ev.get("evid_id") or f"EVID_{i:03d}"
+        evidence_str += f"{eid} [{ev.get('filing_type', '')} {ev.get('filing_date', '')}]: \"{(ev.get('sentence', '') or '')[:400]}\"\n\n"
     
     prompt = f"""You are a forensic financial analyst. Match management promises 
 to evidence from later filings, and determine the outcome of each.

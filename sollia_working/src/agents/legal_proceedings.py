@@ -27,6 +27,50 @@ logger = logging.getLogger(__name__)
 _CIK_CACHE: Dict[str, str] = {}
 
 
+def _dedup_proceedings(proceedings: List[Dict]) -> List[Dict]:
+    """Merge duplicate legal proceedings/events that describe the SAME matter.
+
+    Keyed by case_name (10-K/10-Q) or, for 8-K events, description. When two
+    entries share a key, keep the richer one — the entry carrying BOTH a prior
+    and a current quote beats one that only has the current quote (e.g. the
+    duplicate BlueOval SK DOE Loan 8-K finding). Entries with no usable key are
+    left untouched.
+    """
+    if not isinstance(proceedings, list):
+        return proceedings
+
+    def _key(item):
+        if not isinstance(item, dict):
+            return None
+        raw = item.get("case_name") or item.get("description") or ""
+        norm = re.sub(r"[^a-z0-9]+", " ", str(raw).lower()).strip()
+        return norm or None
+
+    def _richness(item):
+        score = 0
+        for field in ("prior_quote", "current_quote", "amount"):
+            v = item.get(field) if isinstance(item, dict) else None
+            if v and str(v).strip().lower() not in ("", "null", "none"):
+                score += 1
+        return score
+
+    result: List[Dict] = []
+    index_by_key: Dict[str, int] = {}
+    for item in proceedings:
+        k = _key(item)
+        if k is None:
+            result.append(item)
+            continue
+        if k in index_by_key:
+            existing = result[index_by_key[k]]
+            if _richness(item) > _richness(existing):
+                result[index_by_key[k]] = item  # replace with the richer duplicate
+        else:
+            index_by_key[k] = len(result)
+            result.append(item)
+    return result
+
+
 class LegalProceedingsTracker:
     def __init__(self):
         self.cache_root = "/Users/ardaturgut/Desktop/Desktop - Arda’s Mac Studio/Sollia/sollia_working/.cache"
@@ -379,6 +423,8 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             data = json.loads(cleaned)
                             # Extract proceedings list (for 10-K/10-Q) or events (for 8-K)
                             proceedings_list = data.get('proceedings', data.get('events', []))
+                            # Merge duplicate findings that describe the same case/event.
+                            proceedings_list = _dedup_proceedings(proceedings_list)
                             # Add score
                             score = self._calculate_score(proceedings_list)
                             # Store in findings with score

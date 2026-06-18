@@ -491,6 +491,7 @@ def chunk_paragraph(text: str, max_chars: int = 800, min_chars: int = 300) -> Li
 def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: str = '', primary_doc: str = '') -> List[dict]:
     sections = split_sections(text)
     chunks, char_count = [], 0
+    gi = 0  # running index → guarantees a UNIQUE chunk_id (section_name[:30] collides)
     for section in sections:
         paras = split_paragraphs(section["text"])
         for pi, para in enumerate(paras):
@@ -499,7 +500,7 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
                 sents = split_sentences(sub)
                 char_count += len(sub)
                 chunks.append({
-                    "chunk_id": f"{doc_type}_{section['section_name'][:30]}_{pi}_{si}",
+                    "chunk_id": f"{doc_type}_{section['section_name'][:30]}_{pi}_{si}_{gi}",
                     "text": sub,
                     "sentences": sents,
                     "metadata": {
@@ -514,6 +515,7 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
                     },
                     "embedding": None
                 })
+                gi += 1
     return chunks
 
 
@@ -927,6 +929,15 @@ Each document type has a DIFFERENT reporting period. Numbers from different cade
 
 **When in doubt about the time period, DO NOT flag. Err on the side of caution.**
 
+## FORECAST vs ACTUAL — DO NOT FLAG TENSE DIFFERENCES AS CONTRADICTIONS
+If one document uses FUTURE/forward-looking tense (expect, anticipate, plan, intend,
+will, project, guidance, outlook) and another uses PAST/actual tense (experienced,
+resulted, was, incurred, reported), and BOTH refer to the SAME event or metric, this
+is NOT a contradiction — it is a forecast later being confirmed or reported as actuals.
+Example: a 10-Q saying "we expect lower production" and a later 10-K saying "we
+experienced lower production" describe the SAME outcome at two points in time. DO NOT
+flag forecast-vs-actual pairs as discrepancies.
+
 ## IGNORE SHARED BOILERPLATE
 Many passages open with identical generic phrasing ("Subject to...", "We may...",
 "As a result,...", "Forward-looking statements...", "The Company..."). A shared
@@ -1034,21 +1045,71 @@ def _validate_llm_response(response, batch):
         if qb and not words_in_text(qb, text_b):
             continue
         
-        # Try to find correct sentence indices by locating key words
+        # Map each quoted phrase to the sentence that ACTUALLY contains it.
+        # The previous logic keyed on only the FIRST WORD of the quote (e.g. "The",
+        # "We", "During") and took the first hit, which routinely cited the wrong
+        # sentence. Match the FULL quote instead, and only override the LLM's index
+        # when a confident match is found; otherwise keep what the LLM returned.
         sents_a = pa.get("sentences", []) if isinstance(pa, dict) else []
         sents_b = pb.get("sentences", []) if isinstance(pb, dict) else []
-        
-        key_a = qa.split()[0] if qa else ""
-        key_b = qb.split()[0] if qb else ""
-        
-        for i, s in enumerate(sents_a):
-            if key_a and key_a.lower() in s.lower():
-                entry["sentence_index_a"] = i
-                break
-        for i, s in enumerate(sents_b):
-            if key_b and key_b.lower() in s.lower():
-                entry["sentence_index_b"] = i
-                break
+
+        def _norm(s):
+            return re.sub(r"\s+", " ", s or "").strip().lower()
+
+        def _locate_sentence(quote, sents, fallback):
+            """Return (index, grounded): the sentence that actually contains the
+            quote, and whether it was confidently located (vs. falling back to the
+            LLM-provided index)."""
+            if not quote or not sents:
+                return fallback, False
+            nq = _norm(quote)
+            if not nq:
+                return fallback, False
+            # 1) Strongest signal: the quote is contained in a sentence (or, for a
+            #    long quote spanning sentences, the sentence is contained in it).
+            for i, s in enumerate(sents):
+                ns = _norm(s)
+                if ns and (nq in ns or (len(nq) > 40 and ns in nq)):
+                    return i, True
+            # 2) Otherwise pick the sentence sharing the most significant words.
+            q_words = {w for w in re.findall(r"[a-z0-9]+", nq) if len(w) > 3}
+            if not q_words:
+                return fallback, False
+            best_i, best_overlap = fallback, 0
+            for i, s in enumerate(sents):
+                s_words = {w for w in re.findall(r"[a-z0-9]+", _norm(s)) if len(w) > 3}
+                overlap = len(q_words & s_words)
+                if overlap > best_overlap:
+                    best_i, best_overlap = i, overlap
+            # Require a meaningful overlap before trusting the location.
+            if best_overlap >= max(2, (len(q_words) + 1) // 2):
+                return best_i, True
+            return fallback, False
+
+        idx_a, grounded_a = _locate_sentence(qa, sents_a, entry.get("sentence_index_a") or 0)
+        idx_b, grounded_b = _locate_sentence(qb, sents_b, entry.get("sentence_index_b") or 0)
+
+        # Reject discrepancies whose SUBSTANTIVE quote cannot be grounded in the cited
+        # passage's own sentences. These are misaligned/hallucinated claims — e.g. a
+        # "purchase compliance credits from third parties" quote cited against a
+        # vehicle-depreciation chunk — for which no correct excerpt exists. Empty
+        # quotes (the absent side of an omission_discrepancy) are exempt.
+        def _substantive(q):
+            return len({w for w in re.findall(r"[a-z0-9]+", _norm(q)) if len(w) > 3}) >= 3
+        if (qa and _substantive(qa) and not grounded_a) or (qb and _substantive(qb) and not grounded_b):
+            continue
+
+        # Drop spurious numerical_contradictions whose "conflicting figures" are bare
+        # reference/footnote integers (e.g. "53" vs "39") carrying no magnitude — an
+        # analyst would dismiss these instantly.
+        if entry.get("discrepancy_type") == "numerical_contradiction":
+            def _bare_number(q):
+                return bool(re.fullmatch(r"\d{1,4}", re.sub(r"[^0-9a-z]", "", _norm(q))))
+            if _bare_number(qa) or _bare_number(qb):
+                continue
+
+        entry["sentence_index_a"] = idx_a
+        entry["sentence_index_b"] = idx_b
 
         # WS2: guarantee a substantive reasoning string. The LLM sometimes echoes
         # the example placeholder ("short") or returns an empty/truncated value.
