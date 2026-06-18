@@ -66,6 +66,17 @@ CATEGORY_WEIGHTS = {
     "REWORDED": 20,
 }
 
+# Conditional-threat phrases. When the NEW quote contains one of these and the
+# OLD quote does not, a "REWORDED" change is really an escalation — the new
+# filing added a stated adverse consequence. Used by the re-classification pass.
+_THREAT_PHRASES = (
+    "if we are unable",
+    "if we fail",
+    "could have an adverse effect",
+    "may not be able",
+    "may result in",
+)
+
 # EXACT prompt template (do not edit the wording). The two placeholders are
 # substituted with .replace() — NOT str.format()/f-strings — because the JSON
 # example below contains literal { } braces.
@@ -248,6 +259,22 @@ def _verify_quote(quote: Optional[str], source: str) -> Optional[bool]:
     cut = max(1, int(len(q) * 0.8))
     probe = q[:cut]
     return len(probe) >= 20 and probe in src
+
+
+# Characters that legitimately end a quoted sentence/clause. Anything else means
+# the model cut the quote off at its max_tokens limit.
+_SENTENCE_END = (".", "?", "!", '"', ")", "]", "”", "’")
+
+
+def _mark_if_truncated(quote: Optional[str]) -> str:
+    """Append an ellipsis to a quote that doesn't end on sentence-ending
+    punctuation. The comparison prompt can hit max_tokens and cut a quote off
+    mid-sentence; without this the UI shows a sentence that just stops, which
+    reads like a bug rather than a truncation."""
+    q = (quote or "").strip()
+    if q and not q.endswith(_SENTENCE_END):
+        return q + "…"
+    return q
 
 
 def _estimate_risk_count(full_html: str, section_text: str) -> int:
@@ -484,8 +511,10 @@ class RiskFactorAgent:
             result["summary"] = "Risk factor comparison returned an unparseable result."
             return result
 
-        # Drop duplicate citations, then rank, cap at top 10, verify, link.
+        # Drop duplicate citations, recover escalations the model under-classified,
+        # then rank, cap at top 10, verify, link.
         changes = self._dedup_changes(changes)
+        changes = self._reclassify_escalations(changes)
         changes.sort(key=lambda c: c.get("rank", 999) if isinstance(c.get("rank"), int) else 999)
         changes = changes[:10]
 
@@ -500,12 +529,15 @@ class RiskFactorAgent:
             # A finding is "verified" when every quote it actually carries checks
             # out (a missing OLD quote on a NEW risk does not count against it).
             verified = (old_ok is not False) and (new_ok is not False)
+            # Mark quotes the model cut off at max_tokens (on both the verified
+            # and unverified paths) so a sentence that just stops reads as
+            # truncated, not broken.
             top_changes.append({
                 "rank": i,
                 "category": category,
                 "risk_title": (c.get("risk_title") or "").strip(),
-                "old_quote": old_q,
-                "new_quote": new_q,
+                "old_quote": _mark_if_truncated(old_q),
+                "new_quote": _mark_if_truncated(new_q),
                 "summary": (c.get("summary") or "").strip(),
                 "old_url": old_url,
                 "new_url": new_url,
@@ -528,6 +560,30 @@ class RiskFactorAgent:
         _emit("Risk factor scan complete — %d change(s), %d quote-verified. Score %d (%s)." % (
             len(top_changes), verified_n, result["score"], result["signal"]), "done")
         return result
+
+    @staticmethod
+    def _reclassify_escalations(changes: List[dict]) -> List[dict]:
+        """Deterministic safety net for the weaker fallback model, which sometimes
+        labels a genuine escalation as REWORDED. Promote a REWORDED change to
+        ESCALATED when the NEW quote either (a) adds conditional-threat language
+        the OLD quote lacks, or (b) expands the OLD quote (>1.5x its length and
+        fully contains it). Other categories are left untouched."""
+        for c in changes:
+            if str(c.get("category", "")).upper() != "REWORDED":
+                continue
+            old_q = (c.get("old_quote") or "").strip().lower()
+            new_q = (c.get("new_quote") or "").strip().lower()
+            if not new_q:
+                continue
+            added_threat = any(p in new_q and p not in old_q for p in _THREAT_PHRASES)
+            expanded = bool(old_q) and len(new_q) > len(old_q) * 1.5 and old_q in new_q
+            if added_threat or expanded:
+                c["category"] = "ESCALATED"
+                c["summary"] = (
+                    "Risk expanded — added conditional adverse-effect language."
+                    if added_threat else
+                    "Risk expanded — the new filing broadens the prior risk statement.")
+        return changes
 
     @staticmethod
     def _dedup_changes(changes: List[dict]) -> List[dict]:
