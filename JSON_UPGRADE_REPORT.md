@@ -196,5 +196,30 @@ correctly. The `strong`/`partial` quality and the `evidence` role are proven by 
 deterministic unit tests rather than this particular live run. When providers are
 healthy, those paths populate automatically — no further change needed.
 
+## Addendum — extensibility proven with a real 4th agent (`risk_factors`)
+
+While this work was in progress a fourth agent, **`risk_factors`** (Item 1A risk-factor
+changes between annual 10-Ks), was added to the codebase — registered in
+`backend/agents.py`, backed by `sollia_working/src/agents/risk_factors.py`, and wired
+into the export with its own `_findings_risk` builder. This is the exact "Agents 4–8"
+case the schema was designed for. **My export code required no changes to absorb it**
+(`build_clean_export` dispatches via `_FINDING_BUILDERS.get(aid)` / `AGENT_NAMES.get`).
+
+Verified end-to-end on `F` (ran the agent standalone to avoid the concurrent
+rate-limit; live server confirms all four agents are served):
+- Export entry present: `name="Risk Factors"`, `score=40.0`, `signal=NEUTRAL`, 10 findings.
+- New fields all correct: citation roles `old`/`new`, `change_direction` on every
+  finding, `severity_reason` on all 3 high/medium findings, every citation has `verified`.
+- **`verified`: 17 true / 1 false** — one LLM-supplied quote did not match the source
+  10-K and was correctly flagged `false`. The agent computes this with the same
+  honest pattern as legal (`_verify_quote` against the extracted Item 1A section,
+  setting `old_quote_verified` / `new_quote_verified`), and those intermediate flags
+  do **not** leak into the export.
+- Recursive walk + token scan on the risk entry: **zero internal leakage.**
+
+Sample: `{"type":"risk_new","severity":"high","severity_reason":"A new risk factor
+appeared that was absent from the prior 10-K.","change_direction":"negative", … }`.
+
 ## Server state
-The backend was restarted and is **running on :8000 with the updated code**.
+The backend is **running on :8000 with the current code, serving all four agents**
+(`corporate_discrepancy`, `promise_audit`, `legal_proceedings`, `risk_factors`).

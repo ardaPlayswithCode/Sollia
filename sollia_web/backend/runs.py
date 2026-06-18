@@ -31,6 +31,7 @@ AGENT_NAMES = {
     "corporate_discrepancy": "Corporate Discrepancy",
     "promise_audit": "Promise Audit",
     "legal_proceedings": "Legal Proceedings",
+    "risk_factors": "Risk Factors",
 }
 
 _RUNS: Dict[str, dict] = {}
@@ -150,6 +151,9 @@ def _agent_signal(aid: str, score: float) -> str:
         return "BULLISH" if score >= 62 else "BEARISH" if score < 39 else "NEUTRAL"
     if aid == "legal_proceedings":
         return "BULLISH" if score >= 60 else "BEARISH" if score <= 40 else "NEUTRAL"
+    if aid == "risk_factors":
+        # higher score means risks ESCALATED/appeared => more bearish
+        return "BEARISH" if score >= 65 else "BULLISH" if score <= 35 else "NEUTRAL"
     # corporate_discrepancy: a higher score means MORE discrepancies => more bearish
     return "BEARISH" if score >= 62 else "BULLISH" if score < 39 else "NEUTRAL"
 
@@ -353,10 +357,68 @@ def _findings_legal(result: dict):
     return out
 
 
+# A risk ESCALATING or appearing reads as worsening; softening or disappearing as
+# improving; a pure reword as neutral. Mirrors Agent 4's own scoring polarity.
+_RISK_DIRECTION = {
+    "ESCALATED": "negative", "NEW": "negative", "REMOVED": "negative",
+    "DE-ESCALATED": "positive", "REWORDED": "neutral",
+}
+
+_RISK_SEVERITY = {
+    "ESCALATED": "high", "NEW": "high", "REMOVED": "medium",
+    "DE-ESCALATED": "low", "REWORDED": "low",
+}
+
+
+def _risk_severity_reason(category: str) -> str:
+    """One sentence on why a change in Item 1A warrants attention, keyed to how
+    the risk language moved between the two annual filings."""
+    return {
+        "ESCALATED": "A previously disclosed risk's language strengthened, signaling a worsening situation.",
+        "NEW": "A new risk factor appeared that was absent from the prior 10-K.",
+        "REMOVED": "A risk factor from the prior 10-K no longer appears in the current filing.",
+        "DE-ESCALATED": "A previously disclosed risk's language softened, signaling a receding concern.",
+        "REWORDED": "A risk factor was restructured or reworded without a clear change in intensity.",
+    }.get(str(category or "").upper(), "Material change in Item 1A risk factors between annual filings.")
+
+
+def _findings_risk(result: dict):
+    out = []
+    for c in result.get("top_changes", []):
+        cits = []
+        if c.get("old_quote"):
+            cits.append({
+                "role": "old",
+                "document": "10-K (prior %s)" % result.get("old_filing_date", ""),
+                "excerpt": c.get("old_quote", ""),
+                "url": c.get("old_url", ""),
+                "verified": bool(c.get("old_quote_verified")),
+            })
+        if c.get("new_quote"):
+            cits.append({
+                "role": "new",
+                "document": "10-K (current %s)" % result.get("new_filing_date", ""),
+                "excerpt": c.get("new_quote", ""),
+                "url": c.get("new_url", ""),
+                "verified": bool(c.get("new_quote_verified")),
+            })
+        category = str(c.get("category", "")).upper()
+        severity = _RISK_SEVERITY.get(category, "medium")
+        finding = {"type": "risk_" + category.lower().replace("-", "_"), "severity": severity}
+        if severity in ("high", "medium"):
+            finding["severity_reason"] = _risk_severity_reason(category)
+        finding["change_direction"] = _RISK_DIRECTION.get(category, "neutral")
+        finding["summary"] = c.get("summary") or c.get("risk_title", "")
+        finding["citations"] = cits
+        out.append(finding)
+    return out
+
+
 _FINDING_BUILDERS = {
     "corporate_discrepancy": _findings_corporate,
     "promise_audit": _findings_promise,
     "legal_proceedings": _findings_legal,
+    "risk_factors": _findings_risk,
 }
 
 
@@ -415,6 +477,7 @@ def _build_rich_result(ticker: str, merged: dict, results: dict) -> dict:
         "corporate_discrepancy": _strip_internal(results.get("corporate_discrepancy")),
         "promise_audit": _strip_internal(results.get("promise_audit")),
         "legal_proceedings": _strip_internal(results.get("legal_proceedings")),
+        "risk_factors": _strip_internal(results.get("risk_factors")),
     }
 
 

@@ -6,6 +6,7 @@ const defaultAgents = [
   { id: 'corporate_discrepancy', name: 'Corporate Discrepancy' },
   { id: 'promise_audit', name: 'Promise Audit' },
   { id: 'legal_proceedings', name: 'Legal Proceedings' },
+  { id: 'risk_factors', name: 'Risk Factors' },
 ]
 const AGENT_LABELS = Object.fromEntries(defaultAgents.map(a => [a.id, a.name]))
 
@@ -19,7 +20,7 @@ const KIND_COLOR = {
 export default function App() {
   const [ticker, setTicker] = useState('F')
   const [year, setYear] = useState(2025)
-  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings'])
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors'])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [exportData, setExportData] = useState(null)
@@ -182,7 +183,7 @@ export default function App() {
         {result && (
           <div className="space-y-6">
             {/* SCORE CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {result.corporate_discrepancy && (
                 <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score || 50} signal={(result.corporate_discrepancy.score || 50) >= 62 ? 'BEARISH' : (result.corporate_discrepancy.score || 50) < 39 ? 'BULLISH' : 'NEUTRAL'} />
               )}
@@ -191,6 +192,9 @@ export default function App() {
               )}
               {result.legal_proceedings && (
                 <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score || 50} signal={(result.legal_proceedings.agent3_score || 50) >= 60 ? 'BULLISH' : (result.legal_proceedings.agent3_score || 50) <= 40 ? 'BEARISH' : 'NEUTRAL'} />
+              )}
+              {result.risk_factors && (
+                <ScoreBox label="Risk Factors" score={result.risk_factors.score || 50} signal={(result.risk_factors.score || 50) >= 65 ? 'BEARISH' : (result.risk_factors.score || 50) <= 35 ? 'BULLISH' : 'NEUTRAL'} />
               )}
             </div>
 
@@ -247,6 +251,23 @@ export default function App() {
                       </>
                     )}
                   </div>
+                ))}
+              </Card>
+            )}
+
+            {/* AGENT 4 - Risk Factors */}
+            {result.risk_factors && (
+              <Card title="Risk Factors" subtitle={`Item 1A delta · ${result.risk_factors.old_filing_date || '—'} → ${result.risk_factors.new_filing_date || '—'} · ${result.risk_factors.total_risks_old ?? 0}→${result.risk_factors.total_risks_new ?? 0} risks · ${result.risk_factors.changes_found || 0} changes`}>
+                {(result.risk_factors.top_changes || []).length === 0 && (
+                  <p className="text-slate-600 text-sm">{result.risk_factors.summary || 'No material changes in risk factors between the two 10-Ks.'}</p>
+                )}
+                {(result.risk_factors.top_changes || []).map((c, i) => (
+                  <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
+                    {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
+                    <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" />
+                    <Quote text={c.new_quote} url={c.new_url} label="New 10-K" />
+                    {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
+                  </Row>
                 ))}
               </Card>
             )}
@@ -347,6 +368,7 @@ function Row({ badge, badgeText, meta, children }) {
     PENDING: 'bg-slate-500/10 text-slate-400', UNRESOLVED: 'bg-slate-500/10 text-slate-400', STALE: 'bg-orange-500/10 text-orange-400',
     NEW: 'bg-red-500/10 text-red-400', ESCALATED: 'bg-red-500/10 text-red-400', SETTLED: 'bg-emerald-500/10 text-emerald-400',
     DISMISSED: 'bg-emerald-500/10 text-emerald-400', UNCHANGED: 'bg-slate-500/10 text-slate-400', QUIETLY_REMOVED: 'bg-amber-500/10 text-amber-400',
+    REMOVED: 'bg-amber-500/10 text-amber-400', 'DE-ESCALATED': 'bg-emerald-500/10 text-emerald-400', REWORDED: 'bg-slate-500/10 text-slate-400',
   }
   return (
     <div className="border border-white/[0.04] rounded-xl p-4">

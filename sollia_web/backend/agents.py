@@ -10,6 +10,7 @@ sys.path.insert(0, '/Users/ardaturgut/Desktop/Desktop - Arda\u2019s Mac Studio/S
 from src.agents.corporate_discrepancy import run_discrepancy_agent as run_corporate_discrepancy
 from src.agents.promise_audit import PromiseAuditAgent
 from src.agents.legal_proceedings import track_legal
+from src.agents.risk_factors import RiskFactorAgent
 from src.schemas import AgentLogMessage
 
 @dataclass
@@ -41,6 +42,13 @@ AGENTS: Dict[str, AgentDefinition] = {
         name="Legal Proceedings",
         description="Tracks legal proceeding changes across 10-K, 10-Q, and 8-K filings",
         runner=track_legal,
+        weight=0.5,
+    ),
+    "risk_factors": AgentDefinition(
+        id="risk_factors",
+        name="Risk Factors",
+        description="Tracks changes in Item 1A Risk Factors across 10-K filings",
+        runner=RiskFactorAgent(),
         weight=0.5,
     ),
 }
@@ -77,6 +85,8 @@ def run_selected_agents(
             ticker, progress=_progress_for("promise_audit")),
         "legal_proceedings": lambda: AGENTS["legal_proceedings"].runner(
             ticker, progress=_progress_for("legal_proceedings")),
+        "risk_factors": lambda: AGENTS["risk_factors"].runner.run(
+            ticker, progress=_progress_for("risk_factors")),
     }
     to_run = {aid: fn for aid, fn in runners.items() if aid in selected and aid in AGENTS}
 
@@ -97,7 +107,7 @@ def run_selected_agents(
     weights: Dict[str, float] = {}
     all_logs: List[AgentLogMessage] = []
     # Deterministic ordering regardless of which agent finished first.
-    for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings"]:
+    for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings", "risk_factors"]:
         result = raw.get(aid)
         if not result:
             continue
@@ -115,6 +125,8 @@ def run_selected_agents(
             all_logs.append(AgentLogMessage(speaker="Promise Audit", message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"))
         elif aid == "legal_proceedings":
             all_logs.append(AgentLogMessage(speaker="Legal Proceedings", message=f"Legal analysis complete. Score: {result.get('agent3_score', 50):.1f}%"))
+        elif aid == "risk_factors":
+            all_logs.append(AgentLogMessage(speaker="Risk Factors", message=f"Risk factor delta complete. Score: {result.get('score', 50):.1f}%"))
 
     return results, weights, all_logs
 
