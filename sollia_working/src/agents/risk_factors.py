@@ -62,10 +62,10 @@ LLM_MAX_TOKENS = 1800
 # REMOVED/DE-ESCALATED push DOWN (more BULLISH); REWORDED never moves it.
 # Mirrors the spec's table exactly — see _calculate_score.
 CATEGORY_IMPACT = {
-    "ESCALATED":    lambda rank: 12.0 - rank,          # rank 1 -> +11,  rank 10 -> +2
-    "NEW":          lambda rank: 8.0 - rank * 0.6,     # rank 1 -> +7.4, rank 10 -> +2
-    "REMOVED":      lambda rank: -(6.0 - rank * 0.4),  # rank 1 -> -5.6, rank 10 -> -2
-    "DE-ESCALATED": lambda rank: -(8.0 - rank * 0.6),  # rank 1 -> -7.4, rank 10 -> -2
+    "ESCALATED":    lambda rank: -(12.0 - rank),        # rank 1 -> -11,  rank 10 -> -2 (more risk = more bearish)
+    "NEW":          lambda rank: -(8.0 - rank * 0.6),   # rank 1 -> -7.4, rank 10 -> -2 (new risk = more bearish)
+    "REMOVED":      lambda rank: 6.0 - rank * 0.4,     # rank 1 -> +5.6, rank 10 -> +2 (removed risk = more bullish)
+    "DE-ESCALATED": lambda rank: 8.0 - rank * 0.6,     # rank 1 -> +7.4, rank 10 -> +2 (softer risk = more bullish)
     "REWORDED":     lambda rank: 0.0,                  # never moves the score
 }
 
@@ -438,12 +438,12 @@ class RiskFactorAgent:
 
     @staticmethod
     def _signal(score: int) -> str:
-        """Map a score to a signal: below 35 BULLISH, above 65 BEARISH,
+        """Map a score to a signal: below 35 BEARISH, above 65 BULLISH,
         35-65 (inclusive) NEUTRAL."""
         if score > 65:
-            return "BEARISH"
-        if score < 35:
             return "BULLISH"
+        if score < 35:
+            return "BEARISH"
         return "NEUTRAL"
 
     # ── main entry ────────────────────────────────────────────────────────────
