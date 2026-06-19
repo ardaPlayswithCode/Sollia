@@ -56,14 +56,17 @@ logger = logging.getLogger(__name__)
 MAX_SECTION_CHARS = 8000
 LLM_MAX_TOKENS = 1800
 
-# Significance weight per change category. A higher overall score => more/worse
-# risk disclosure => more BEARISH. Mirrors the spec exactly.
-CATEGORY_WEIGHTS = {
-    "ESCALATED": 100,
-    "NEW": 80,
-    "REMOVED": 60,
-    "DE-ESCALATED": 40,
-    "REWORDED": 20,
+# Per-finding score impact, as a function of the finding's 1-based rank. The
+# score starts neutral at 50; each finding nudges it by category AND rank
+# (higher-ranked findings move it more). ESCALATED/NEW push UP (more BEARISH);
+# REMOVED/DE-ESCALATED push DOWN (more BULLISH); REWORDED never moves it.
+# Mirrors the spec's table exactly — see _calculate_score.
+CATEGORY_IMPACT = {
+    "ESCALATED":    lambda rank: 12.0 - rank,          # rank 1 -> +11,  rank 10 -> +2
+    "NEW":          lambda rank: 8.0 - rank * 0.6,     # rank 1 -> +7.4, rank 10 -> +2
+    "REMOVED":      lambda rank: -(6.0 - rank * 0.4),  # rank 1 -> -5.6, rank 10 -> -2
+    "DE-ESCALATED": lambda rank: -(8.0 - rank * 0.6),  # rank 1 -> -7.4, rank 10 -> -2
+    "REWORDED":     lambda rank: 0.0,                  # never moves the score
 }
 
 # Conditional-threat phrases. When the NEW quote contains one of these and the
@@ -415,19 +418,31 @@ class RiskFactorAgent:
     # ── scoring ───────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _score(changes: List[dict]) -> int:
-        """Weighted average of the (up to 10) change categories, 0-100. Higher =>
-        more/worse risk disclosure. Neutral (50) when nothing changed."""
-        if not changes:
-            return 50
-        vals = [CATEGORY_WEIGHTS.get(str(c.get("category", "")).upper(), 50) for c in changes]
-        return int(round(sum(vals) / len(vals)))
+    def _calculate_score(changes: List[dict]) -> int:
+        """Score Item 1A change on a 0-100 scale where 50 is neutral — "nothing
+        material changed." Each finding nudges the needle by an amount set by its
+        category AND its rank (higher-ranked findings matter more): ESCALATED/NEW
+        push toward BEARISH, REMOVED/DE-ESCALATED toward BULLISH, REWORDED never
+        moves it. The total is clamped to [10, 90] — no company carries zero or
+        maximal risk."""
+        score = 50.0
+        for i, c in enumerate(changes, start=1):
+            impact = CATEGORY_IMPACT.get(str(c.get("category", "")).upper().strip())
+            if impact is None:
+                continue
+            rank = c.get("rank")
+            if not isinstance(rank, int) or rank < 1:
+                rank = i
+            score += impact(rank)
+        return int(round(max(10.0, min(90.0, score))))
 
     @staticmethod
     def _signal(score: int) -> str:
-        if score >= 65:
+        """Map a score to a signal: below 35 BULLISH, above 65 BEARISH,
+        35-65 (inclusive) NEUTRAL."""
+        if score > 65:
             return "BEARISH"
-        if score <= 35:
+        if score < 35:
             return "BULLISH"
         return "NEUTRAL"
 
@@ -548,7 +563,7 @@ class RiskFactorAgent:
 
         result["top_changes"] = top_changes
         result["changes_found"] = len(top_changes)
-        result["score"] = self._score(top_changes)
+        result["score"] = self._calculate_score(top_changes)
         result["signal"] = self._signal(result["score"])
         result["summary"] = (
             "%d material change(s) in Item 1A between %s and %s." % (
@@ -587,14 +602,20 @@ class RiskFactorAgent:
 
     @staticmethod
     def _dedup_changes(changes: List[dict]) -> List[dict]:
-        """Drop changes that cite the SAME passage. A weaker model can emit the
-        identical quote several times (often re-titled); the identity of a change
-        is the quote it cites, so we key on the (normalized) new/old quote and
-        keep the first occurrence. Quote-less entries fall back to their title."""
+        """Drop changes that cite the SAME passage, then collapse systematic
+        find/replace edits. A weaker model can emit the identical quote several
+        times (often re-titled), so the identity of a change is the quote it
+        cites: we key on the (normalized) new/old quote and keep the first
+        occurrence. We ALSO key on the (old_quote, new_quote) PAIR — the 70B
+        model sometimes returns several findings for one risk with identical old
+        AND new quotes and only slightly different titles; a finding matching
+        EITHER key is a duplicate. Quote-less entries fall back to their title.
+        Finally _collapse_global_changes folds a systematic word-for-word
+        substitution reported once per risk factor into a single finding."""
         def _n(v):
             return re.sub(r"[^a-z0-9]+", " ", str(v or "").lower()).strip()
 
-        def _key(c):
+        def _single_key(c):
             for field in ("new_quote", "old_quote"):
                 q = _n(c.get(field))
                 if len(q) >= 30:
@@ -602,14 +623,79 @@ class RiskFactorAgent:
             t = _n(c.get("risk_title"))
             return ("t", t) if t else None
 
+        def _pair_key(c):
+            # A real (old, new) pair only when BOTH sides carry text — keeps NEW
+            # (no old) / REMOVED (no new) and quote-less findings from collapsing.
+            old_q, new_q = _n(c.get("old_quote")), _n(c.get("new_quote"))
+            if old_q and new_q:
+                return ("p", old_q[:160], new_q[:160])
+            return None
+
         seen, out = set(), []
         for c in changes:
-            k = _key(c)
-            if k is not None and k in seen:
+            keys = [k for k in (_single_key(c), _pair_key(c)) if k is not None]
+            if any(k in seen for k in keys):
                 continue
-            if k is not None:
-                seen.add(k)
+            seen.update(keys)
             out.append(c)
+        return RiskFactorAgent._collapse_global_changes(out)
+
+    @staticmethod
+    def _first_word_diff(old_quote: str, new_quote: str) -> Optional[Tuple[str, str]]:
+        """Return the first (old_word, new_word) pair where two quotes diverge,
+        walking their words in parallel. Used to spot a one-word substitution
+        (e.g. "vehicles" -> "products"). Returns None when the aligned words never
+        differ within the shorter quote's length."""
+        old_words = re.findall(r"[a-z0-9]+", (old_quote or "").lower())
+        new_words = re.findall(r"[a-z0-9]+", (new_quote or "").lower())
+        for ow, nw in zip(old_words, new_words):
+            if ow != nw:
+                return (ow, nw)
+        return None
+
+    @staticmethod
+    def _collapse_global_changes(changes: List[dict]) -> List[dict]:
+        """Collapse a systematic find/replace into one finding. When a company
+        swaps a term throughout Item 1A (e.g. "vehicles" -> "products"), the model
+        tends to report it once per affected risk factor — many near-identical
+        findings that are really a single editorial change. We group findings by
+        the first differing word pair between their old/new quotes; when 3+ share
+        the same substitution we drop them all and emit ONE REWORDED summary in
+        the slot of the first, so the systematic change counts exactly once."""
+        groups: Dict[Tuple[str, str], List[int]] = {}
+        for i, c in enumerate(changes):
+            old_q, new_q = (c.get("old_quote") or "").strip(), (c.get("new_quote") or "").strip()
+            if not old_q or not new_q:
+                continue
+            pair = RiskFactorAgent._first_word_diff(old_q, new_q)
+            if pair:
+                groups.setdefault(pair, []).append(i)
+
+        drop, summary_at = set(), {}
+        for (old_w, new_w), idxs in groups.items():
+            if len(idxs) < 3:
+                continue
+            drop.update(idxs)
+            tmpl = changes[idxs[0]]
+            summary_at[idxs[0]] = {
+                "category": "REWORDED",
+                "risk_title": "Systematic wording change: '%s' → '%s'" % (old_w, new_w),
+                "rank": tmpl.get("rank"),
+                "old_quote": tmpl.get("old_quote", ""),
+                "new_quote": tmpl.get("new_quote", ""),
+                "summary": ("Systematic rewording across %d risk factors — '%s' replaced "
+                            "with '%s' throughout Item 1A. Counted as one editorial change, "
+                            "not %d separate risks." % (len(idxs), old_w, new_w, len(idxs))),
+            }
+
+        if not drop:
+            return changes
+        out = []
+        for i, c in enumerate(changes):
+            if i in summary_at:
+                out.append(summary_at[i])
+            elif i not in drop:
+                out.append(c)
         return out
 
     @staticmethod
