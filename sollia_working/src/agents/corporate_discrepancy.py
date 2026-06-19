@@ -1446,7 +1446,16 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
     elapsed = time.time() - t0
     add_log("OUTPUT", "Complete in %.1fs" % elapsed)
     _emit("Corporate discrepancy scan complete (%.0fs)" % elapsed, "done")
-    
+
+    # The top discrepancy's internal severity runs 0-100, higher = more/worse
+    # contradictions. Convert to the unified BULLISHNESS scale every Sollia agent
+    # reports on: more/severe discrepancies read as MORE BEARISH, so we invert
+    # (100 - severity). No discrepancies stays neutral at 50 (100 - 50). Clamped
+    # to [10, 90] — no filing is perfectly clean or maximally damning.
+    _top = documents.get("top_discrepancies")
+    _raw_severity = round(_top[0].get("final_score", 50)) if _top else 50
+    bullishness_score = max(10, min(90, 100 - _raw_severity))
+
     return {
         "ticker": ticker, "year": year,
         "agent": "Corporate Discrepancy",
@@ -1455,7 +1464,7 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
         "total_aligned_pairs": len(documents.get("aligned_pairs", [])),
         "total_discrepancies_found": len(documents.get("discrepancies", [])),
         "top_discrepancies": documents.get("top_discrepancies", []),
-        "score": round(documents.get("top_discrepancies", [{}])[0].get("final_score", 50)) if documents.get("top_discrepancies") else 50,
+        "score": bullishness_score,
         "elapsed_seconds": round(elapsed, 1),
         "agent_log": log,
     }

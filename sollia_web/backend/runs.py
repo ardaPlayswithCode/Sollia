@@ -147,15 +147,19 @@ def snapshot_since(run_id: str, since_seq: int) -> Optional[dict]:
 # ── clean export schema ───────────────────────────────────────────────────────
 
 def _agent_signal(aid: str, score: float) -> str:
-    if aid == "promise_audit":
-        return "BULLISH" if score >= 62 else "BEARISH" if score < 39 else "NEUTRAL"
-    if aid == "legal_proceedings":
-        return "BULLISH" if score >= 60 else "BEARISH" if score <= 40 else "NEUTRAL"
-    if aid == "risk_factors":
-        # higher score means risks ESCALATED/appeared => more bearish
-        return "BEARISH" if score >= 65 else "BULLISH" if score <= 35 else "NEUTRAL"
-    # corporate_discrepancy: a higher score means MORE discrepancies => more bearish
-    return "BEARISH" if score >= 62 else "BULLISH" if score < 39 else "NEUTRAL"
+    """Map any agent's score to a signal on the unified BULLISHNESS scale.
+
+    Every agent now reports the same way — higher = better prospects, 50 = "nothing
+    material changed" (Agent 1's discrepancy severity is inverted at its source,
+    Agent 4's risk delta already pushes escalations DOWN). So one shared threshold
+    serves them all and the UI badge always agrees with this export: above 65
+    BULLISH, below 35 BEARISH, otherwise NEUTRAL. Mirrors RiskFactorAgent._signal.
+    """
+    if score > 65:
+        return "BULLISH"
+    if score < 35:
+        return "BEARISH"
+    return "NEUTRAL"
 
 
 def _sev_label(sev) -> str:
@@ -358,10 +362,12 @@ def _findings_legal(result: dict):
 
 
 # A risk ESCALATING or appearing reads as worsening; softening or disappearing as
-# improving; a pure reword as neutral. Mirrors Agent 4's own scoring polarity.
+# improving; a pure reword as neutral. Mirrors Agent 4's own scoring polarity,
+# where REMOVED/DE-ESCALATED push the score UP (bullish) and ESCALATED/NEW push it
+# DOWN (bearish) — so a removed/receded risk is a "positive" change_direction.
 _RISK_DIRECTION = {
-    "ESCALATED": "negative", "NEW": "negative", "REMOVED": "negative",
-    "DE-ESCALATED": "positive", "REWORDED": "neutral",
+    "ESCALATED": "negative", "NEW": "negative",
+    "REMOVED": "positive", "DE-ESCALATED": "positive", "REWORDED": "neutral",
 }
 
 _RISK_SEVERITY = {

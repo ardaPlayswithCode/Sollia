@@ -332,9 +332,12 @@ class LegalProceedingsTracker:
             elif status == 'QUIETLY_REMOVED':
                 total -= 1
             # UNCHANGED adds 0
-        # Scale from -10..10 to 0..100 (assuming max 5 events each -2 = -10)
+        # Scale from -10..10 to 0..100 (assuming max 5 events each -2 = -10).
+        # SETTLED/DISMISSED push UP (more bullish), NEW/ESCALATED/QUIETLY_REMOVED
+        # push DOWN (more bearish), UNCHANGED holds at 50 — already on the unified
+        # bullishness scale. Clamped to [10, 90] like every Sollia agent.
         score = 50 + (total * 5)
-        return max(0, min(100, score))
+        return max(10, min(90, score))
 
     def track(self, ticker: str, progress=None) -> Dict:
         cik = self.get_cik(ticker)

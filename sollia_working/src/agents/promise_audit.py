@@ -1537,7 +1537,11 @@ def calculate_score(promises: List[Dict[str, Any]]) -> Tuple[float, Dict[str, fl
         score = ((weighted_kept + 0.5 * weighted_partial) / weighted_total) * 100
     else:
         score = 50.0  # No track record yet — neutral
-    
+    # Clamp to the unified Sollia range [10, 90]: no management's record is
+    # perfectly broken (0) or perfectly kept (100), and one missed promise
+    # shouldn't read as a zero. Higher = more promises kept = more bullish.
+    score = max(10.0, min(90.0, score))
+
     return round(score, 1), {
         "weighted_kept": round(weighted_kept, 2),
         "weighted_partial": round(weighted_partial, 2),

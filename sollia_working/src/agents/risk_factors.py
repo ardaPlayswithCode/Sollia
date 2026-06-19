@@ -58,9 +58,9 @@ LLM_MAX_TOKENS = 1800
 
 # Per-finding score impact, as a function of the finding's 1-based rank. The
 # score starts neutral at 50; each finding nudges it by category AND rank
-# (higher-ranked findings move it more). ESCALATED/NEW push UP (more BEARISH);
-# REMOVED/DE-ESCALATED push DOWN (more BULLISH); REWORDED never moves it.
-# Mirrors the spec's table exactly — see _calculate_score.
+# (higher-ranked findings move it more). ESCALATED/NEW push the score DOWN (more
+# BEARISH); REMOVED/DE-ESCALATED push it UP (more BULLISH); REWORDED never moves
+# it. Mirrors the spec's table exactly — see _calculate_score.
 CATEGORY_IMPACT = {
     "ESCALATED":    lambda rank: -(12.0 - rank),        # rank 1 -> -11,  rank 10 -> -2 (more risk = more bearish)
     "NEW":          lambda rank: -(8.0 - rank * 0.6),   # rank 1 -> -7.4, rank 10 -> -2 (new risk = more bearish)
@@ -601,6 +601,17 @@ class RiskFactorAgent:
         return changes
 
     @staticmethod
+    def _is_identical_pair(c: dict) -> bool:
+        """True when a finding's OLD and NEW quotes are the same text after
+        normalizing quotes/whitespace/case. The comparison model occasionally
+        emits a "change" whose two quotes are character-for-character identical
+        (e.g. Ford's Takata recall paragraph) — a hallucinated escalation with no
+        real delta. Such findings are dropped before dedup, because a lone
+        identical pair has nothing to collapse against in the pair-key pass."""
+        old_q, new_q = _norm(c.get("old_quote")), _norm(c.get("new_quote"))
+        return bool(old_q) and bool(new_q) and old_q == new_q
+
+    @staticmethod
     def _dedup_changes(changes: List[dict]) -> List[dict]:
         """Drop changes that cite the SAME passage, then collapse systematic
         find/replace edits. A weaker model can emit the identical quote several
@@ -612,6 +623,12 @@ class RiskFactorAgent:
         EITHER key is a duplicate. Quote-less entries fall back to their title.
         Finally _collapse_global_changes folds a systematic word-for-word
         substitution reported once per risk factor into a single finding."""
+        # Pre-dedup: drop hallucinated "changes" whose OLD and NEW quotes are the
+        # same text. A lone identical pair never matches the pair-key below (there
+        # is no second copy to collapse into), so it must be removed up front or
+        # it survives and gets mislabeled ESCALATED.
+        changes = [c for c in changes if not RiskFactorAgent._is_identical_pair(c)]
+
         def _n(v):
             return re.sub(r"[^a-z0-9]+", " ", str(v or "").lower()).strip()
 

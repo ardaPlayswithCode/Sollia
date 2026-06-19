@@ -185,16 +185,16 @@ export default function App() {
             {/* SCORE CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {result.corporate_discrepancy && (
-                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score || 50} signal={(result.corporate_discrepancy.score || 50) >= 62 ? 'BEARISH' : (result.corporate_discrepancy.score || 50) < 39 ? 'BULLISH' : 'NEUTRAL'} />
+                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score ?? 50} signal={signalFor(result.corporate_discrepancy.score)} />
               )}
               {result.promise_audit && (
-                <ScoreBox label="Promise Audit" score={result.promise_audit.score || 50} signal={(result.promise_audit.score || 50) >= 62 ? 'BULLISH' : (result.promise_audit.score || 50) < 39 ? 'BEARISH' : 'NEUTRAL'} />
+                <ScoreBox label="Promise Audit" score={result.promise_audit.score ?? 50} signal={signalFor(result.promise_audit.score)} />
               )}
               {result.legal_proceedings && (
-                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score || 50} signal={(result.legal_proceedings.agent3_score || 50) >= 60 ? 'BULLISH' : (result.legal_proceedings.agent3_score || 50) <= 40 ? 'BEARISH' : 'NEUTRAL'} />
+                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score ?? 50} signal={signalFor(result.legal_proceedings.agent3_score)} />
               )}
               {result.risk_factors && (
-                <ScoreBox label="Risk Factors" score={result.risk_factors.score || 50} signal={(result.risk_factors.score || 50) >= 65 ? 'BEARISH' : (result.risk_factors.score || 50) <= 35 ? 'BULLISH' : 'NEUTRAL'} />
+                <ScoreBox label="Risk Factors" score={result.risk_factors.score ?? 50} signal={signalFor(result.risk_factors.score)} />
               )}
             </div>
 
@@ -337,6 +337,15 @@ function JsonPanel({ data, ticker }) {
       )}
     </Card>
   )
+}
+
+// Unified bullishness → signal. Every agent reports on the same 10-90 scale
+// (higher = better prospects, 50 = neutral), so one mapping serves them all and
+// the badge here always agrees with the backend export: >65 BULLISH (green),
+// <35 BEARISH (red), otherwise NEUTRAL (yellow).
+function signalFor(score) {
+  const s = score ?? 50
+  return s > 65 ? 'BULLISH' : s < 35 ? 'BEARISH' : 'NEUTRAL'
 }
 
 function ScoreBox({ label, score, signal }) {
