@@ -80,6 +80,19 @@ _THREAT_PHRASES = (
     "may result in",
 )
 
+# Grammatical "glue" words (length >= 4; shorter ones are dropped by the
+# [a-z]{4,} tokenizer anyway) ignored when judging whether two quotes discuss
+# the SAME business concern. Domain nouns (warranty, regulatory, financial, ...)
+# are deliberately NOT here, so genuine topical overlap is preserved; only
+# function words are stripped. Used by the update-only forced-match check.
+_TOPIC_STOPWORDS = frozenset("""
+that this these those with from will would could should shall might must have
+been were their them they there here which what when where while because such
+into onto over under about above below also both each more most some than then
+does your ours being upon however including regarding generally very much many
+only well other others between within during same like
+""".split())
+
 # EXACT prompt template (do not edit the wording). The two placeholders are
 # substituted with .replace() — NOT str.format()/f-strings — because the JSON
 # example below contains literal { } braces.
@@ -645,20 +658,30 @@ class RiskFactorAgent:
         return result
 
     def _build_top_changes(self, response: str, old_rf: str, new_rf: str,
-                           old_url: str, new_url: str) -> Optional[List[dict]]:
+                           old_url: str, new_url: str,
+                           update_only: bool = False) -> Optional[List[dict]]:
         """Parse one LLM comparison response into the verified, ranked top-10
         change rows. Shared by the 10-K and 10-Q paths — only the response, the
         quote-verification sources (old_rf/new_rf) and the SEC links
         (old_url/new_url) differ. Returns None when the response can't be parsed
-        at all (the caller emits the unparseable-output message)."""
+        at all (the caller emits the unparseable-output message).
+
+        When `update_only` is set — an update-only 10-Q compared against the full
+        10-K baseline (OLD = 10-K, NEW = the short update) — an extra pass drops
+        unprovable REMOVED findings and un-forces topically-unrelated matches.
+        See _filter_update_only. The 10-K and 10-Q-reprint paths pass False and
+        are byte-for-byte unaffected."""
         changes = self._parse_changes(response)
         if changes is None:
             return None
 
         # Drop duplicate citations, recover escalations the model under-classified,
-        # then rank, cap at top 10, verify, link.
+        # (update-only) drop unprovable removals / un-force mismatches, then rank,
+        # cap at top 10, verify, link.
         changes = self._dedup_changes(changes)
         changes = self._reclassify_escalations(changes)
+        if update_only:
+            changes = self._filter_update_only(changes)
         changes.sort(key=lambda c: c.get("rank", 999) if isinstance(c.get("rank"), int) else 999)
         changes = changes[:10]
 
@@ -757,7 +780,8 @@ class RiskFactorAgent:
             return
 
         ten_q_changes = self._build_top_changes(
-            response, old_rf, ten_q_rf, old_filing.get("url", ""), ten_q.get("url", ""))
+            response, old_rf, ten_q_rf, old_filing.get("url", ""), ten_q.get("url", ""),
+            update_only=(fmt == "update_only"))
         if ten_q_changes is None:
             emit("Could not parse the 10-Q comparison output.", "flag")
             return
@@ -797,6 +821,64 @@ class RiskFactorAgent:
                     if added_threat else
                     "Risk expanded — the new filing broadens the prior risk statement.")
         return changes
+
+    @staticmethod
+    def _topic_words(quote: Optional[str]) -> set:
+        """Significant (4+ letter, non-stopword) words in a quote, used to judge
+        whether two quotes discuss the same business concern. Numbers and short
+        grammatical glue are ignored — see _TOPIC_STOPWORDS."""
+        return {w for w in re.findall(r"[a-z]{4,}", (quote or "").lower())
+                if w not in _TOPIC_STOPWORDS}
+
+    @staticmethod
+    def _quotes_unrelated(old_quote: str, new_quote: str) -> bool:
+        """True when an OLD/NEW quote pair shares ZERO significant words — i.e.
+        the model paired two risks about different concerns (e.g. Ford's
+        warranty-accounting OLD vs regulatory-compliance NEW). Deliberately
+        conservative: it only fires on a complete topical disjoint, and only when
+        BOTH quotes carry enough content words (>=2) to judge, so a genuine
+        reword that merely shares one topic word (e.g. 'financial') is kept."""
+        old_w = RiskFactorAgent._topic_words(old_quote)
+        new_w = RiskFactorAgent._topic_words(new_quote)
+        if len(old_w) < 2 or len(new_w) < 2:
+            return False  # too little content to call it a mismatch
+        return len(old_w & new_w) == 0
+
+    @staticmethod
+    def _filter_update_only(changes: List[dict]) -> List[dict]:
+        """Post-process the findings from an UPDATE-ONLY 10-Q comparison. An
+        update-only 10-Q is a PARTIAL document listing only this quarter's
+        changes, compared against the full 10-K baseline (OLD = 10-K, NEW = the
+        short update). Two corrections the model can't make reliably on a partial
+        document:
+
+          * REMOVED is unprovable. A risk present in the 10-K but absent from the
+            short update was simply not re-stated this quarter — NOT deleted from
+            the company's disclosures. A removal can only be read from a full
+            reprint, so every REMOVED finding is dropped here.
+          * Forced matches. With no clear counterpart for a genuinely new risk,
+            the model may pair it with an unrelated OLD sentence (Ford: warranty
+            accounting OLD vs regulatory-compliance-agreement NEW) and call it a
+            change. When the OLD/NEW quotes share no topical words, the match is
+            spurious: reclassify the finding as NEW with no OLD quote, so the new
+            risk stands on its own.
+
+        Only invoked for update-only comparisons; the 10-K and 10-Q-reprint paths
+        never call this."""
+        out = []
+        for c in changes:
+            if str(c.get("category", "")).upper().strip() == "REMOVED":
+                continue  # a partial update cannot establish a removal
+            old_q = (c.get("old_quote") or "").strip()
+            new_q = (c.get("new_quote") or "").strip()
+            if old_q and new_q and RiskFactorAgent._quotes_unrelated(old_q, new_q):
+                c = dict(c)  # copy — don't mutate the parsed object in place
+                c["category"] = "NEW"
+                c["old_quote"] = ""  # the paired OLD sentence was a wrong match
+                c["summary"] = ("New risk surfaced in the 10-Q with no matching "
+                                "risk in the 10-K baseline to compare against.")
+            out.append(c)
+        return out
 
     @staticmethod
     def _is_identical_pair(c: dict) -> bool:
