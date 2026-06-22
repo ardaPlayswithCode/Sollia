@@ -269,6 +269,26 @@ export default function App() {
                     {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
                   </Row>
                 ))}
+                {result.risk_factors.ten_q_findings && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <p className="text-slate-500 text-xs font-semibold mb-3">
+                      10-Q Update · {result.risk_factors.ten_q_findings.filing_date} · vs {result.risk_factors.ten_q_findings.compared_against} ({result.risk_factors.ten_q_findings.compared_date}) · {result.risk_factors.ten_q_findings.changes_found} changes
+                    </p>
+                    <div className="space-y-3">
+                      {(result.risk_factors.ten_q_findings.changes || []).length === 0 && (
+                        <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
+                      )}
+                      {(result.risk_factors.ten_q_findings.changes || []).map((c, i) => (
+                        <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
+                          {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
+                          <Quote text={c.old_quote} url={c.old_url} label={`Old ${result.risk_factors.ten_q_findings.compared_against}`} />
+                          <Quote text={c.new_quote} url={c.new_url} label="New 10-Q" />
+                          {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
+                        </Row>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
 

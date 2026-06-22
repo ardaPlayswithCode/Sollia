@@ -314,6 +314,39 @@ def _estimate_risk_count(full_html: str, section_text: str) -> int:
         return 0
 
 
+def detect_format(ten_q_text: str, ten_k_text: str, ten_q_html: str = "", ten_k_html: str = "") -> str:
+    """Classify a 10-Q's Risk Factors section as a full 'reprint' or 'update_only'.
+
+    Deterministic (no LLM). A 10-Q either reprints the entire Item 1A (like a
+    10-K — compare it cumulatively) or carries only a short "Updates to Risk
+    Factors" delta (compare it against the 10-K baseline). Any ONE of three
+    checks is sufficient to call it a reprint; otherwise we default to the safer
+    'update_only'."""
+    # Check 1 — length. A reprint reproduces the full 15-30 page section; an
+    # update-only filing is typically 1-3 pages. >70% of the 10-K's length is a
+    # reprint.
+    if ten_k_text and len(ten_q_text) > 0.7 * len(ten_k_text):
+        return "reprint"
+
+    # Check 2 — structure. A reprint leads each risk with a bolded thesis title,
+    # so its title count tracks the 10-K's (within ±30%); an update-only filing
+    # usually has a single "Updates to Risk Factors" header.
+    q_risks = _estimate_risk_count(ten_q_html, ten_q_text) if ten_q_html else 0
+    k_risks = _estimate_risk_count(ten_k_html, ten_k_text) if ten_k_html else 0
+    if k_risks > 0 and q_risks > 0 and abs(q_risks - k_risks) / k_risks < 0.3:
+        return "reprint"
+
+    # Check 3 — content. Companies don't rewrite the intro paragraph for an
+    # update-only filing, so a reprint's opening words overlap the 10-K's.
+    q_words = set(ten_q_text[:500].lower().split())
+    k_words = set(ten_k_text[:500].lower().split())
+    if k_words and len(q_words & k_words) / len(k_words) > 0.8:
+        return "reprint"
+
+    # Ambiguous — treat as update-only (compare against the 10-K baseline).
+    return "update_only"
+
+
 class RiskFactorAgent:
     def __init__(self):
         self.cache_root = os.path.join(_SOLLIA_WORKING, ".cache")
@@ -323,7 +356,7 @@ class RiskFactorAgent:
 
     # ── fetching ──────────────────────────────────────────────────────────────
 
-    def _normalize_filing(self, ticker, cik, acc_dash, filing_date, period, primary_doc):
+    def _normalize_filing(self, ticker, cik, acc_dash, filing_date, period, primary_doc, form="10-K"):
         cik_str = str(cik).zfill(10) if cik not in (None, "") else ""
         acc_nd = (acc_dash or "").replace("-", "")
         url = ""
@@ -332,7 +365,7 @@ class RiskFactorAgent:
         return {
             "ticker": ticker,
             "cik": cik_str,
-            "form": "10-K",
+            "form": form,
             "accession_number": acc_dash or "",
             "accession_nodash": acc_nd,
             "filing_date": filing_date or "",
@@ -370,6 +403,54 @@ class RiskFactorAgent:
                     docs[i] if i < len(docs) else "",
                 ))
         return out
+
+    def _all_filings_from_cache(self, ticker: str) -> List[dict]:
+        """Parse 10-K AND 10-Q filings from the cached raw SEC submissions JSON,
+        if present — the same shared .cache/filings/{TICKER}_filings.json that
+        _tenks_from_cache reads, avoiding a network round-trip."""
+        cached = get_cached_filings(ticker)
+        if not isinstance(cached, dict):
+            return []
+        recent = cached.get("filings", {}).get("recent", {})
+        forms = recent.get("form", [])
+        if not forms:
+            return []
+        cik = cached.get("cik", "")
+        accs = recent.get("accessionNumber", [])
+        dates = recent.get("filingDate", [])
+        periods = recent.get("reportDate", [])
+        docs = recent.get("primaryDocument", [])
+        out = []
+        for i, f in enumerate(forms):
+            if f in ("10-K", "10-Q"):
+                out.append(self._normalize_filing(
+                    ticker, cik,
+                    accs[i] if i < len(accs) else "",
+                    dates[i] if i < len(dates) else "",
+                    periods[i] if i < len(periods) else "",
+                    docs[i] if i < len(docs) else "",
+                    form=f,
+                ))
+        return out
+
+    def _get_all_filings(self, ticker: str) -> List[dict]:
+        """All 10-K and 10-Q filings for a ticker, newest first. Cache-first (the
+        shared submissions JSON), falling back to the SEC EDGAR provider on a
+        cache miss. Used by the 10-Q phase to locate a 10-Q filed after the most
+        recent 10-K."""
+        filings = self._all_filings_from_cache(ticker)
+        if not filings:
+            provider_filings = self.provider.get_all_filings(ticker)
+            filings = [
+                self._normalize_filing(
+                    ticker, f.get("cik"), f.get("accession_number", ""),
+                    f.get("filing_date", ""), f.get("period_of_report", ""),
+                    f.get("primary_doc", ""), form=f.get("form", ""))
+                for f in provider_filings if f.get("form") in ("10-K", "10-Q")
+            ]
+        filings = [f for f in filings if f.get("accession_number")]
+        filings.sort(key=lambda f: f.get("filing_date", ""), reverse=True)
+        return filings
 
     def get_two_most_recent_10ks(self, ticker: str) -> Tuple[Optional[dict], Optional[dict]]:
         """Return (old_filing, new_filing) — the two most recent 10-Ks, newest as
@@ -520,11 +601,59 @@ class RiskFactorAgent:
             result["summary"] = "Risk factor comparison failed (LLM error)."
             return result
 
-        changes = self._parse_changes(response)
-        if changes is None:
+        top_changes = self._build_top_changes(
+            response, old_rf, new_rf, old_filing.get("url", ""), new_filing.get("url", ""))
+        if top_changes is None:
             _emit("Could not parse the comparison output.", "flag")
             result["summary"] = "Risk factor comparison returned an unparseable result."
             return result
+
+        result["top_changes"] = top_changes
+        result["changes_found"] = len(top_changes)
+        ten_k_score = self._calculate_score(top_changes)
+        result["score"] = ten_k_score
+        result["signal"] = self._signal(ten_k_score)
+        result["summary"] = (
+            "%d material change(s) in Item 1A between %s and %s." % (
+                len(top_changes), result["old_filing_date"], result["new_filing_date"])
+            if top_changes else
+            "No material changes in Item 1A between the two 10-Ks.")
+
+        # ── 10-Q phase (additive) ──────────────────────────────────────────────
+        # The annual 10-K vs 10-K delta above is the baseline; a 10-Q filed AFTER
+        # the latest 10-K carries more up-to-date changes. Compare it against the
+        # correct baseline (previous 10-Q or the 10-K) per its format. Best-effort:
+        # any failure leaves ten_q_findings None and the 10-K result intact.
+        result["ten_q_findings"] = None
+        try:
+            self._run_10q_phase(ticker, new_filing, new_rf, new_html, result, _emit)
+        except Exception as e:
+            _emit("10-Q check skipped: %s" % str(e)[:120], "flag")
+
+        # Final score reflects BOTH comparisons; the 10-Q is weighted 1.5x because
+        # it's more recent. With no 10-Q this is exactly the 10-K score as before.
+        tqf = result.get("ten_q_findings")
+        if tqf and tqf.get("changes") is not None:
+            ten_q_score = self._calculate_score(tqf["changes"])
+            final = (ten_k_score + 1.5 * ten_q_score) / 2.5
+            result["score"] = int(round(max(10.0, min(90.0, final))))
+            result["signal"] = self._signal(result["score"])
+
+        verified_n = sum(1 for c in top_changes if c["verified"])
+        _emit("Risk factor scan complete — %d change(s), %d quote-verified. Score %d (%s)." % (
+            len(top_changes), verified_n, result["score"], result["signal"]), "done")
+        return result
+
+    def _build_top_changes(self, response: str, old_rf: str, new_rf: str,
+                           old_url: str, new_url: str) -> Optional[List[dict]]:
+        """Parse one LLM comparison response into the verified, ranked top-10
+        change rows. Shared by the 10-K and 10-Q paths — only the response, the
+        quote-verification sources (old_rf/new_rf) and the SEC links
+        (old_url/new_url) differ. Returns None when the response can't be parsed
+        at all (the caller emits the unparseable-output message)."""
+        changes = self._parse_changes(response)
+        if changes is None:
+            return None
 
         # Drop duplicate citations, recover escalations the model under-classified,
         # then rank, cap at top 10, verify, link.
@@ -533,7 +662,6 @@ class RiskFactorAgent:
         changes.sort(key=lambda c: c.get("rank", 999) if isinstance(c.get("rank"), int) else 999)
         changes = changes[:10]
 
-        old_url, new_url = old_filing.get("url", ""), new_filing.get("url", "")
         top_changes = []
         for i, c in enumerate(changes, start=1):
             category = str(c.get("category", "")).upper().strip()
@@ -560,21 +688,91 @@ class RiskFactorAgent:
                 "new_quote_verified": bool(new_ok),
                 "verified": bool(verified),
             })
+        return top_changes
 
-        result["top_changes"] = top_changes
-        result["changes_found"] = len(top_changes)
-        result["score"] = self._calculate_score(top_changes)
-        result["signal"] = self._signal(result["score"])
-        result["summary"] = (
-            "%d material change(s) in Item 1A between %s and %s." % (
-                len(top_changes), result["old_filing_date"], result["new_filing_date"])
-            if top_changes else
-            "No material changes in Item 1A between the two 10-Ks.")
+    @staticmethod
+    def _build_comparison_prompt(old_clip: str, new_clip: str, old_doc_type: str,
+                                 old_date: str, new_doc_type: str, new_date: str) -> str:
+        """Build the comparison prompt for a non-10-K-vs-10-K pairing. Uses the
+        SAME template as the 10-K path — only the INPUT-section labels change to
+        name what's actually being compared (e.g. OLD 10-K vs NEW 10-Q). The
+        label swaps run BEFORE the text substitutions so document text can never
+        collide with a label."""
+        return (RISK_DELTA_PROMPT
+                .replace("OLD 10-K (prior year):", "OLD %s (%s):" % (old_doc_type, old_date))
+                .replace("NEW 10-K (current year):", "NEW %s (%s):" % (new_doc_type, new_date))
+                .replace("{old_risk_factors_full_text}", old_clip)
+                .replace("{new_risk_factors_full_text}", new_clip))
 
-        verified_n = sum(1 for c in top_changes if c["verified"])
-        _emit("Risk factor scan complete — %d change(s), %d quote-verified. Score %d (%s)." % (
-            len(top_changes), verified_n, result["score"], result["signal"]), "done")
-        return result
+    def _run_10q_phase(self, ticker: str, new_filing: dict, new_rf: str,
+                       new_html: str, result: dict, emit) -> None:
+        """Check for a 10-Q filed AFTER the most recent 10-K and, when found,
+        compare its Risk Factors against the correct baseline. Populates
+        result['ten_q_findings'] (left as None when there's no usable 10-Q).
+
+        The four rules:
+          * reprint  -> compare vs the previous 10-Q in this cycle, or the 10-K
+                        if this is the cycle's first 10-Q;
+          * update_only -> always compare vs the 10-K baseline.
+        Cache-first throughout (get_filing_text checks the text cache first)."""
+        emit("Checking for more recent 10-Q filings...", "search")
+        new_filing_date = new_filing.get("filing_date", "")
+        # Current-cycle 10-Qs are those filed after the latest 10-K.
+        cycle_qs = [f for f in self._get_all_filings(ticker)
+                    if f.get("form") == "10-Q" and f.get("filing_date", "") > new_filing_date]
+        if not cycle_qs:
+            return  # no 10-Q after the latest 10-K — show 10-K vs 10-K only
+
+        ten_q = max(cycle_qs, key=lambda f: f.get("filing_date", ""))
+        ten_q_html = self.get_filing_text(ten_q)
+        ten_q_rf = extract_risk_factors(ten_q_html) if ten_q_html else ""
+        if not ten_q_rf:
+            return  # couldn't isolate Item 1A in the 10-Q
+
+        fmt = detect_format(ten_q_rf, new_rf, ten_q_html, new_html)
+        emit("Found 10-Q from %s — format: %s" % (ten_q.get("filing_date", ""), fmt), "fetch")
+
+        # Pick the baseline (OLD) per the four rules. Default is the 10-K.
+        old_doc_type, old_filing, old_rf, old_date = "10-K", new_filing, new_rf, new_filing_date
+        if fmt == "reprint":
+            prev_qs = [f for f in cycle_qs
+                       if f.get("filing_date", "") < ten_q.get("filing_date", "")]
+            if prev_qs:
+                prev_q = max(prev_qs, key=lambda f: f.get("filing_date", ""))
+                prev_html = self.get_filing_text(prev_q)
+                prev_rf = extract_risk_factors(prev_html) if prev_html else ""
+                if prev_rf:  # fall back to the 10-K baseline if extraction fails
+                    old_doc_type, old_filing, old_rf, old_date = (
+                        "10-Q", prev_q, prev_rf, prev_q.get("filing_date", ""))
+
+        prompt = self._build_comparison_prompt(
+            old_rf[:MAX_SECTION_CHARS], ten_q_rf[:MAX_SECTION_CHARS],
+            old_doc_type, old_date, "10-Q", ten_q.get("filing_date", ""))
+
+        emit("Comparing 10-Q risk factors against %s..." % old_doc_type, "analyze")
+        try:
+            response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS)
+        except Exception as e:
+            emit("10-Q comparison failed: %s" % str(e)[:120], "flag")
+            return
+
+        ten_q_changes = self._build_top_changes(
+            response, old_rf, ten_q_rf, old_filing.get("url", ""), ten_q.get("url", ""))
+        if ten_q_changes is None:
+            emit("Could not parse the 10-Q comparison output.", "flag")
+            return
+
+        emit("10-Q comparison complete — %d changes found" % len(ten_q_changes), "analyze")
+        result["ten_q_findings"] = {
+            "format": fmt,
+            "filing_date": ten_q.get("filing_date", ""),
+            "filing_url": ten_q.get("url", ""),
+            "compared_against": old_doc_type,
+            "compared_date": old_date,
+            "compared_url": old_filing.get("url", ""),
+            "changes": ten_q_changes,
+            "changes_found": len(ten_q_changes),
+        }
 
     @staticmethod
     def _reclassify_escalations(changes: List[dict]) -> List[dict]:

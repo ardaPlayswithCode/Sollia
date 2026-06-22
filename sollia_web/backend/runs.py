@@ -388,35 +388,55 @@ def _risk_severity_reason(category: str) -> str:
     }.get(str(category or "").upper(), "Material change in Item 1A risk factors between annual filings.")
 
 
+def _risk_finding(c: dict, source: str, old_doc: str, new_doc: str) -> dict:
+    """Build one analyst-ready finding from a risk-change row. `source` is the
+    filing the comparison came from ("10-K" or "10-Q"); old_doc/new_doc are the
+    citation document labels for the OLD and NEW quotes."""
+    cits = []
+    if c.get("old_quote"):
+        cits.append({
+            "role": "old",
+            "document": old_doc,
+            "excerpt": c.get("old_quote", ""),
+            "url": c.get("old_url", ""),
+            "verified": bool(c.get("old_quote_verified")),
+        })
+    if c.get("new_quote"):
+        cits.append({
+            "role": "new",
+            "document": new_doc,
+            "excerpt": c.get("new_quote", ""),
+            "url": c.get("new_url", ""),
+            "verified": bool(c.get("new_quote_verified")),
+        })
+    category = str(c.get("category", "")).upper()
+    severity = _RISK_SEVERITY.get(category, "medium")
+    finding = {"type": "risk_" + category.lower().replace("-", "_"), "severity": severity, "source": source}
+    if severity in ("high", "medium"):
+        finding["severity_reason"] = _risk_severity_reason(category)
+    finding["change_direction"] = _RISK_DIRECTION.get(category, "neutral")
+    finding["summary"] = c.get("summary") or c.get("risk_title", "")
+    finding["citations"] = cits
+    return finding
+
+
 def _findings_risk(result: dict):
-    out = []
-    for c in result.get("top_changes", []):
-        cits = []
-        if c.get("old_quote"):
-            cits.append({
-                "role": "old",
-                "document": "10-K (prior %s)" % result.get("old_filing_date", ""),
-                "excerpt": c.get("old_quote", ""),
-                "url": c.get("old_url", ""),
-                "verified": bool(c.get("old_quote_verified")),
-            })
-        if c.get("new_quote"):
-            cits.append({
-                "role": "new",
-                "document": "10-K (current %s)" % result.get("new_filing_date", ""),
-                "excerpt": c.get("new_quote", ""),
-                "url": c.get("new_url", ""),
-                "verified": bool(c.get("new_quote_verified")),
-            })
-        category = str(c.get("category", "")).upper()
-        severity = _RISK_SEVERITY.get(category, "medium")
-        finding = {"type": "risk_" + category.lower().replace("-", "_"), "severity": severity}
-        if severity in ("high", "medium"):
-            finding["severity_reason"] = _risk_severity_reason(category)
-        finding["change_direction"] = _RISK_DIRECTION.get(category, "neutral")
-        finding["summary"] = c.get("summary") or c.get("risk_title", "")
-        finding["citations"] = cits
-        out.append(finding)
+    # Annual 10-K vs 10-K delta (the baseline comparison).
+    out = [
+        _risk_finding(
+            c, "10-K",
+            "10-K (prior %s)" % result.get("old_filing_date", ""),
+            "10-K (current %s)" % result.get("new_filing_date", ""))
+        for c in result.get("top_changes", [])
+    ]
+    # 10-Q update findings (more recent than the annual delta), when present. The
+    # OLD label reflects the actual baseline (10-K or previous 10-Q); the NEW
+    # label is the 10-Q. Each carries source "10-Q".
+    tqf = result.get("ten_q_findings")
+    if tqf and tqf.get("changes"):
+        old_doc = "%s (%s)" % (tqf.get("compared_against", "10-K"), tqf.get("compared_date", ""))
+        new_doc = "10-Q (%s)" % tqf.get("filing_date", "")
+        out.extend(_risk_finding(c, "10-Q", old_doc, new_doc) for c in tqf.get("changes", []))
     return out
 
 
