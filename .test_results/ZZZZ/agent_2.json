@@ -1,0 +1,13 @@
+{
+  "status": "error",
+  "runtime_seconds": 0.1,
+  "llm_calls_recorded": 0,
+  "error": "No filings available for ZZZZ",
+  "top_level_keys": [
+    "error"
+  ],
+  "promises_extracted": 0,
+  "filings_analyzed": null,
+  "score": null,
+  "status_distribution": {}
+}

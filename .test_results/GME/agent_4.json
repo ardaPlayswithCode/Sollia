@@ -1,0 +1,28 @@
+{
+  "status": "success",
+  "runtime_seconds": 130.3,
+  "llm_calls_recorded": 1,
+  "error": null,
+  "top_level_keys": [
+    "agent",
+    "changes_found",
+    "cik",
+    "new_filing_date",
+    "new_url",
+    "old_filing_date",
+    "old_url",
+    "run_timestamp",
+    "score",
+    "signal",
+    "summary",
+    "ticker",
+    "top_changes",
+    "total_risks_new",
+    "total_risks_old"
+  ],
+  "changes_found": 0,
+  "distribution": {},
+  "verified_count": 0,
+  "score": 50,
+  "signal": "NEUTRAL"
+}

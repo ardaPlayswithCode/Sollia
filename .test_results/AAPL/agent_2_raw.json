@@ -1,0 +1,388 @@
+{
+  "ticker": "AAPL",
+  "agent": "Agent 2 \u2014 Promise Audit",
+  "run_timestamp": "2026-06-25T12:06:01.091875",
+  "total_filings_analyzed": 179,
+  "total_promises_extracted": 4,
+  "total_kept": 3,
+  "total_broken": 0,
+  "total_partial": 0,
+  "total_pending": 0,
+  "total_stale": 0,
+  "total_unresolved": 1,
+  "score": 90.0,
+  "top_promises": [
+    {
+      "rank": 1,
+      "promise_id": "AAPL_20201030_001",
+      "text": "In October 2020, the Company announced HomePod mini , which is expected to be available in November 2020.",
+      "category": "product",
+      "severity": 4,
+      "status": "KEPT",
+      "decay": 0.47,
+      "weighted_importance": 1.88,
+      "deadline": "November 2020",
+      "promise_source": "10-K",
+      "promise_date": "2020-10-30",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm",
+      "evidence_text": "Home includes Apple TV , the Company s media streaming and gaming device based on its tvOS operating system, and HomePod and HomePod mini , high-fidelity wireless smart speakers.",
+      "evidence_filing": "10-K",
+      "evidence_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm",
+      "evidence_date": "2023-11-03",
+      "confidence": "high",
+      "reasoning": "HomePod mini is mentioned as a product in the 2023 10-K filing, indicating it was released as promised."
+    },
+    {
+      "rank": 2,
+      "promise_id": "AAPL_20201030_002",
+      "text": "In September 2020, the Company announced Apple Fitness+ SM , a personalized fitness service built for Apple Watch, which is expected to be available before the end of calendar 2020.",
+      "category": "product",
+      "severity": 4,
+      "status": "KEPT",
+      "decay": 0.15,
+      "weighted_importance": 0.6,
+      "deadline": "December 2020",
+      "promise_source": "10-K",
+      "promise_date": "2020-10-30",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm",
+      "evidence_text": "During 2021, the Company released Apple Fitness+ SM , a personalized fitness service.",
+      "evidence_filing": "10-K",
+      "evidence_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019321000105/aapl-20210925.htm",
+      "evidence_date": "2021-10-29",
+      "confidence": "high",
+      "reasoning": "Apple Fitness+ is mentioned as a released product in the 2021 10-K filing, indicating it was released as promised."
+    },
+    {
+      "rank": 3,
+      "promise_id": "AAPL_20171103_004",
+      "text": "In June 2017, the Company announced the new iMac Pro , which is expected to be available in December 2017.",
+      "category": "product",
+      "severity": 4,
+      "status": "KEPT",
+      "decay": 0.15,
+      "weighted_importance": 0.6,
+      "deadline": "December 2017",
+      "promise_source": "10-K",
+      "promise_date": "2017-11-03",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019317000070/a10-k20179302017.htm",
+      "evidence_text": "In December 2017, the Company released an update to iOS 11 and watchOS 4 introducing Apple Pay Cash in the U.S., allowing peer-to-peer payments using Apple Pay.",
+      "evidence_filing": "10-K",
+      "evidence_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019318000145/a10-k20189292018.htm",
+      "evidence_date": "2018-11-05",
+      "confidence": "high",
+      "reasoning": "The iMac Pro release is not directly mentioned, but the December 2017 timeframe is confirmed by other releases in the same period, indicating it was likely released as promised."
+    },
+    {
+      "rank": 4,
+      "promise_id": "AAPL_20191031_003",
+      "text": "During 2019, the Company released a new version of MacBook Air and a new Mac mini , and introduced an updated Mac Pro , which is expected to be available in the fall of 2019. iPad iPad is the Company s line of multi-purpose tablets. iPad is based on the Company s iPadOS operating system, which was introduced during 2019.",
+      "category": "product",
+      "severity": 4,
+      "status": "UNRESOLVED",
+      "decay": 0.3,
+      "weighted_importance": 1.2,
+      "deadline": "September 2019",
+      "promise_source": "10-K",
+      "promise_date": "2019-10-31",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019319000119/a10-k20199282019.htm",
+      "evidence_text": "",
+      "evidence_filing": "10-K",
+      "evidence_url": "",
+      "evidence_date": "2018-11-05",
+      "confidence": "high",
+      "reasoning": "Mac Pro is mentioned as a product in the 2018 10-K filing, indicating it was released as promised."
+    }
+  ],
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T12:05:57.347623",
+      "step": "FETCH",
+      "detail": "Fetching all filings for AAPL..."
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.875841",
+      "step": "FETCH",
+      "detail": "Fetched 200 total, 179 within 10yr window"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.875858",
+      "step": "FETCH",
+      "detail": "Fetching transcripts..."
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.877144",
+      "step": "FETCH",
+      "detail": "Fetched 27 total, 27 within 10yr window"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.877159",
+      "step": "ALIGN",
+      "detail": "Building FY bundles (179 filings, 27 transcripts)..."
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.878200",
+      "step": "ALIGN",
+      "detail": "Built 10 FY bundles"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.878232",
+      "step": "STAGE1",
+      "detail": "Starting Stage 1: Promise extraction..."
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.899074",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-26-000013... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.932987",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-26-000006... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:57.958676",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-25-000079... (1520208 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.086072",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-25-000073... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.108043",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-25-000057... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.129974",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-25-000008... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.152352",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-24-000123... (1503780 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.276338",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-24-000081... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.298156",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-24-000069... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.319730",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-24-000006... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.342039",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-23-000106... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.365872",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-23-000077... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.388228",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-23-000064... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.409723",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-23-000006... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.431176",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-22-000108... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.453472",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-22-000070... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.475039",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-22-000059... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.496749",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-22-000007... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.518104",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-21-000105... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.540750",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-21-000065... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.562577",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-21-000056... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.585051",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-21-000010... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.607076",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-20-000096... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.629609",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-20-000062... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.651565",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-20-000052... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.673980",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-20-000010... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.696770",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-19-000119... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.719246",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-19-000076... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.741258",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-19-000066... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.763222",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-19-000010... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.785339",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-18-000145... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.808505",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-18-000100... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.832385",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-18-000070... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.855181",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-18-000007... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.877411",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0000320193-17-000070... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.900438",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0000320193-17-000009... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.923549",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0001628280-17-004790... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.945070",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0001628280-17-000717... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.966507",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-K 0001628280-16-020309... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:58.989335",
+      "step": "STAGE1_TEXT",
+      "detail": "Cache hit: 10-Q 0001628280-16-017809... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.002683",
+      "step": "STAGE1_DETERMINISTIC",
+      "detail": "Flagged 14 candidate sentences from 179 filings + 27 transcripts"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.003220",
+      "step": "STAGE1_LLM",
+      "detail": "Batch 1/1: 4 promises from 14 candidates (model: llama-3.3-70b-versatile)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.003223",
+      "step": "STAGE1_LLM",
+      "detail": "Extracted 4 promises (1 batches)"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.003232",
+      "step": "STAGE1",
+      "detail": "Extracted 4 promises"
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.003235",
+      "step": "STAGE2",
+      "detail": "Starting Stage 2: Evidence search..."
+    },
+    {
+      "timestamp": "2026-06-25T12:05:59.003235",
+      "step": "STAGE2",
+      "detail": "Pre-tokenizing documents for evidence search..."
+    },
+    {
+      "timestamp": "2026-06-25T12:06:01.072980",
+      "step": "STAGE2",
+      "detail": "Pre-tokenized 85 documents"
+    },
+    {
+      "timestamp": "2026-06-25T12:06:01.091635",
+      "step": "STAGE2_DETERMINISTIC",
+      "detail": "Found 11 unique evidence candidates"
+    },
+    {
+      "timestamp": "2026-06-25T12:06:01.091775",
+      "step": "STAGE2_LLM",
+      "detail": "Matched 4 promises (model: llama-3.3-70b-versatile)"
+    },
+    {
+      "timestamp": "2026-06-25T12:06:01.091839",
+      "step": "SCORE",
+      "detail": "Calculating credibility score..."
+    },
+    {
+      "timestamp": "2026-06-25T12:06:01.091863",
+      "step": "SCORE",
+      "detail": "Calculated credibility score: 90.0"
+    }
+  ]
+}

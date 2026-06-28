@@ -1,0 +1,66 @@
+{
+  "ticker": "JPM",
+  "timestamp": "2026-06-26T03:20:19.041520",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "",
+      "current_date": "2026-02-13",
+      "proceedings": [],
+      "summary": "No legal proceedings in 10-K \u2014 not enough filings to compare.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000019617",
+      "current_accession": "0001628280-26-008131",
+      "current_primary_doc": "jpm-20251231.htm",
+      "prior_accession": "",
+      "prior_primary_doc": "",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+      "prior_edgar_url": ""
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-11-04",
+      "current_date": "2026-05-01",
+      "proceedings": [
+        {
+          "case_name": null,
+          "prior_quote": "203 Item 1A. Risk Factors. 203",
+          "current_quote": "179 Item 1A. Risk Factors. 179",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm"
+        }
+      ],
+      "summary": "No changes in legal proceedings between the two filings.",
+      "agent3_score": 50,
+      "current_accession": "0001628280-26-029344",
+      "current_primary_doc": "jpm-20260331.htm",
+      "prior_accession": "0001628280-25-048859",
+      "prior_primary_doc": "jpm-20250930.htm",
+      "empty": false,
+      "cik": "0000019617",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-06-24",
+      "current_date": "2026-06-25",
+      "proceedings": [],
+      "summary": "Could not parse legal proceedings for 8-K.",
+      "error": "Unterminated string starting at: line 30 column 24 (char 1486)",
+      "agent3_score": 50,
+      "empty": true,
+      "current_accession": "0000019617-26-000241",
+      "current_primary_doc": "jpm-20260624.htm",
+      "prior_accession": "0001628280-26-045169",
+      "prior_primary_doc": "jpm-20260624.htm",
+      "cik": "0000019617",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000001961726000241/jpm-20260624.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026045169/jpm-20260624.htm"
+    }
+  ]
+}

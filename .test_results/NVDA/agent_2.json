@@ -1,0 +1,32 @@
+{
+  "status": "success",
+  "runtime_seconds": 205.3,
+  "llm_calls_recorded": 26,
+  "error": null,
+  "top_level_keys": [
+    "agent",
+    "agent_log",
+    "run_timestamp",
+    "score",
+    "ticker",
+    "top_promises",
+    "total_broken",
+    "total_filings_analyzed",
+    "total_kept",
+    "total_partial",
+    "total_pending",
+    "total_promises_extracted",
+    "total_stale",
+    "total_unresolved"
+  ],
+  "promises_extracted": 46,
+  "filings_analyzed": 105,
+  "score": 58.2,
+  "status_distribution": {
+    "KEPT": 18,
+    "BROKEN": 8,
+    "PARTIAL": 2,
+    "PENDING": 1,
+    "UNRESOLVED": 17
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "ticker": "TSLA",
+  "year": 2024,
+  "timestamp": "2026-06-26T10:43:00Z",
+  "agents": {
+    "agent_4": {
+      "status": "success",
+      "runtime_seconds": 1.0,
+      "llm_calls_recorded": 2,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "changes_found",
+        "cik",
+        "new_filing_date",
+        "new_url",
+        "old_filing_date",
+        "old_url",
+        "run_timestamp",
+        "score",
+        "signal",
+        "summary",
+        "ten_q_findings",
+        "ticker",
+        "top_changes",
+        "total_risks_new",
+        "total_risks_old"
+      ],
+      "changes_found": 7,
+      "distribution": {
+        "ESCALATED": 3,
+        "NEW": 2,
+        "REMOVED": 2
+      },
+      "verified_count": 5,
+      "score": 38,
+      "signal": "NEUTRAL"
+    }
+  }
+}

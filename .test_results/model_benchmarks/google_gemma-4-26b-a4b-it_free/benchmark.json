@@ -1,0 +1,53 @@
+{
+  "model": "google/gemma-4-26b-a4b-it:free",
+  "timestamp": "2026-06-25T23:54:59.778252+00:00",
+  "price_in_per_m": 0.0,
+  "price_out_per_m": 0.0,
+  "context": 262144,
+  "tests": {
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 200,
+        "ttft_ms": 1608.4,
+        "total_ms": 23155.4,
+        "prompt_tokens": 839,
+        "completion_tokens": 299,
+        "cost_usd": 0.0,
+        "quality": 100.0,
+        "validation": {
+          "parse": 100,
+          "schema": 100,
+          "verbatim": 100,
+          "classification": 100,
+          "notes": ""
+        },
+        "error": "",
+        "response_text": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 8,\n    \"deadline\": \"H2 FY2027\",\n    \"measurable_outcome\": \"The company will begin shipping products from the Rubin platform architecture.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin platform\",\n      \"Rubin architecture production\",\n      \"Rubin platform shipment schedule\",\n      \"NVIDIA next-generation GPU roadmap\",\n      \"Rubin platform release date\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"we will continue to add AI-specific features to our GPU architecture to further extend our leadership position.\",\n    \"category\": \"rd\",\n    \"severity\": 5,\n    \"deadline\": null,\n    \"measurable_outcome\": \"The company will integrate new AI-specific capabilities into its GPU hardware architecture.\",\n    \"search_terms\": [\n      \"GPU architecture AI features\",\n      \"NVIDIA AI hardware roadmap\",\n      \"GPU architecture enhancements\",\n      \"AI-specific GPU capabilities\",\n      \"NVIDIA architectural leadership\"\n    ]\n  }\n]\n```"
+      },
+      "runs": [
+        {
+          "status": 200,
+          "ttft_ms": 1608.4,
+          "total_ms": 23155.4,
+          "prompt_tokens": 839,
+          "completion_tokens": 299,
+          "cost_usd": 0.0,
+          "quality": 100.0,
+          "validation": {
+            "parse": 100,
+            "schema": 100,
+            "verbatim": 100,
+            "classification": 100,
+            "notes": ""
+          },
+          "error": "",
+          "response_text": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 8,\n    \"deadline\": \"H2 FY2027\",\n    \"measurable_outcome\": \"The company will begin shipping products from the Rubin platform architecture.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin platform\",\n      \"Rubin architecture production\",\n      \"Rubin platform shipment schedule\",\n      \"NVIDIA next-generation GPU roadmap\",\n      \"Rubin platform release date\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"we will continue to add AI-specific features to our GPU architecture to further extend our leadership position.\",\n    \"category\": \"rd\",\n    \"severity\": 5,\n    \"deadline\": null,\n    \"measurable_outcome\": \"The company will integrate new AI-specific capabilities into its GPU hardware architecture.\",\n    \"search_terms\": [\n      \"GPU architecture AI features\",\n      \"NVIDIA AI hardware roadmap\",\n      \"GPU architecture enhancements\",\n      \"AI-specific GPU capabilities\",\n      \"NVIDIA architectural leadership\"\n    ]\n  }\n]\n```"
+        }
+      ]
+    }
+  },
+  "determinism": {
+    "score": 80,
+    "note": "stable classifications, minor field diffs"
+  }
+}

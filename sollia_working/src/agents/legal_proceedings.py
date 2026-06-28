@@ -18,7 +18,8 @@ from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config.llm_config import call_llm
+from src.config.llm_config import call_llm, start_tier
+from src.utils.scoring import score_legal_proceedings
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ class LegalProceedingsTracker:
         os.makedirs(f"{self.cache_root}/texts", exist_ok=True)
 
     def get_cik(self, ticker: str) -> Optional[str]:
-        key = ticker.upper()
+        key = ticker.strip().upper().replace(".", "-")  # " aapl " -> AAPL; BRK.A -> BRK-A (SEC form)
         if key in _CIK_CACHE:
             return _CIK_CACHE[key]
         try:
@@ -136,7 +137,7 @@ class LegalProceedingsTracker:
                     cik = str(item["cik_str"]).zfill(10)
                     _CIK_CACHE[key] = cik
                     return cik
-        except:
+        except Exception:
             pass
         return None
 
@@ -253,8 +254,89 @@ class LegalProceedingsTracker:
                             json.dump(texts, f)
                         os.replace(tmp, cache_file)
                         return text
-        except:
+        except Exception:
             pass
+        return None
+
+    def _fetch_8k_text(self, filing: Dict) -> Optional[str]:
+        """Return the readable 8-K narrative (body + EX-99 exhibits).
+
+        SEC lists an inline-XBRL *cover* stub as an 8-K's primaryDocument — a few KB
+        of us-gaap tags with no event text. get_filing_text() therefore fed the model
+        XBRL noise, and it confabulated event "quotes" that matched no document. Here
+        we fetch every human-readable .htm in the accession (skipping the R<n>.htm
+        XBRL render fragments and the -index page), keep document order (8-K body
+        first, exhibits after), and stash per-document text on the filing dict so each
+        quote can later be cited to the exact exhibit that contains it. Cached in a
+        SEPARATE namespace from the raw-HTML texts cache so it can never collide with
+        Agent 1/2 content there (see filings-cache contract)."""
+        if not filing or not filing.get("accession") or not filing.get("cik"):
+            return None
+        ticker = filing.get("ticker", "")
+        acc = filing["accession"]
+        cache_file = f"{self.cache_root}/texts/{ticker}_8k_texts.json"
+        docs = None
+        if os.path.exists(cache_file):
+            try:
+                docs = json.load(open(cache_file)).get(acc)
+            except Exception:
+                docs = None
+        if docs is None:
+            docs = []
+            try:
+                cik_int = int(filing["cik"])
+                acc_clean = acc.replace("-", "")
+                base = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}"
+                idx = requests.get(base + "/index.json",
+                                   headers={"User-Agent": "Sollia contact@sollia.app"}, timeout=30)
+                if idx.status_code == 200:
+                    for it in idx.json().get("directory", {}).get("item", []):
+                        low = it.get("name", "").lower()
+                        if not low.endswith(".htm"):
+                            continue
+                        if low.endswith("-index.htm") or re.match(r"^r\d+\.htm$", low):
+                            continue  # skip the index page and XBRL render fragments
+                        time.sleep(0.1)
+                        r = requests.get(base + "/" + it["name"],
+                                         headers={"User-Agent": "Sollia contact@sollia.app"}, timeout=30)
+                        if r.status_code == 200:
+                            soup = BeautifulSoup(r.text, "html.parser")
+                            for tag in soup(["script", "style"]):
+                                tag.extract()
+                            txt = re.sub(r"\s+", " ", soup.get_text(" ")).strip()
+                            if len(txt) > 40:
+                                docs.append({"url": f"{base}/{it['name']}", "text": txt[:8000]})
+                store = {}
+                if os.path.exists(cache_file):
+                    try:
+                        store = json.load(open(cache_file))
+                    except Exception:
+                        store = {}
+                store[acc] = docs
+                tmp = "%s.%d.tmp" % (cache_file, os.getpid())
+                with open(tmp, "w") as f:
+                    json.dump(store, f)
+                os.replace(tmp, cache_file)
+            except Exception:
+                pass
+        filing["_8k_docs"] = docs
+        if not docs:
+            return None
+        return "\n\n".join(d["text"] for d in docs)[:9000]
+
+    @staticmethod
+    def _cite_doc(quote: Optional[str], docs: Optional[List[Dict]]) -> Optional[str]:
+        """Return the URL of the doc whose text actually contains `quote` (alnum
+        match, with an 80%-prefix fallback for trailing truncation), else None. Lets
+        an 8-K quote be cited to the exact exhibit it came from rather than the cover."""
+        qa = re.sub(r"[^a-z0-9]", "", (quote or "").rstrip("…").lower())
+        if len(qa) < 20 or not docs:
+            return None
+        probe = qa[:max(20, int(len(qa) * 0.8))]
+        for d in docs:
+            ta = re.sub(r"[^a-z0-9]", "", (d.get("text") or "").lower())
+            if qa in ta or probe in ta:
+                return d.get("url")
         return None
 
     def extract_legal_section(self, text: str, doc_type: str) -> Optional[str]:
@@ -282,9 +364,15 @@ class LegalProceedingsTracker:
             return None
 
         elif doc_type == "10-Q":
+            # Part II order is Item 1 (Legal Proceedings) -> Item 1A (Risk Factors)
+            # -> Item 2. BOTH patterns MUST stop at Item 1A; otherwise the entire
+            # Risk Factors block is swallowed into the "legal" text (truncated to
+            # 3000 chars it is ~90% risk-factor boilerplate) and the model mines it
+            # for phantom supply-chain / competition "proceedings" (PART 1a leak).
+            # Item 6 is a final backstop for filings that omit Item 1A and Item 2.
             patterns = [
-                r'PART\s+II.*?Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+2\.)',
-                r'Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+1A\.|Item\s+2\.)',
+                r'PART\s+II.*?Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+1A\.|Item\s+2\.|Item\s+6\.)',
+                r'Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+1A\.|Item\s+2\.|Item\s+6\.)',
             ]
             for pattern in patterns:
                 match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
@@ -305,13 +393,39 @@ class LegalProceedingsTracker:
             return text[:5000]
 
     def _is_substantive(self, text: str) -> bool:
-        if not text or len(text) < 30:
+        """True when a 10-K/10-Q legal section contains actual litigation narrative
+        rather than a bare cross-reference.
+
+        Many issuers (e.g. NVDA) reduce Part II Item 1 to "Refer to Part I, Note 10
+        ... for a discussion of our legal proceedings since ..." — the substance lives
+        in the financial-statement notes or the 10-K. Such a section has nothing to
+        diff; feeding it to the LLM only invites phantom proceedings mined from
+        mis-captured neighboring text. We classify a section as a PURE REFERENCE
+        (not substantive) only when it is short, dominated by reference language, AND
+        names no litigation. A long section, or one naming a lawsuit / plaintiff /
+        settlement / investigation, is always substantive even if it also says
+        "refer to". The old logic returned False on ANY "refer to" — that wrongly
+        discarded real legal sections that merely point to a note for more detail."""
+        if not text:
             return False
-        text_lower = text.lower()
-        if re.search(r'see\s+note|refer\s+to|incorporated by reference', text_lower):
+        t = re.sub(r"\s+", " ", text).strip().lower()
+        if len(t) < 40:
             return False
-        legal_words = ['lawsuit', 'litigation', 'asbestos', 'patent', 'v.', 'vs.', 'settlement', 'plaintiff', 'defendant']
-        return any(word in text_lower for word in legal_words)
+        legal_words = (
+            'lawsuit', 'litigat', 'asbestos', 'patent', ' v. ', ' vs ', 'settle',
+            'plaintiff', 'defendant', 'complaint', 'damages', 'injunction',
+            'class action', 'alleg', 'antitrust', 'subpoena', 'indictment',
+            'arbitrat', 'jury', 'verdict', 'breach of contract', 'infring',
+            'consent decree', 'enforcement action', 'investigation', 'claim',
+        )
+        has_legal = any(w in t for w in legal_words)
+        is_reference = bool(re.search(
+            r'\b(refer to|see note|see part|see item|incorporated by reference|'
+            r'discussed in|set forth in|described in|for a discussion of)\b', t))
+        # Pure cross-reference: short, reference-dominated, no litigation narrative.
+        if is_reference and not has_legal and len(t) < 800:
+            return False
+        return has_legal or len(t) >= 300
 
     def _calculate_score(self, proceedings):
         """Calculate a score from 0-100 based on proceedings status changes."""
@@ -340,6 +454,7 @@ class LegalProceedingsTracker:
         return max(10, min(90, score))
 
     def track(self, ticker: str, progress=None) -> Dict:
+        _t0 = time.time()  # PART 3: run-archive performance block
         cik = self.get_cik(ticker)
         results = {"ticker": ticker, "timestamp": datetime.now().isoformat(), "findings": []}
 
@@ -377,17 +492,42 @@ class LegalProceedingsTracker:
                 curr = filings[0]
                 prev = filings[1]
 
-                curr_raw = self.get_filing_text(curr)
-                prev_raw = self.get_filing_text(prev)
+                if doc_type == "8-K":
+                    # 8-K primaryDocument is an iXBRL cover stub, not the event text;
+                    # pull the real body + EX-99 exhibits so the model sees real text.
+                    curr_text = self._fetch_8k_text(curr)
+                    prev_text = self._fetch_8k_text(prev)
+                    curr_raw, prev_raw = curr_text, prev_text
+                else:
+                    curr_raw = self.get_filing_text(curr)
+                    prev_raw = self.get_filing_text(prev)
+                    curr_text = self.extract_legal_section(curr_raw, doc_type) if curr_raw else None
+                    prev_text = self.extract_legal_section(prev_raw, doc_type) if prev_raw else None
 
                 if curr_raw and prev_raw:
-                    curr_text = self.extract_legal_section(curr_raw, doc_type)
-                    prev_text = self.extract_legal_section(prev_raw, doc_type)
-
                     if curr_text and prev_text:
+                        # PART 1a reference gate: a 10-K Item 3 / 10-Q Part II Item 1
+                        # that only cross-references the notes or the prior 10-K has no
+                        # proceedings to diff. Feeding it to the LLM makes it confabulate
+                        # proceedings from text that isn't legal content at all, so we
+                        # surface an explicit NO_UPDATE finding and skip the LLM call.
+                        # Only skip when NEITHER side is substantive — if either filing
+                        # names a real matter we still diff (e.g. a matter that was
+                        # detailed before but reduced to a reference now).
+                        if doc_type in ("10-K", "10-Q") and not (
+                            self._is_substantive(curr_text)
+                            or self._is_substantive(prev_text)):
+                            results["findings"].append(_empty_finding(
+                                doc_type, prev, curr,
+                                "No new legal proceedings in %s — section cross-references "
+                                "prior disclosures (NO_UPDATE)." % doc_type))
+                            continue
                         # Build specialized prompt
                         if doc_type == "10-K":
-                            prompt = f"""Compare legal proceedings in 10-K filings. Be concise. Only output JSON.
+                            prompt = f"""Compare legal proceedings in these 10-K filings. Be concise. Only output JSON.
+
+Report ONLY actual legal proceedings: lawsuits, litigation, regulatory or government investigations, enforcement actions, settlements, judgments, indictments, or material legal claims.
+Do NOT report risk factors, market or competitive conditions, supply-chain or manufacturing challenges, accounting policies, or general business risks — NONE of these are legal proceedings.
 
 PRIOR ({prev['filing_date']}):
 {prev_text[:4000]}
@@ -410,7 +550,11 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
 }}"""
 
                         elif doc_type == "10-Q":
-                            prompt = f"""Compare legal proceedings in 10-Q filings. Be concise. Only output JSON.
+                            prompt = f"""Compare legal proceedings in these 10-Q filings. Be concise. Only output JSON.
+
+Report ONLY actual legal proceedings: lawsuits, litigation, regulatory or government investigations, enforcement actions, settlements, judgments, indictments, or material legal claims.
+Do NOT report risk factors, market or competitive conditions, supply-chain or manufacturing challenges, customer-demand fluctuations, accounting policies, or general business risks — NONE of these are legal proceedings.
+If a section only cross-references other documents ("Refer to Note X", "See our Form 10-K") with no specific lawsuit or claim, return an empty proceedings array with has_update=false.
 
 PRIOR ({prev['filing_date']}):
 {prev_text[:3000]}
@@ -436,10 +580,10 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             prompt = f"""Compare legal events in 8-K filings.
 
 PRIOR ({prev['filing_date']}):
-{prev_text[:4000]}
+{prev_text[:8000]}
 
 CURRENT ({curr['filing_date']}):
-{curr_text[:4000]}
+{curr_text[:8000]}
 
 Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT use markdown code blocks. Do NOT write Python code. Do NOT explain. Return ONLY the JSON object, nothing else:
 {{
@@ -457,7 +601,8 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
   "summary": "brief overview"
 }}"""
 
-                        response, _ = call_llm(prompt, max_tokens=2000)
+                        response, _ = call_llm(prompt, max_tokens=2000,
+                                               provider_idx=start_tier("legal_proceedings"))
                         try:
                             cleaned = response.strip()
                             # Remove markdown
@@ -468,8 +613,17 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             if cleaned.endswith('```'):
                                 cleaned = cleaned[:-3]
                             cleaned = cleaned.strip()
-                            
-                            data = json.loads(cleaned)
+
+                            try:
+                                data = json.loads(cleaned)
+                            except json.JSONDecodeError:
+                                # The LLM occasionally emits a stray backslash inside a
+                                # quoted legal citation (e.g. "Invalid \escape"), which
+                                # is not a valid JSON escape. Double any lone backslash
+                                # that is not part of a legal escape and retry once
+                                # before falling through to the unparseable handler.
+                                sanitized = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', cleaned)
+                                data = json.loads(sanitized)
                             # Extract proceedings list (for 10-K/10-Q) or events (for 8-K)
                             proceedings_list = data.get('proceedings', data.get('events', []))
                             # Merge duplicate findings that describe the same case/event.
@@ -496,6 +650,8 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                                 "current_primary_doc": curr.get("primary_document", ""),
                                 "prior_accession": prev.get("accession", ""),
                                 "prior_primary_doc": prev.get("primary_document", ""),
+                                "_8k_curr_docs": curr.get("_8k_docs"),
+                                "_8k_prev_docs": prev.get("_8k_docs"),
                                 "empty": False,
                                 "cik": cik
                             })
@@ -531,12 +687,10 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                 results["findings"].append(_empty_finding(
                     doc_type, _prev, _curr,
                     "No legal proceedings in %s — not enough filings to compare." % doc_type))
-        # Limit to top 5 proceedings per finding by priority
+        # Sort proceedings by priority (HIGH first) — output ALL of them, no cap.
             for finding in results["findings"]:
-                if len(finding["proceedings"]) > 5:
-                    priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-                    finding["proceedings"].sort(key=lambda x: priority_order.get(x.get("priority", "MEDIUM"), 1))
-                    finding["proceedings"] = finding["proceedings"][:5]
+                priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+                finding["proceedings"].sort(key=lambda x: priority_order.get(x.get("priority", "MEDIUM"), 1))
         # WS3: attach separate current + prior EDGAR URLs to each finding and each
         # proceeding, so the UI can render two links per row (prior quote + current
         # quote), each pointing at its own filing.
@@ -554,9 +708,32 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                 prior_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{prior_acc.replace('-', '')}/{prior_doc}"
             finding["current_edgar_url"] = curr_url
             finding["prior_edgar_url"] = prior_url
+            # 8-K events span multiple exhibits; cite each quote to the exact .htm
+            # that actually contains it (the cover-stub URL verifies against nothing).
+            curr_docs = finding.pop("_8k_curr_docs", None) or []
+            prev_docs = finding.pop("_8k_prev_docs", None) or []
+            all_docs = curr_docs + prev_docs  # an 8-K quote may sit in either side's exhibits
             for proc in finding.get("proceedings", []):
-                proc["edgar_url"] = curr_url
-                proc["prior_edgar_url"] = prior_url
+                proc["edgar_url"] = self._cite_doc(proc.get("current_quote"), all_docs) or curr_url
+                proc["prior_edgar_url"] = self._cite_doc(proc.get("prior_quote"), all_docs) or prior_url
+        # PART 2: single agent-level legal-trend score aggregated over EVERY
+        # proceeding/event across 10-K, 10-Q and 8-K (the agent previously emitted
+        # only per-finding agent3_score and had no agent-level score — the backend
+        # logged a hard-coded 50). score_legal_proceedings() weights each matter by
+        # the direction of its status (NEW/ESCALATED/QUIETLY_REMOVED bearish;
+        # SETTLED/DISMISSED bullish). agent3_score mirrors `score` for back-compat.
+        _score, _signal, _rationale = score_legal_proceedings(results["findings"])
+        results["score"] = _score
+        results["agent3_score"] = _score
+        results["signal"] = _signal
+        results["score_rationale"] = _rationale
+        # PART 3: archive this run (manifest + index line). Exception-safe.
+        try:
+            from src.utils.run_archive import save_run
+            save_run("legal_proceedings", ticker, datetime.now().year, results,
+                     duration_ms=(time.time() - _t0) * 1000)
+        except Exception:
+            pass
         _emit("Legal proceedings review complete.", "done")
         return results
 

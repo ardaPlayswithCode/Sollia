@@ -1,0 +1,221 @@
+{
+  "ticker": "TSLA",
+  "year": 2024,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-25T19:15:06.651135",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 2,
+  "total_discrepancies_found": 3,
+  "top_discrepancies": [
+    {
+      "pair": "EARNINGS_CALL_0_vs_8-K",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "high",
+      "weight": 80,
+      "reasoning": "The two passages report different dates for the publication of Tesla, Inc.'s press release, with EARNINGS_CALL_0 stating October 2, 2024, and 8-K stating October 23, 2024.",
+      "sentence_index_a": 1,
+      "sentence_index_b": 1,
+      "quoted_phrase_a": "On October 2, 2024, Tesla, Inc. published the press release",
+      "quoted_phrase_b": "On October 23, 2024, Tesla, Inc. released its financial results",
+      "batch_key": "EARNINGS_CALL_0_Full Document_0_0_0",
+      "same_filing": false,
+      "final_score": 81.5,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 70,
+        "pair_importance": 70,
+        "confidence": 92.4,
+        "same_filing": false
+      },
+      "rank": 1,
+      "source_a": {
+        "document_type": "Earnings Call",
+        "document_type_raw": "EARNINGS_CALL_0",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "On October 2, 2024, Tesla, Inc. published the press release which is attached hereto as Exhibit 99.1 and is incorporated herein by reference.",
+        "edgar_url": "",
+        "htm_link": "",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "source_b": {
+        "document_type": "8-K",
+        "document_type_raw": "8-K",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "On October 23, 2024, Tesla, Inc.\nreleased its financial results for the quarter ended September 30, 2024 by posting its Third Quarter 2024 Update on its website.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "pair_display": "Earnings Call vs 8-K"
+    },
+    {
+      "pair": "EARNINGS_CALL_3_vs_8-K",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "high",
+      "weight": 80,
+      "reasoning": "The EARNINGS_CALL_3 passage mentions a press release dated January 2, 2025, while the 8-K passage mentions a Third Quarter Update dated October 23, 2024, which cannot both be true as the primary subject of the respective documents.",
+      "sentence_index_a": 1,
+      "sentence_index_b": 2,
+      "quoted_phrase_a": "On January 2, 2025, Tesla, Inc. published the press release",
+      "quoted_phrase_b": "99.1 Tesla, Inc. Third Quarter Update, dated October 23, 2024",
+      "batch_key": "EARNINGS_CALL_3_Full Document_0_0_0",
+      "same_filing": false,
+      "final_score": 80.4,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 70,
+        "pair_importance": 70,
+        "confidence": 86.8,
+        "same_filing": false
+      },
+      "rank": 2,
+      "source_a": {
+        "document_type": "Earnings Call",
+        "document_type_raw": "EARNINGS_CALL_3",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "On January 2, 2025, Tesla, Inc. published the press release which is attached hereto as Exhibit 99.1 and is incorporated herein by reference.",
+        "edgar_url": "",
+        "htm_link": "",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "source_b": {
+        "document_type": "8-K",
+        "document_type_raw": "8-K",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 2,
+        "sentence_text": "Exhibit No.\nDescription\n99.1\nTesla, Inc.\nThird\nQuarter Update, dated\nOctober\n23, 2024\n.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "pair_display": "Earnings Call vs 8-K"
+    },
+    {
+      "pair": "EARNINGS_CALL_3_vs_8-K",
+      "is_discrepancy": true,
+      "discrepancy_type": "omission_discrepancy",
+      "severity": "medium",
+      "weight": 60,
+      "reasoning": "The EARNINGS_CALL_3 passage includes a description of the press release as Exhibit 99.1, while the 8-K passage includes a different description for Exhibit 99.1, indicating a material claim in one document is absent in the other.",
+      "sentence_index_a": 1,
+      "sentence_index_b": 2,
+      "quoted_phrase_a": "99.1 Press release of Tesla, Inc., dated January 2, 25",
+      "quoted_phrase_b": "99.1 Tesla, Inc. Third Quarter Update, dated October 23, 2024",
+      "batch_key": "EARNINGS_CALL_3_Full Document_0_0_0",
+      "same_filing": false,
+      "final_score": 60.4,
+      "score_components": {
+        "severity": 50,
+        "type_objectivity": 50,
+        "pair_importance": 70,
+        "confidence": 86.8,
+        "same_filing": false
+      },
+      "rank": 3,
+      "source_a": {
+        "document_type": "Earnings Call",
+        "document_type_raw": "EARNINGS_CALL_3",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "On January 2, 2025, Tesla, Inc. published the press release which is attached hereto as Exhibit 99.1 and is incorporated herein by reference.",
+        "edgar_url": "",
+        "htm_link": "",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "source_b": {
+        "document_type": "8-K",
+        "document_type_raw": "8-K",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 2,
+        "sentence_text": "Exhibit No.\nDescription\n99.1\nTesla, Inc.\nThird\nQuarter Update, dated\nOctober\n23, 2024\n.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
+        "year": 2024,
+        "ticker": "TSLA"
+      },
+      "pair_display": "Earnings Call vs 8-K"
+    }
+  ],
+  "score": 18,
+  "elapsed_seconds": 82.7,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T19:13:43.943882",
+      "step": "START",
+      "detail": "Agent 1 initiated for TSLA 2024"
+    },
+    {
+      "timestamp": "2026-06-25T19:14:56.171819",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-25T19:14:56.179566",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-25T19:14:58.900683",
+      "step": "CHUNK",
+      "detail": "Chunked into 85 total chunks"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:04.341382",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:04.351203",
+      "step": "ALIGN",
+      "detail": "Found 2 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:06.650788",
+      "step": "CLASSIFY",
+      "detail": "LLM found 3 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:06.651022",
+      "step": "RANK",
+      "detail": "Selected top 3 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:06.651116",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-25T19:15:06.651128",
+      "step": "OUTPUT",
+      "detail": "Complete in 82.7s"
+    }
+  ]
+}

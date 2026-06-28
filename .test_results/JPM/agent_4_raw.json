@@ -1,0 +1,14 @@
+{
+  "ticker": "JPM",
+  "agent": "Agent 4 \u2014 Risk Factor Delta",
+  "run_timestamp": "2026-06-25T17:04:49.903363",
+  "old_filing_date": "",
+  "new_filing_date": "",
+  "total_risks_old": 0,
+  "total_risks_new": 0,
+  "changes_found": 0,
+  "top_changes": [],
+  "score": 50,
+  "signal": "NEUTRAL",
+  "summary": "Fewer than two 10-K filings available for comparison."
+}

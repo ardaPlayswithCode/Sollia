@@ -1,0 +1,30 @@
+{
+  "status": "success",
+  "runtime_seconds": 33.1,
+  "llm_calls_recorded": 0,
+  "error": null,
+  "top_level_keys": [
+    "agent",
+    "agent_log",
+    "documents_analyzed",
+    "elapsed_seconds",
+    "run_timestamp",
+    "score",
+    "ticker",
+    "top_discrepancies",
+    "total_aligned_pairs",
+    "total_discrepancies_found",
+    "year"
+  ],
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 2,
+  "discrepancies_found": 1,
+  "top_score": 80,
+  "score": 19
+}

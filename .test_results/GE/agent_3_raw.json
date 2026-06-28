@@ -1,0 +1,86 @@
+{
+  "ticker": "GE",
+  "timestamp": "2026-06-26T03:19:13.184181",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-02-03",
+      "current_date": "2026-01-29",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000040545",
+      "current_accession": "0000040545-26-000008",
+      "current_primary_doc": "ge-20251231.htm",
+      "prior_accession": "0000040545-25-000015",
+      "prior_primary_doc": "ge-20241231.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000008/ge-20251231.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054525000015/ge-20241231.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-10-21",
+      "current_date": "2026-04-21",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-Q.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000040545",
+      "current_accession": "0000040545-26-000027",
+      "current_primary_doc": "ge-20260331.htm",
+      "prior_accession": "0000040545-25-000132",
+      "prior_primary_doc": "ge-20250930.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000027/ge-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054525000132/ge-20250930.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-06-11",
+      "current_date": "2026-06-25",
+      "proceedings": [
+        {
+          "item": "5.02",
+          "description": "Election of Judson Althoff to the Board of Directors",
+          "prior_quote": "Judson Althoff, CEO of Microsoft\u2019s Commercial Business, will join its Board of Directors",
+          "current_quote": null,
+          "counterparties": [
+            "Judson Althoff",
+            "Microsoft"
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000042/ge-20260625.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000039/ex991geaerospacebodannounc.htm"
+        },
+        {
+          "item": "5.03",
+          "description": "Amendments to the Company\u2019s By-Laws",
+          "prior_quote": null,
+          "current_quote": "supplement the procedures and information requirements for the nomination of persons for election to the Board",
+          "counterparties": [
+            "General Electric Company"
+          ],
+          "amount": null,
+          "status": "AMENDED",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000042/ge-20260625.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000039/ge-20260608.htm"
+        }
+      ],
+      "summary": "GE Aerospace announces the election of Judson Althoff to the Board of Directors and amendments to the Company\u2019s By-Laws",
+      "agent3_score": 45,
+      "current_accession": "0000040545-26-000042",
+      "current_primary_doc": "ge-20260625.htm",
+      "prior_accession": "0000040545-26-000039",
+      "prior_primary_doc": "ge-20260608.htm",
+      "empty": false,
+      "cik": "0000040545",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000042/ge-20260625.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000039/ge-20260608.htm"
+    }
+  ]
+}

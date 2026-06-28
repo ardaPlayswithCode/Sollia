@@ -1,0 +1,71 @@
+{
+  "ticker": "GME",
+  "timestamp": "2026-06-26T03:19:49.145400",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-03-25",
+      "current_date": "2026-03-24",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0001326380",
+      "current_accession": "0001326380-26-000013",
+      "current_primary_doc": "gme-20260131.htm",
+      "prior_accession": "0001628280-25-014731",
+      "prior_primary_doc": "gme-20250201.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000013/gme-20260131.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-12-09",
+      "current_date": "2026-06-11",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-Q.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0001326380",
+      "current_accession": "0001326380-26-000025",
+      "current_primary_doc": "gme-20260502.htm",
+      "prior_accession": "0001326380-25-000098",
+      "prior_primary_doc": "gme-20251101.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000025/gme-20260502.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638025000098/gme-20251101.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-06-02",
+      "current_date": "2026-06-23",
+      "proceedings": [
+        {
+          "item": "8.01",
+          "description": "Withdrawal of CEO Performance Award",
+          "prior_quote": "The CEO Performance Award, if and to the extent the stock options associated become vested and are exercised, would result in dilution to the Company\u2019s stockholders and could impact the Company\u2019s stock price",
+          "current_quote": "Ryan Cohen Withdraws CEO Performance Award; GameStop Focuses on eBay",
+          "counterparties": [
+            "Ryan Cohen",
+            "GameStop Corp."
+          ],
+          "amount": "null",
+          "status": "TERMINATED",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000029/pressreleasewithdrawalofce.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000020/a991-fy26q1earningsrelease.htm"
+        }
+      ],
+      "summary": "GameStop Corp. withdraws CEO Performance Award proposal at the request of Ryan Cohen, focusing on the proposed acquisition of eBay",
+      "agent3_score": 50,
+      "current_accession": "0001326380-26-000029",
+      "current_primary_doc": "gme-20260623.htm",
+      "prior_accession": "0001326380-26-000020",
+      "prior_primary_doc": "gme-20260602.htm",
+      "empty": false,
+      "cik": "0001326380",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000029/gme-20260623.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000020/gme-20260602.htm"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "ticker": "AAPL",
+  "timestamp": "2026-06-25T12:06:01.277465",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2024-11-01",
+      "current_date": "2025-10-31",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000320193",
+      "current_accession": "0000320193-25-000079",
+      "current_primary_doc": "aapl-20250927.htm",
+      "prior_accession": "0000320193-24-000123",
+      "prior_primary_doc": "aapl-20240928.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2026-01-30",
+      "current_date": "2026-05-01",
+      "proceedings": [
+        {
+          "case_name": null,
+          "prior_quote": "19 Item 1A. Risk Factors 20",
+          "current_quote": "20 Item 1A. Risk Factors 21",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm"
+        }
+      ],
+      "summary": "No changes in legal proceedings were found between the two filings.",
+      "agent3_score": 50,
+      "current_accession": "0000320193-26-000013",
+      "current_primary_doc": "aapl-20260328.htm",
+      "prior_accession": "0000320193-26-000006",
+      "prior_primary_doc": "aapl-20251227.htm",
+      "empty": false,
+      "cik": "0000320193",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-04-20",
+      "current_date": "2026-04-30",
+      "proceedings": [
+        {
+          "item": "5.02",
+          "description": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers",
+          "prior_quote": "On April 20, 2026, Apple Inc. (\"Apple\") announced that Tim Cook will transition from his role as Chief Executive Officer to Executive Chair of Apple\\'s Board of Directors",
+          "current_quote": null,
+          "counterparties": [
+            "Tim Cook",
+            "John Ternus",
+            "Art Levinson"
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm"
+        },
+        {
+          "item": "2.02",
+          "description": "Results of Operations and Financial Condition",
+          "prior_quote": null,
+          "current_quote": "On April 30, 2026, Apple Inc. (\"Apple\") issued a press release regarding Apple\\'s financial results for its second fiscal quarter ended March 28, 2026",
+          "counterparties": [
+            "Apple Inc."
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm"
+        }
+      ],
+      "summary": "Apple Inc. announces changes in leadership and reports financial results for its second fiscal quarter",
+      "agent3_score": 40,
+      "current_accession": "0000320193-26-000011",
+      "current_primary_doc": "aapl-20260430.htm",
+      "prior_accession": "0001140361-26-015711",
+      "prior_primary_doc": "ef20071035_8k.htm",
+      "empty": false,
+      "cik": "0000320193",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm"
+    }
+  ]
+}

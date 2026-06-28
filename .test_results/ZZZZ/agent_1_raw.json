@@ -1,0 +1,12 @@
+{
+  "ticker": "ZZZZ",
+  "year": 2024,
+  "error": "CIK not found for ZZZZ",
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T19:20:25.880388",
+      "step": "START",
+      "detail": "Agent 1 initiated for ZZZZ 2024"
+    }
+  ]
+}

@@ -19,8 +19,8 @@ for _d in (_CACHE_ROOT, _FILINGS_CACHE_DIR, _TEXTS_CACHE_DIR, _LLM_CACHE_DIR):
 
 SEC_BASE = "https://data.sec.gov"
 EDGAR_BASE = "https://www.sec.gov"
-_HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate"}
-_DATA_HEADERS = {"User-Agent": "Sollia Analysis contact@sollia.app", "Accept-Encoding": "gzip, deflate", "Host": "data.sec.gov"}
+_HEADERS = {"User-Agent": "Sollia contact@sollia.app", "Accept-Encoding": "gzip, deflate"}
+_DATA_HEADERS = {"User-Agent": "Sollia contact@sollia.app", "Accept-Encoding": "gzip, deflate", "Host": "data.sec.gov"}
 
 
 
@@ -74,18 +74,35 @@ def cache_filings(ticker: str, filings: list[dict]) -> bool:
     path = _os.path.join(_FILINGS_CACHE_DIR, f'{ticker.upper()}_filings.json')
     return _save_json(path, cache)
 
-def get_cached_text(ticker: str, accession_number: str) -> str | None:
-    """Load cached cleaned text for a specific filing."""
-    # Text cache is a single JSON dict keyed by accession
-    path = _os.path.join(_TEXTS_CACHE_DIR, f'{ticker.upper()}_texts.json')
-    all_texts = _load_json(path) or {}
-    return all_texts.get(accession_number)
+def _text_cache_key(accession_number: str, content_type: Optional[str]) -> str:
+    """Namespace the text-cache key by content type so different representations
+    of the SAME filing never collide.
 
-def cache_text(ticker: str, accession_number: str, text: str) -> bool:
-    """Cache cleaned text for a specific filing (merges into existing dict)."""
+    Convention: the PLAIN accession key (content_type=None) holds the RAW filing
+    HTML — every agent that fetches a filing writes it there (Agents 1/3/4 and
+    Agent 2's Stage-2 evidence search all read it and clean it themselves). A
+    non-None content_type appends '::{type}', e.g. '{acc}::mda' for Agent 2's
+    extracted MD&A. This is what stops Agent 2 Stage 1 from reading another
+    agent's raw HTML as if it were MD&A (the texts-cache content collision)."""
+    return accession_number if not content_type else f"{accession_number}::{content_type}"
+
+
+def get_cached_text(ticker: str, accession_number: str,
+                    content_type: Optional[str] = None) -> str | None:
+    """Load cached text for a filing. content_type=None reads the plain key (raw
+    HTML by convention); see _text_cache_key. Backward compatible: existing
+    callers that omit content_type get exactly the previous behavior."""
     path = _os.path.join(_TEXTS_CACHE_DIR, f'{ticker.upper()}_texts.json')
     all_texts = _load_json(path) or {}
-    all_texts[accession_number] = text
+    return all_texts.get(_text_cache_key(accession_number, content_type))
+
+def cache_text(ticker: str, accession_number: str, text: str,
+               content_type: Optional[str] = None) -> bool:
+    """Cache text for a filing (merges into existing dict). content_type=None
+    writes the plain key (raw HTML by convention); see _text_cache_key."""
+    path = _os.path.join(_TEXTS_CACHE_DIR, f'{ticker.upper()}_texts.json')
+    all_texts = _load_json(path) or {}
+    all_texts[_text_cache_key(accession_number, content_type)] = text
     return _save_json(path, all_texts)
 
 def get_cached_llm(prompt_hash: str) -> dict | None:
@@ -111,7 +128,7 @@ class SECEdgarProvider:
         self._name_cache: Dict[str, str] = {}
 
     def get_cik(self, ticker: str) -> Optional[str]:
-        key = ticker.upper()
+        key = ticker.strip().upper().replace(".", "-")  # " aapl " -> AAPL; BRK.A -> BRK-A (SEC form)
         if key in self._cik_cache:
             return self._cik_cache[key]
         try:
@@ -210,11 +227,13 @@ class SECEdgarProvider:
         except Exception as exc:
             logger.debug("SEC .htm failed: %s", exc)
 
-        # Source 2: SEC direct retry with alternate User-Agent
+        # Source 2: SEC direct retry. Always use the compliant SEC User-Agent —
+        # SEC's fair-access policy requires a descriptive UA with contact info on
+        # EVERY request, so a generic browser UA is never used.
         if ticker:
             retry_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
             try:
-                resp = requests.get(retry_url, headers={**_HEADERS, "User-Agent": "Mozilla/5.0"}, timeout=30)
+                resp = requests.get(retry_url, headers=_HEADERS, timeout=30)
                 if resp.status_code == 200 and len(resp.text) > 5000:
                     return resp.text
             except Exception as exc:

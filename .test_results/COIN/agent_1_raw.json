@@ -1,0 +1,70 @@
+{
+  "ticker": "COIN",
+  "year": 2025,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-26T03:09:27.637521",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 2,
+  "total_discrepancies_found": 0,
+  "top_discrepancies": [],
+  "score": 50,
+  "elapsed_seconds": 37.0,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-26T03:08:50.608361",
+      "step": "START",
+      "detail": "Agent 1 initiated for COIN 2025"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:07.187199",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:07.208935",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:16.241526",
+      "step": "CHUNK",
+      "detail": "Chunked into 246 total chunks"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:26.824674",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:26.885971",
+      "step": "ALIGN",
+      "detail": "Found 2 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:27.637195",
+      "step": "CLASSIFY",
+      "detail": "LLM found 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:27.637226",
+      "step": "RANK",
+      "detail": "Selected top 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:27.637506",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-26T03:09:27.637515",
+      "step": "OUTPUT",
+      "detail": "Complete in 37.0s"
+    }
+  ]
+}

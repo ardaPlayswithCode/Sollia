@@ -1,0 +1,193 @@
+{
+  "ticker": "JPM",
+  "agent": "Agent 2 \u2014 Promise Audit",
+  "run_timestamp": "2026-06-25T17:04:47.820428",
+  "total_filings_analyzed": 37,
+  "total_promises_extracted": 3,
+  "total_kept": 0,
+  "total_broken": 1,
+  "total_partial": 0,
+  "total_pending": 1,
+  "total_stale": 0,
+  "total_unresolved": 1,
+  "score": 10.0,
+  "top_promises": [
+    {
+      "rank": 1,
+      "promise_id": "JPM_20251104_003",
+      "text": "The Firm s principal executive offices will continue to be located at 383 Madison Avenue, New York, New York until senior management moves into the new building, which is expected to occur in the fourth quarter of 2025.",
+      "category": "other",
+      "severity": 2,
+      "status": "BROKEN",
+      "decay": 0.9,
+      "weighted_importance": 1.8,
+      "deadline": "Q4 2025",
+      "promise_source": "10-Q",
+      "promise_date": "2025-11-04",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+      "evidence_text": "",
+      "evidence_filing": null,
+      "evidence_url": "",
+      "evidence_date": null,
+      "confidence": "high",
+      "reasoning": "The deadline for senior management to move into the new building was the fourth quarter of 2025, which has passed, and no evidence of completion exists."
+    },
+    {
+      "rank": 2,
+      "promise_id": "JPM_20260501_001",
+      "text": "Upon acceptance by Visa of the Firm s tender, the Visa C shares received by the Firm would be recognized at fair value, which is expected to result in a gain that may be recorded as early as the second quarter of 2026.",
+      "category": "revenue",
+      "severity": 8,
+      "status": "PENDING",
+      "decay": 0.96,
+      "weighted_importance": 7.68,
+      "deadline": "Q2 2026",
+      "promise_source": "10-Q",
+      "promise_date": "2026-05-01",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+      "evidence_text": "",
+      "evidence_filing": null,
+      "evidence_url": "",
+      "evidence_date": null,
+      "confidence": "high",
+      "reasoning": "The deadline for recording a gain is the second quarter of 2026, which has not yet arrived."
+    },
+    {
+      "rank": 3,
+      "promise_id": "JPM_20260213_002",
+      "text": "The proposal would also establish a process for automatically publishing an updated maximum fee amount every other year going forward.",
+      "category": "revenue",
+      "severity": 4,
+      "status": "UNRESOLVED",
+      "decay": 0.91,
+      "weighted_importance": 3.64,
+      "deadline": null,
+      "promise_source": "10-K",
+      "promise_date": "2026-02-13",
+      "promise_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+      "evidence_text": "",
+      "evidence_filing": null,
+      "evidence_url": "",
+      "evidence_date": null,
+      "confidence": "low",
+      "reasoning": "No deadline was given for establishing a process for publishing an updated maximum fee amount, and no clear evidence exists to confirm or contradict the promise."
+    }
+  ],
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T17:04:43.273622",
+      "step": "FETCH",
+      "detail": "Fetching all filings for JPM..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.787733",
+      "step": "FETCH",
+      "detail": "Fetched 37 total, 37 within 10yr window"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.787738",
+      "step": "FETCH",
+      "detail": "Fetching transcripts..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.945947",
+      "step": "FETCH",
+      "detail": "Fetched 0 total, 0 within 10yr window"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.945957",
+      "step": "ALIGN",
+      "detail": "Building FY bundles (37 filings, 0 transcripts)..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.946064",
+      "step": "ALIGN",
+      "detail": "Built 1 FY bundles"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:43.946067",
+      "step": "STAGE1",
+      "detail": "Starting Stage 1: Promise extraction..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:44.323262",
+      "step": "STAGE1_TEXT",
+      "detail": "Fetched MD&A: 10-Q 0001628280-26-029344... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:44.746812",
+      "step": "STAGE1_TEXT",
+      "detail": "Fetched MD&A: 10-K 0001628280-26-008131... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:45.140226",
+      "step": "STAGE1_TEXT",
+      "detail": "Fetched MD&A: 10-Q 0001628280-25-048859... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:45.553730",
+      "step": "STAGE1_TEXT",
+      "detail": "Fetched MD&A: 10-Q 0000019617-25-000615... (30000 chars)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:45.569880",
+      "step": "STAGE1_DETERMINISTIC",
+      "detail": "Flagged 3 candidate sentences from 37 filings + 0 transcripts"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:46.984985",
+      "step": "STAGE1_LLM",
+      "detail": "Batch 1/1: 3 promises from 3 candidates (model: llama-3.1-8b-instant)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:46.984997",
+      "step": "STAGE1_LLM",
+      "detail": "Extracted 3 promises (1 batches)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:46.985035",
+      "step": "STAGE1",
+      "detail": "Extracted 3 promises"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:46.985043",
+      "step": "STAGE2",
+      "detail": "Starting Stage 2: Evidence search..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:46.985046",
+      "step": "STAGE2",
+      "detail": "Pre-tokenizing documents for evidence search..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.074232",
+      "step": "STAGE2",
+      "detail": "Pre-tokenized 8 documents"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.074560",
+      "step": "STAGE2_DETERMINISTIC",
+      "detail": "Found 0 unique evidence candidates"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.074562",
+      "step": "STAGE2_LLM",
+      "detail": "No evidence candidates \u2014 calling LLM to classify by deadline"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.820272",
+      "step": "STAGE2_LLM",
+      "detail": "Matched 3 promises (model: llama-3.3-70b-versatile)"
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.820361",
+      "step": "SCORE",
+      "detail": "Calculating credibility score..."
+    },
+    {
+      "timestamp": "2026-06-25T17:04:47.820402",
+      "step": "SCORE",
+      "detail": "Calculated credibility score: 10.0"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "status": "success",
+  "runtime_seconds": 0.3,
+  "llm_calls_recorded": 2,
+  "error": null,
+  "top_level_keys": [
+    "findings",
+    "ticker",
+    "timestamp"
+  ],
+  "findings_count": 3,
+  "proceedings_count": 3,
+  "quietly_removed_count": 0,
+  "score": 50
+}

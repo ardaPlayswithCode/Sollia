@@ -5,7 +5,8 @@ Layer 0: Fiscal year alignment + data fetching with 3-tier fallback per document
 from __future__ import annotations
 import os
 
-from src.config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model
+from src.config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model, start_tier
+from src.utils.scoring import score_corporate_discrepancy
 
 # Cache integration — check before downloading
 from src.providers.filings.sec_edgar import get_cached_text, cache_text, get_cached_filings, cache_filings
@@ -35,7 +36,7 @@ MAX_YEARS_BACK = 10
 _CIK_CACHE: Dict[str, str] = {}
 
 def get_cik(ticker: str) -> Optional[str]:
-    key = ticker.upper()
+    key = ticker.strip().upper().replace(".", "-")  # " aapl " -> AAPL; BRK.A -> BRK-A (SEC form)
     if key in _CIK_CACHE:
         return _CIK_CACHE[key]
     try:
@@ -415,11 +416,20 @@ def clean_all(documents: dict) -> dict:
 # LAYER 1: Chunking
 # ============================================================================
 
-import spacy
+# spaCy (en_core_web_sm) is the preferred sentence tokenizer. Guard BOTH the package
+# import and the model load: if either is unavailable, fall back to the regex
+# tokenizer in split_sentences() rather than crashing the whole agent on import.
 try:
+    import spacy
     nlp = spacy.load("en_core_web_sm")
-except Exception:
+except Exception as _spacy_exc:  # ImportError (no package) or OSError (no model)
+    spacy = None
     nlp = None
+    logger.warning(
+        "spaCy unavailable (%s) — falling back to regex sentence tokenizer. "
+        "Install with: pip install spacy && python -m spacy download en_core_web_sm",
+        _spacy_exc,
+    )
 
 SECTION_RE = re.compile(r'^(Item\s+\d+[A-Z]?[\.:—]?\s+.+)$', re.MULTILINE | re.IGNORECASE)
 
@@ -995,8 +1005,13 @@ def _parse_discrepancy_array(text):
     return data if isinstance(data, list) else []
 
 
-def _call_llm(prompt, provider_idx=0, max_tokens=400):
-    """Call LLM using shared config — delegates to llm_config.call_llm."""
+def _call_llm(prompt, provider_idx=None, max_tokens=400):
+    """Call LLM using shared config — delegates to llm_config.call_llm.
+
+    PART 4c: default start tier is Groq-70B (this is the quality-sensitive
+    classify step); callers may still pass an explicit provider_idx."""
+    if provider_idx is None:
+        provider_idx = start_tier("corporate_discrepancy")
     try:
         return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx)
     except Exception:
@@ -1280,10 +1295,10 @@ def rank_discrepancies(documents):
         }
 
     ranked = sorted(discrepancies, key=lambda x: x.get("final_score", 0), reverse=True)
-    top5 = ranked[:5]
-    for i, d in enumerate(top5):
+    # Output EVERY discrepancy found (ranked by final_score), not just the top 5.
+    for i, d in enumerate(ranked):
         d["rank"] = i + 1
-    documents["top_discrepancies"] = top5
+    documents["top_discrepancies"] = ranked
     return documents
 
 def build_citations(documents):
@@ -1413,7 +1428,23 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
     # Layer 2: Embed
     embed_fn = get_embedder()
     if embed_fn is None:
-        return {"ticker": ticker, "year": year, "error": "FinBERT not available. Install transformers and torch.", "agent_log": log}
+        # FinBERT (transformers + torch) is unavailable. A warm run can still proceed
+        # entirely from the embedding cache; only abort if a chunk actually needs a
+        # fresh embedding. This lets cached re-runs work on machines without torch.
+        _all_chunks = (documents.get("chunks_10k", []) + documents.get("chunks_10q", []) +
+                       documents.get("chunks_def14a", []) + documents.get("chunks_8k", []) +
+                       documents.get("chunks_transcript", []))
+        _uncached = [c for c in _all_chunks
+                     if c.get("embedding") is None and _get_cached_embedding(c["text"]) is None]
+        if _uncached:
+            return {"ticker": ticker, "year": year,
+                    "error": "FinBERT not available (transformers + torch). %d of %d chunks "
+                             "are uncached and cannot be embedded. Install with: "
+                             "pip install transformers torch" % (len(_uncached), len(_all_chunks)),
+                    "agent_log": log}
+        # Every chunk is in the cache — supply a stub that must never be invoked.
+        def embed_fn(_text):
+            raise RuntimeError("embed_fn called despite full cache coverage")
     _emit("Reading and aligning passages across the filing set...", "align")
     documents = embed_all_chunks(documents, embed_fn)
     add_log("EMBED", "Embedded all chunks with FinBERT")
@@ -1447,16 +1478,18 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
     add_log("OUTPUT", "Complete in %.1fs" % elapsed)
     _emit("Corporate discrepancy scan complete (%.0fs)" % elapsed, "done")
 
-    # The top discrepancy's internal severity runs 0-100, higher = more/worse
-    # contradictions. Convert to the unified BULLISHNESS scale every Sollia agent
-    # reports on: more/severe discrepancies read as MORE BEARISH, so we invert
-    # (100 - severity). No discrepancies stays neutral at 50 (100 - 50). Clamped
-    # to [10, 90] — no filing is perfectly clean or maximally damning.
-    _top = documents.get("top_discrepancies")
-    _raw_severity = round(_top[0].get("final_score", 50)) if _top else 50
-    bullishness_score = max(10, min(90, 100 - _raw_severity))
+    # PART 2 scoring redesign. The OLD formula used ONLY the single worst
+    # discrepancy (100 - top.final_score), so a filing with 1 high-severity
+    # contradiction and one with 8 both scored 10 — no magnitude. The new
+    # score_corporate_discrepancy() starts from a clean baseline (90 when there
+    # are zero discrepancies — internally consistent) and subtracts rank-decayed
+    # penalties over ALL discrepancies, so more/severe contradictions read lower
+    # while a long tail of minor tensions does not floor it. See
+    # src/utils/scoring.py for the formula and rationale.
+    _score, _signal, _rationale = score_corporate_discrepancy(
+        documents.get("top_discrepancies"))
 
-    return {
+    _result = {
         "ticker": ticker, "year": year,
         "agent": "Corporate Discrepancy",
         "run_timestamp": datetime.datetime.utcnow().isoformat(),
@@ -1464,7 +1497,18 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
         "total_aligned_pairs": len(documents.get("aligned_pairs", [])),
         "total_discrepancies_found": len(documents.get("discrepancies", [])),
         "top_discrepancies": documents.get("top_discrepancies", []),
-        "score": bullishness_score,
+        "score": _score,
+        "signal": _signal,
+        "score_rationale": _rationale,
         "elapsed_seconds": round(elapsed, 1),
         "agent_log": log,
     }
+    # PART 3: archive this run (manifest + index line). Exception-safe — never
+    # let archiving break a run. Embeddings are NOT copied; they stay in the
+    # content-addressed .cache/embeddings store the manifest references.
+    try:
+        from src.utils.run_archive import save_run
+        save_run("corporate_discrepancy", ticker, year, _result, duration_ms=elapsed * 1000)
+    except Exception:
+        pass
+    return _result

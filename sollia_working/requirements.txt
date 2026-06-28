@@ -1,0 +1,22 @@
+# Sollia financial analysis platform — Python dependencies.
+#
+# Core (all 4 agents + providers):
+requests>=2.31
+beautifulsoup4>=4.12
+numpy>=1.24
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# Web UI / app layer:
+streamlit>=1.30
+
+# Agent 1 (Corporate Discrepancy) — sentence tokenization + FinBERT embeddings.
+# NOTE: en_core_web_sm must also be downloaded:  python -m spacy download en_core_web_sm
+# If spaCy/transformers/torch are absent, Agent 1 degrades (regex tokenizer) or, for
+# embeddings, runs only from the embedding cache and otherwise errors with guidance.
+spacy>=3.7
+transformers>=4.38
+torch>=2.1
+
+# LLM access (Groq primary/fallback, OpenRouter backup) uses the `requests` library
+# above directly — no provider SDK is required. Set GROQ_API_KEY and OPENROUTER_API_KEY.

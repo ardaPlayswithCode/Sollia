@@ -1,0 +1,53 @@
+{
+  "model": "google/gemma-4-31b-it:free",
+  "timestamp": "2026-06-25T23:54:34.767133+00:00",
+  "price_in_per_m": 0.0,
+  "price_out_per_m": 0.0,
+  "context": 262144,
+  "tests": {
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 200,
+        "ttft_ms": 939.3,
+        "total_ms": 4165.0,
+        "prompt_tokens": 838,
+        "completion_tokens": 192,
+        "cost_usd": 0.0,
+        "quality": 100.0,
+        "validation": {
+          "parse": 100,
+          "schema": 100,
+          "verbatim": 100,
+          "classification": 100,
+          "notes": ""
+        },
+        "error": "",
+        "response_text": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"In fiscal year 2026, we unveiled the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 8,\n    \"deadline\": \"H2 FY2027\",\n    \"measurable_outcome\": \"Commencement of production shipments for the NVIDIA Rubin platform.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin\",\n      \"Rubin platform shipments\",\n      \"Rubin production date\",\n      \"FY2027 product roadmap\",\n      \"Rubin platform launch\",\n      \"GPU production schedule\",\n      \"Rubin shipping timeline\",\n      \"next-gen GPU shipments\"\n    ]\n  }\n]\n```"
+      },
+      "runs": [
+        {
+          "status": 200,
+          "ttft_ms": 939.3,
+          "total_ms": 4165.0,
+          "prompt_tokens": 838,
+          "completion_tokens": 192,
+          "cost_usd": 0.0,
+          "quality": 100.0,
+          "validation": {
+            "parse": 100,
+            "schema": 100,
+            "verbatim": 100,
+            "classification": 100,
+            "notes": ""
+          },
+          "error": "",
+          "response_text": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"In fiscal year 2026, we unveiled the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 8,\n    \"deadline\": \"H2 FY2027\",\n    \"measurable_outcome\": \"Commencement of production shipments for the NVIDIA Rubin platform.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin\",\n      \"Rubin platform shipments\",\n      \"Rubin production date\",\n      \"FY2027 product roadmap\",\n      \"Rubin platform launch\",\n      \"GPU production schedule\",\n      \"Rubin shipping timeline\",\n      \"next-gen GPU shipments\"\n    ]\n  }\n]\n```"
+        }
+      ]
+    }
+  },
+  "determinism": {
+    "score": 80,
+    "note": "stable classifications, minor field diffs"
+  }
+}

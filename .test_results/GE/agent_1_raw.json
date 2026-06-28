@@ -1,0 +1,121 @@
+{
+  "ticker": "GE",
+  "year": 2025,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-26T00:05:30.422930",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 2,
+  "total_discrepancies_found": 1,
+  "top_discrepancies": [
+    {
+      "pair": "EARNINGS_CALL_0_vs_8-K",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "high",
+      "weight": 80,
+      "reasoning": "The EARNINGS_CALL_0 passage mentions 'Third-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025' while the 8-K passage mentions 'Third-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025' but in the context of an exhibit description.",
+      "sentence_index_a": 0,
+      "sentence_index_b": 1,
+      "quoted_phrase_a": "Third-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025",
+      "quoted_phrase_b": "Exhibit Description 99 Third-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025",
+      "batch_key": "EARNINGS_CALL_0_Full Document_0_1_1",
+      "same_filing": false,
+      "final_score": 81.3,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 70,
+        "pair_importance": 70,
+        "confidence": 91.3,
+        "same_filing": false
+      },
+      "rank": 1,
+      "source_a": {
+        "document_type": "Earnings Call",
+        "document_type_raw": "EARNINGS_CALL_0",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "99\nThird-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025.",
+        "edgar_url": "",
+        "htm_link": "",
+        "year": 2025,
+        "ticker": "GE"
+      },
+      "source_b": {
+        "document_type": "8-K",
+        "document_type_raw": "8-K",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "(d) Exhibits\nExhibit Description\n99\nThird-quarter 2025 financial results released on GE Aerospace's website on October 21, 2025.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054525000131/ge-20251021.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/40545/000004054525000131/ge-20251021.htm",
+        "year": 2025,
+        "ticker": "GE"
+      },
+      "pair_display": "Earnings Call vs 8-K"
+    }
+  ],
+  "score": 19,
+  "elapsed_seconds": 33.1,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-26T00:04:57.355439",
+      "step": "START",
+      "detail": "Agent 1 initiated for GE 2025"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:20.424270",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:20.433212",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:23.273243",
+      "step": "CHUNK",
+      "detail": "Chunked into 83 total chunks"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:28.251800",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:28.259842",
+      "step": "ALIGN",
+      "detail": "Found 2 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:30.422686",
+      "step": "CLASSIFY",
+      "detail": "LLM found 1 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:30.422865",
+      "step": "RANK",
+      "detail": "Selected top 1 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:30.422915",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-26T00:05:30.422925",
+      "step": "OUTPUT",
+      "detail": "Complete in 33.1s"
+    }
+  ]
+}

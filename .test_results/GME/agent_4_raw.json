@@ -1,0 +1,17 @@
+{
+  "ticker": "GME",
+  "agent": "Agent 4 \u2014 Risk Factor Delta",
+  "run_timestamp": "2026-06-25T19:23:56.868267",
+  "old_filing_date": "2025-03-25",
+  "new_filing_date": "2026-03-24",
+  "total_risks_old": 43,
+  "total_risks_new": 0,
+  "changes_found": 0,
+  "top_changes": [],
+  "score": 50,
+  "signal": "NEUTRAL",
+  "old_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+  "new_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638026000013/gme-20260131.htm",
+  "cik": "0001326380",
+  "summary": "Risk factor comparison failed (LLM error)."
+}

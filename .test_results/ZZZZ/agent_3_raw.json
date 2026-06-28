@@ -1,0 +1,54 @@
+{
+  "ticker": "ZZZZ",
+  "timestamp": "2026-06-25T12:20:26.358078",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "",
+      "current_date": "",
+      "proceedings": [],
+      "summary": "No legal proceedings in 10-K \u2014 not enough filings to compare.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": null,
+      "current_accession": "",
+      "current_primary_doc": "",
+      "prior_accession": "",
+      "prior_primary_doc": "",
+      "current_edgar_url": "",
+      "prior_edgar_url": ""
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "",
+      "current_date": "",
+      "proceedings": [],
+      "summary": "No legal proceedings in 10-Q \u2014 not enough filings to compare.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": null,
+      "current_accession": "",
+      "current_primary_doc": "",
+      "prior_accession": "",
+      "prior_primary_doc": "",
+      "current_edgar_url": "",
+      "prior_edgar_url": ""
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "",
+      "current_date": "",
+      "proceedings": [],
+      "summary": "No legal proceedings in 8-K \u2014 not enough filings to compare.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": null,
+      "current_accession": "",
+      "current_primary_doc": "",
+      "prior_accession": "",
+      "prior_primary_doc": "",
+      "current_edgar_url": "",
+      "prior_edgar_url": ""
+    }
+  ]
+}

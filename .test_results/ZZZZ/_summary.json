@@ -1,0 +1,77 @@
+{
+  "ticker": "ZZZZ",
+  "year": 2024,
+  "timestamp": "2026-06-25T19:20:25Z",
+  "agents": {
+    "agent_1": {
+      "status": "error",
+      "runtime_seconds": 0.2,
+      "llm_calls_recorded": 0,
+      "error": "CIK not found for ZZZZ",
+      "top_level_keys": [
+        "agent_log",
+        "error",
+        "ticker",
+        "year"
+      ],
+      "documents_analyzed": null,
+      "total_aligned_pairs": null,
+      "discrepancies_found": 0,
+      "top_score": null,
+      "score": null
+    },
+    "agent_2": {
+      "status": "error",
+      "runtime_seconds": 0.1,
+      "llm_calls_recorded": 0,
+      "error": "No filings available for ZZZZ",
+      "top_level_keys": [
+        "error"
+      ],
+      "promises_extracted": 0,
+      "filings_analyzed": null,
+      "score": null,
+      "status_distribution": {}
+    },
+    "agent_3": {
+      "status": "success",
+      "runtime_seconds": 0.5,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "findings",
+        "ticker",
+        "timestamp"
+      ],
+      "findings_count": 3,
+      "proceedings_count": 0,
+      "quietly_removed_count": 0,
+      "score": 50
+    },
+    "agent_4": {
+      "status": "success",
+      "runtime_seconds": 0.1,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "changes_found",
+        "new_filing_date",
+        "old_filing_date",
+        "run_timestamp",
+        "score",
+        "signal",
+        "summary",
+        "ticker",
+        "top_changes",
+        "total_risks_new",
+        "total_risks_old"
+      ],
+      "changes_found": 0,
+      "distribution": {},
+      "verified_count": 0,
+      "score": 50,
+      "signal": "NEUTRAL"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "timestamp": "2026-06-25T23:56:22.175105+00:00",
+  "price_in_per_m": 0.0,
+  "price_out_per_m": 0.0,
+  "context": 1000000,
+  "tests": {
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 200,
+        "ttft_ms": 20510.1,
+        "total_ms": 27235.1,
+        "prompt_tokens": 860,
+        "completion_tokens": 1659,
+        "cost_usd": 0.0,
+        "quality": 100.0,
+        "validation": {
+          "parse": 100,
+          "schema": 100,
+          "verbatim": 100,
+          "classification": 100,
+          "notes": ""
+        },
+        "error": "",
+        "response_text": "[\n  {\n    \"is_promise\": true,\n    \"text\": \"In fiscal year 2026, we unveiled the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 7,\n    \"deadline\": null,\n    \"measurable_outcome\": \"Production shipments of the NVIDIA Rubin platform will begin in the second half of fiscal year 2027.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin platform\",\n      \"production shipments\",\n      \"fiscal year 2027\",\n      \"second half\",\n      \"GPU architecture\",\n      \"AI platform\",\n      \"product launch\",\n      \"Rubin GPU\",\n      \"shipment timeline\",\n      \"fiscal year 2026\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"GPUs are uniquely suited to AI, and we will continue to add AI-specific features to our GPU architecture to further extend our leadership position.\",\n    \"category\": \"product\",\n    \"severity\": 5,\n    \"deadline\": null,\n    \"measurable_outcome\": \"NVIDIA will continuously add AI-specific features to its GPU architecture.\",\n    \"search_terms\": [\n      \"AI-specific features\",\n      \"GPU architecture\",\n      \"continue to add\",\n      \"leadership position\",\n      \"AI GPU\",\n      \"product development\",\n      \"feature roadmap\",\n      \"AI integration\",\n      \"GPU enhancements\",\n      \"technology leadership\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"To defend against security incidents, we must continuously engineer more secure products and enhance security and reliability features, which is expected to result in increased expenses.\",\n    \"category\": \"other\",\n    \"severity\": 4,\n    \"deadline\": null,\n    \"measurable_outcome\": \"NVIDIA will continuously engineer more secure products and enhance security and reliability features.\",\n    \"search_terms\": [\n      \"secure products\",\n      \"security and reliability features\",\n      \"engineer more secure\",\n      \"defend against security incidents\",\n      \"increased expenses\",\n      \"product security\",\n      \"reliability enhancements\",\n      \"security investment\",\n      \"continuous engineering\",\n      \"risk mitigation\"\n    ]\n  }\n]"
+      },
+      "runs": [
+        {
+          "status": 200,
+          "ttft_ms": 20510.1,
+          "total_ms": 27235.1,
+          "prompt_tokens": 860,
+          "completion_tokens": 1659,
+          "cost_usd": 0.0,
+          "quality": 100.0,
+          "validation": {
+            "parse": 100,
+            "schema": 100,
+            "verbatim": 100,
+            "classification": 100,
+            "notes": ""
+          },
+          "error": "",
+          "response_text": "[\n  {\n    \"is_promise\": true,\n    \"text\": \"In fiscal year 2026, we unveiled the NVIDIA Rubin platform, which is expected to commence production shipments in the second half of fiscal year 2027.\",\n    \"category\": \"product\",\n    \"severity\": 7,\n    \"deadline\": null,\n    \"measurable_outcome\": \"Production shipments of the NVIDIA Rubin platform will begin in the second half of fiscal year 2027.\",\n    \"search_terms\": [\n      \"NVIDIA Rubin platform\",\n      \"production shipments\",\n      \"fiscal year 2027\",\n      \"second half\",\n      \"GPU architecture\",\n      \"AI platform\",\n      \"product launch\",\n      \"Rubin GPU\",\n      \"shipment timeline\",\n      \"fiscal year 2026\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"GPUs are uniquely suited to AI, and we will continue to add AI-specific features to our GPU architecture to further extend our leadership position.\",\n    \"category\": \"product\",\n    \"severity\": 5,\n    \"deadline\": null,\n    \"measurable_outcome\": \"NVIDIA will continuously add AI-specific features to its GPU architecture.\",\n    \"search_terms\": [\n      \"AI-specific features\",\n      \"GPU architecture\",\n      \"continue to add\",\n      \"leadership position\",\n      \"AI GPU\",\n      \"product development\",\n      \"feature roadmap\",\n      \"AI integration\",\n      \"GPU enhancements\",\n      \"technology leadership\"\n    ]\n  },\n  {\n    \"is_promise\": true,\n    \"text\": \"To defend against security incidents, we must continuously engineer more secure products and enhance security and reliability features, which is expected to result in increased expenses.\",\n    \"category\": \"other\",\n    \"severity\": 4,\n    \"deadline\": null,\n    \"measurable_outcome\": \"NVIDIA will continuously engineer more secure products and enhance security and reliability features.\",\n    \"search_terms\": [\n      \"secure products\",\n      \"security and reliability features\",\n      \"engineer more secure\",\n      \"defend against security incidents\",\n      \"increased expenses\",\n      \"product security\",\n      \"reliability enhancements\",\n      \"security investment\",\n      \"continuous engineering\",\n      \"risk mitigation\"\n    ]\n  }\n]"
+        }
+      ]
+    }
+  },
+  "determinism": {
+    "score": null,
+    "note": "insufficient runs"
+  }
+}

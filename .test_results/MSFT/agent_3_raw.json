@@ -1,0 +1,85 @@
+{
+  "ticker": "MSFT",
+  "timestamp": "2026-06-25T17:00:05.225932",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2024-07-30",
+      "current_date": "2025-07-30",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000789019",
+      "current_accession": "0000950170-25-100235",
+      "current_primary_doc": "msft-20250630.htm",
+      "prior_accession": "0000950170-24-087843",
+      "prior_primary_doc": "msft-20240630.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/msft-20240630.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2026-01-28",
+      "current_date": "2026-04-29",
+      "proceedings": [],
+      "summary": "No legal proceedings were identified in the provided text snippets.",
+      "agent3_score": 50,
+      "current_accession": "0001193125-26-191507",
+      "current_primary_doc": "msft-20260331.htm",
+      "prior_accession": "0001193125-26-027207",
+      "prior_primary_doc": "msft-20251231.htm",
+      "empty": false,
+      "cik": "0000789019",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526027207/msft-20251231.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-05-14",
+      "current_date": "2026-06-05",
+      "proceedings": [
+        {
+          "item": "5.02",
+          "description": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers.",
+          "prior_quote": null,
+          "current_quote": "On June 2, 2026, Reid Hoffman, a member of the Board of Directors of Microsoft Corporation (the \u201cCompany\u201d) since 2017, informed the Company of his decision not to stand for re-election at the Company\u2019s 2026 annual shareholder meeting (the \u201cAnnual Meeting\u201d). Mr. Hoffman will continue to serve as a director until the Annual Meeting. His decision not to stand for re-election is not as a result of any disagreement with management on any matter relating to the Company\u2019s operations, policies, or practices. The Company thanks Mr. Hoffman for his contributions during his tenure as a director.",
+          "counterparties": [
+            "Reid Hoffman"
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526258667/d26760d8k.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526224155/d125909d8k.htm"
+        },
+        {
+          "item": "5.02",
+          "description": "Departure of Directors or Certain Officers; Election of Directors; Appointment of Certain Officers; Compensatory Arrangements of Certain Officers.",
+          "prior_quote": "On May 14, 2026, Microsoft Corporation (the \u201cCompany\u201d) issued a press release to announce that the Company\u2019s Board of Directors appointed Carmine Di Sibio to its Board of Directors, effective May 13, 2026. Mr. Di Sibio will serve on the Audit Committee and the Compensation Committee of the Board. Mr. Di Sibio will receive the same compensation as other non-employee Microsoft directors as described in the Microsoft 2025 Proxy Statement under \u201cDirector Compensation.\u201d There is no arrangement or understanding between Mr. Di Sibio and any other persons pursuant to which he was selected as a director. Mr. Di Sibio has no direct or indirect material interest in any transaction required to be disclosed pursuant to Item 404(a) of Regulation S-K. Mr. Di Sibio and Microsoft will enter into the standard Microsoft director indemnification agreement, whereby Microsoft agrees to indemnify, defend and hold its directors harmless from and against losses and expenses incurred as a result of their board service, subject to the terms and conditions provided in the agreement.",
+          "current_quote": null,
+          "counterparties": [
+            "Carmine Di Sibio"
+          ],
+          "amount": null,
+          "status": "TERMINATED",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526258667/d26760d8k.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526224155/d125909d8k.htm"
+        }
+      ],
+      "summary": "Microsoft Corporation filed two 8-K reports, one on May 13, 2026, and another on June 2, 2026, related to the appointment and departure of directors.",
+      "agent3_score": 45,
+      "current_accession": "0001193125-26-258667",
+      "current_primary_doc": "d26760d8k.htm",
+      "prior_accession": "0001193125-26-224155",
+      "prior_primary_doc": "d125909d8k.htm",
+      "empty": false,
+      "cik": "0000789019",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526258667/d26760d8k.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526224155/d125909d8k.htm"
+    }
+  ]
+}

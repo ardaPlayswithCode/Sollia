@@ -1,0 +1,351 @@
+{
+  "ticker": "AAPL",
+  "total": 29,
+  "per_agent": {
+    "agent_2": {
+      "n": 7,
+      "present": 7,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 0,
+      "disagree": 0
+    },
+    "agent_3": {
+      "n": 4,
+      "present": 4,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 2,
+      "disagree": 2
+    },
+    "agent_4": {
+      "n": 18,
+      "present": 18,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 18,
+      "disagree": 0
+    }
+  },
+  "results": [
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20201030_001",
+      "side": "promise",
+      "quote": "In October 2020, the Company announced HomePod mini , which is expected to be available in November 2020.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20201030_001",
+      "side": "evidence",
+      "quote": "Home includes Apple TV , the Company s media streaming and gaming device based on its tvOS operating system, and HomePod and HomePod mini , high-fidelity wireless smart speakers.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20201030_002",
+      "side": "promise",
+      "quote": "In September 2020, the Company announced Apple Fitness+ SM , a personalized fitness service built for Apple Watch, which is expected to be available before the end of calendar 2020.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019320000096/aapl-20200926.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20201030_002",
+      "side": "evidence",
+      "quote": "During 2021, the Company released Apple Fitness+ SM , a personalized fitness service.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019321000105/aapl-20210925.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20171103_004",
+      "side": "promise",
+      "quote": "In June 2017, the Company announced the new iMac Pro , which is expected to be available in December 2017.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019317000070/a10-k20179302017.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20171103_004",
+      "side": "evidence",
+      "quote": "In December 2017, the Company released an update to iOS 11 and watchOS 4 introducing Apple Pay Cash in the U.S., allowing peer-to-peer payments using Apple Pay.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019318000145/a10-k20189292018.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "AAPL_20191031_003",
+      "side": "promise",
+      "quote": "During 2019, the Company released a new version of MacBook Air and a new Mac mini , and introduced an updated Mac Pro , which is expected to be available in the fall of 2019. iPad iPad is the Company s line of multi-purpose tablets. iPad is based on the Company s iPadOS operating system, which was introduced during 2019.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019319000119/a10-k20199282019.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f1p0",
+      "side": "current",
+      "quote": "20 Item 1A. Risk Factors 21",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000013/aapl-20260328.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f1p0",
+      "side": "prior",
+      "quote": "19 Item 1A. Risk Factors 20",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000006/aapl-20251227.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f2p0",
+      "side": "prior",
+      "quote": "On April 20, 2026, Apple Inc. (\"Apple\") announced that Tim Cook will transition from his role as Chief Executive Officer to Executive Chair of Apple\\'s Board of Directors",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000114036126015711/ef20071035_8k.htm",
+      "agent_flag": false,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": false
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f2p1",
+      "side": "current",
+      "quote": "On April 30, 2026, Apple Inc. (\"Apple\") issued a press release regarding Apple\\'s financial results for its second fiscal quarter ended March 28, 2026",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019326000011/aapl-20260430.htm",
+      "agent_flag": false,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": false
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg0",
+      "side": "old",
+      "quote": "Restrictive measures can increase the cost of the Company s products and the components and raw materials that go into them, and can require the Company to take various actions, including changing suppliers, restructuring business relationships and operations, and ceasing to offer and distribute affected products, services and third-party applications to its customers.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg0",
+      "side": "new",
+      "quote": "Restrictive measures can increase the cost or limit the availability of the Company s products and the components and rare earths and other raw materials that go into them. Restrictive measures can also require the Company to change suppliers, restructure business relationships and operations, refrain from offering and distributing or cease to offer and distribute affected products, services and third-party applications to its customers, and increase the prices of its products and services.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg1",
+      "side": "new",
+      "quote": "Beginning in the second quarter of 2025, new tariffs were announced on imports to the U.S. ( U.S. Tariffs ), including additional tariffs on imports from China, India, Japan, South Korea, Taiwan, Vietnam and the European Union ( EU ), among others.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg2",
+      "side": "old",
+      "quote": "If disputes and conflicts further escalate in the future, actions by governments in response could be significantly more severe and restrictive and could materially adversely affect the Company s business.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg2",
+      "side": "new",
+      "quote": "If disputes and conflicts further escalate, actions by governments in response could be significantly more severe and restrictive.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg3",
+      "side": "old",
+      "quote": "Many of the Company s operations and facilities, as well as critical business operations of the Company s suppliers and contract manufacturers, are in locations that are prone to earthquakes and other natural disasters.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg3",
+      "side": "new",
+      "quote": "Many of the Company s operations, retail stores and facilities, as well as critical business operations of the Company s suppliers and contract manufacturers, are in locations that are prone to earthquakes and other natural disasters.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg4",
+      "side": "old",
+      "quote": "Global climate change is resulting in certain types of natural disasters and extreme weather occurring more frequently or with more intense effects.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg4",
+      "side": "new",
+      "quote": "Global climate change is resulting in certain types of natural disasters and extreme weather occurring more frequently or with more intense effects. In addition, the Company s and its suppliers operations, retail stores and facilities are subject to the risk of interruption by fire, power shortages, nuclear power plant accidents and other industrial accidents, terrorist attacks and other hostile acts, ransomware and other cybersecurity attacks, labor disputes, public health issues and other events beyond the Company s control.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg5",
+      "side": "new",
+      "quote": "For example, the U.S. Department of Commerce has initiated an investigation under Section 232 of the Trade Expansion Act of 1962, as amended, into, among other things, imports of semiconductors, semiconductor manufacturing equipment, and their derivative products, including downstream products that contain semiconductors.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg6",
+      "side": "old",
+      "quote": "Adverse macroeconomic conditions, including slow growth or recession, high unemployment, inflation, tighter credit, higher interest rates, and currency fluctuations, can adversely impact consumer confidence and spending and materially adversely affect demand for the Company s products and services.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg6",
+      "side": "new",
+      "quote": "Adverse macroeconomic conditions, including slow growth or recession, high unemployment, inflation, tighter credit, higher interest rates, and currency fluctuations, can adversely impact consumer confidence and spending and materially adversely affect demand for the Company s products and services. In addition, consumer confidence and spending can be materially adversely affected in response to changes in fiscal and monetary policy, financial market volatility, declines in income or asset values, and other economic factors.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg7",
+      "side": "old",
+      "quote": "Global supply chains can be highly concentrated and geopolitical tensions or conflict could result in significant disruptions.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg7",
+      "side": "new",
+      "quote": "Global supply chains can be highly concentrated, and an escalation of geopolitical tensions or conflict could result in significant disruptions.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg8",
+      "side": "old",
+      "quote": "The Company s business can be impacted by political events, trade and other international disputes, geopolitical tensions, conflict, terrorism, natural disasters, public health issues, industrial accidents and other business interruptions.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg8",
+      "side": "new",
+      "quote": "The Company s business can be impacted by political events, trade and other international disputes, geopolitical tensions, conflict, terrorism, natural disasters, public health issues, industrial accidents and other business interruptions. Political events, trade and other international disputes, geopolitical tensions, conflict, terrorism, natural disasters, public health issues, industrial accidents and other business interruptions can have a material adverse effect on the Company and its customers, employees, suppliers, contract manufacturers, logistics providers, distributors, cellular network carriers and other channel partners.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg9",
+      "side": "old",
+      "quote": "Restrictions on international trade, such as tariffs and other controls on imports or exports of goods, technology or data, can materially adversely affect the Company s business and supply chain.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-20240928.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_4",
+      "fid": "chg9",
+      "side": "new",
+      "quote": "Restrictions on international trade, such as tariffs and other controls on imports or exports of goods, technology or data, can materially adversely affect the Company s business and supply chain. The impact can be particularly significant if these restrictive measures apply to countries and regions where the Company derives a significant portion of its revenues and/or has significant supply chain operations.",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    }
+  ]
+}

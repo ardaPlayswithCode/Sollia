@@ -159,37 +159,35 @@ class Synthesizer:
         total_weight = sum(agent_weights.get(aid, 1.0) for aid in scores)
         norm_weights = {aid: agent_weights.get(aid, 1.0) / total_weight for aid in scores}
         
-        # Weighted average score
-        weighted_score = sum(scores[aid] * norm_weights[aid] for aid in scores)
-        
-        # Gaussian similarity between all agent pairs
+        # PART 2: the composite is now a SIMPLE, transparent EQUAL-WEIGHT average of
+        # the four independent agent scores. Each agent score is already meaningful
+        # on the same [10,95] bullishness scale with one direction, so a plain mean
+        # is the only defensible aggregate. The OLD Gaussian-similarity blend pulled
+        # the number toward 50 by an opaque rule (producing e.g. "44.2 HOLD" that no
+        # analyst could reconstruct from the four agent scores). See Part 2c.
+        s_final = sum(scores.values()) / len(scores)
+        s_final = max(10.0, min(95.0, s_final))
+
+        # Cross-agent agreement — DIAGNOSTIC ONLY. Kept for the rich UI payload's
+        # `similarity` badge; it is NOT used in the score and never reaches the
+        # clean export.
         import math
         agent_ids = list(scores.keys())
         if len(agent_ids) >= 2:
-            similarities = []
-            for i in range(len(agent_ids)):
-                for j in range(i+1, len(agent_ids)):
-                    s_i = scores[agent_ids[i]]
-                    s_j = scores[agent_ids[j]]
-                    sim = math.exp(-((s_i - s_j) ** 2) / (2.0 * 225.0))
-                    similarities.append(sim)
-            avg_similarity = sum(similarities) / len(similarities)
+            sims = [math.exp(-((scores[agent_ids[i]] - scores[agent_ids[j]]) ** 2) / 450.0)
+                    for i in range(len(agent_ids)) for j in range(i + 1, len(agent_ids))]
+            avg_similarity = sum(sims) / len(sims)
         else:
             avg_similarity = 1.0
-        
-        # Blend: weighted average adjusted by alignment
-        s_final = avg_similarity * weighted_score + (1.0 - avg_similarity) * 50.0
-        s_final = max(20.0, min(80.0, s_final))
-        
+
         _add_log(f"Agent scores: {scores}")
-        _add_log(f"Normalized weights: {norm_weights}")
-        _add_log(f"Weighted score: {weighted_score:.1f}, Similarity: {avg_similarity:.3f}")
-        _add_log(f"Synthesis result: final score {s_final:.0f}/100 ({'BUY' if s_final >= 62 else 'HOLD' if s_final >= 39 else 'SELL'})")
-        
-        # Classify
-        if s_final <= 38:
+        _add_log(f"Composite = simple average of {len(scores)} agent scores = {s_final:.1f}")
+
+        # Classify on the unified thresholds (>=65 BUY, <=35 SELL, else HOLD) so the
+        # composite call agrees with the per-agent BULLISH/NEUTRAL/BEARISH bands.
+        if s_final <= 35:
             signal, color = "SELL", "#EF4444"
-        elif s_final <= 61:
+        elif s_final < 65:
             signal, color = "HOLD", "#F59E0B"
         else:
             signal, color = "BUY", "#22C55E"

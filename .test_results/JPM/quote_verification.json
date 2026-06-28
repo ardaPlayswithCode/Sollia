@@ -1,0 +1,79 @@
+{
+  "ticker": "JPM",
+  "total": 5,
+  "per_agent": {
+    "agent_2": {
+      "n": 3,
+      "present": 3,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 0,
+      "disagree": 0
+    },
+    "agent_3": {
+      "n": 2,
+      "present": 2,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 2,
+      "disagree": 0
+    }
+  },
+  "results": [
+    {
+      "agent": "agent_2",
+      "fid": "JPM_20251104_003",
+      "side": "promise",
+      "quote": "The Firm s principal executive offices will continue to be located at 383 Madison Avenue, New York, New York until senior management moves into the new building, which is expected to occur in the fourth quarter of 2025.",
+      "url": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "JPM_20260501_001",
+      "side": "promise",
+      "quote": "Upon acceptance by Visa of the Firm s tender, the Visa C shares received by the Firm would be recognized at fair value, which is expected to result in a gain that may be recorded as early as the second quarter of 2026.",
+      "url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "JPM_20260213_002",
+      "side": "promise",
+      "quote": "The proposal would also establish a process for automatically publishing an updated maximum fee amount every other year going forward.",
+      "url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/jpm-20251231.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f1p0",
+      "side": "current",
+      "quote": "179 Item 1A. Risk Factors. 179",
+      "url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026029344/jpm-20260331.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f1p0",
+      "side": "prior",
+      "quote": "203 Item 1A. Risk Factors. 203",
+      "url": "https://www.sec.gov/Archives/edgar/data/19617/000162828025048859/jpm-20250930.htm",
+      "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    }
+  ]
+}

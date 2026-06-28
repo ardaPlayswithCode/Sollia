@@ -1,0 +1,114 @@
+{
+  "ticker": "AAPL",
+  "year": 2024,
+  "timestamp": "2026-06-25T19:09:26Z",
+  "agents": {
+    "agent_1": {
+      "status": "success",
+      "runtime_seconds": 51.2,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "agent_log",
+        "documents_analyzed",
+        "elapsed_seconds",
+        "run_timestamp",
+        "score",
+        "ticker",
+        "top_discrepancies",
+        "total_aligned_pairs",
+        "total_discrepancies_found",
+        "year"
+      ],
+      "documents_analyzed": [
+        "10-K",
+        "10-Q",
+        "8-K",
+        "DEF14A",
+        "EARNINGS_CALL"
+      ],
+      "total_aligned_pairs": 1,
+      "discrepancies_found": 0,
+      "top_score": null,
+      "score": 50
+    },
+    "agent_2": {
+      "status": "success",
+      "runtime_seconds": 3.7,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "agent_log",
+        "run_timestamp",
+        "score",
+        "ticker",
+        "top_promises",
+        "total_broken",
+        "total_filings_analyzed",
+        "total_kept",
+        "total_partial",
+        "total_pending",
+        "total_promises_extracted",
+        "total_stale",
+        "total_unresolved"
+      ],
+      "promises_extracted": 4,
+      "filings_analyzed": 179,
+      "score": 90.0,
+      "status_distribution": {
+        "KEPT": 3,
+        "UNRESOLVED": 1
+      }
+    },
+    "agent_3": {
+      "status": "success",
+      "runtime_seconds": 0.3,
+      "llm_calls_recorded": 2,
+      "error": null,
+      "top_level_keys": [
+        "findings",
+        "ticker",
+        "timestamp"
+      ],
+      "findings_count": 3,
+      "proceedings_count": 3,
+      "quietly_removed_count": 0,
+      "score": 50
+    },
+    "agent_4": {
+      "status": "success",
+      "runtime_seconds": 0.6,
+      "llm_calls_recorded": 2,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "changes_found",
+        "cik",
+        "new_filing_date",
+        "new_url",
+        "old_filing_date",
+        "old_url",
+        "run_timestamp",
+        "score",
+        "signal",
+        "summary",
+        "ten_q_findings",
+        "ticker",
+        "top_changes",
+        "total_risks_new",
+        "total_risks_old"
+      ],
+      "changes_found": 10,
+      "distribution": {
+        "ESCALATED": 7,
+        "NEW": 2,
+        "REWORDED": 1
+      },
+      "verified_count": 10,
+      "score": 30,
+      "signal": "BEARISH"
+    }
+  }
+}

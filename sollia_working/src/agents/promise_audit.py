@@ -18,7 +18,8 @@ import re
 import time
 import threading
 from datetime import date, datetime, timedelta
-from src.config.llm_config import call_llm as _call_llm_config
+from src.config.llm_config import call_llm as _call_llm_config, start_tier as _start_tier
+from src.utils.scoring import score_promise_audit
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -94,6 +95,30 @@ EXCLUDE_PATTERNS = [
     r'(?i)debt issuance|notes due|senior notes|credit facility',
     r'(?i)indenture|subsidiary guarantee|registration statement',
     r'(?i)amendment to.*bylaws|change in.*officer|appointment of',
+    # Page-header / running-footer artifacts (e.g. "Apple Inc. | Q1 2021 Form 10-Q | 9")
+    # that survive cleaning and otherwise leak in as bogus "promises".
+    r'(?i)\bForm\s+10-[KQ]\b|\bForm\s+8-K\b',
+    # ── Accounting-policy / financial-statement-note boilerplate (PART 1b) ──
+    # GAAP/ASC policy disclosures, not strategic promises. They reach Stage 1
+    # chiefly when notes-bearing text is processed (e.g. the texts-cache content
+    # collision, fixed at the source in PART 3). Calibrated on real NVDA
+    # candidates: catches lease / tax / revenue-recognition / fair-value
+    # boilerplate WITHOUT vetoing genuine guidance like "we plan to lease
+    # data-center capacity" or "we expect an effective tax rate of ~15%".
+    r'(?i)\blease(?:s|d)?\b.{0,45}\b(?:obligation|liabilit|payment|term|agreement|arrangement|commitment|expense|right[- ]of[- ]use|ROU)',
+    r'(?i)\b(?:right[- ]of[- ]use|operating lease|finance lease|non[- ]?cancelable lease)\b',
+    r'(?i)unrecognized tax benefit|uncertain tax position|deferred tax (?:asset|liabilit)|valuation allowance',
+    r'(?i)\bperformance obligation|revenue recognition|ASC\s*\d{3}|standalone selling price|transaction price\b',
+    r'(?i)reduction to revenue|deferred revenue|contract (?:asset|liabilit)',
+    r'(?i)\b(?:available[- ]for[- ]sale|held[- ]to[- ]maturity|amortized cost|fair value (?:of|measurement|hierarchy)|Black[- ]Scholes)\b',
+    r'(?i)employee stock purchase plan|\bESPP\b',
+    r'(?i)loss contingenc|legal proceedings?|sensitivity analysis|yield curve',
+    r'(?i)\btable of contents\b',
+    # Dense financial-table fragments that survive cleaning ("$ 18,497 $ 12,914
+    # $ 5,583", "... $ Change % Change ...") — never a prose promise. A genuine
+    # range like "$40 billion and $42 billion" has only two amounts, so 3+ is safe.
+    r'(?:\$\s*[\d,]+(?:\.\d+)?\s+){3,}',
+    r'(?i)\$?\s*Change\s+%\s+Change',
 ]
 
 # Compile all regex once
@@ -382,8 +407,12 @@ def _set_llm_cache(prompt_hash: str, prompt: str, response: str, model: str):
         pass
 
 
-def _call_llm(prompt: str, max_tokens: int = 2000) -> Tuple[str, str]:
-    """Call LLM using universal config. Returns (response_text, model_used)."""
+def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0) -> Tuple[str, str]:
+    """Call LLM using universal config. Returns (response_text, model_used).
+
+    provider_idx (PART 4c) selects the chain START tier so Stage 1's high-volume
+    batching (Groq-8B) and Stage 2's single quality pass (Groq-70B) hit different
+    per-model token budgets and don't starve each other or the other agents."""
     import hashlib
     import json as _json
     prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
@@ -393,7 +422,8 @@ def _call_llm(prompt: str, max_tokens: int = 2000) -> Tuple[str, str]:
         return cached["response"], cached.get("model", "cached")
 
     try:
-        text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0)
+        text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0,
+                                      provider_idx=provider_idx)
         model = meta.get("model", "unknown")
         if text:
             _set_llm_cache(prompt_hash, prompt, text, model)
@@ -431,7 +461,11 @@ Return ONLY a JSON array of promises (empty array if none found).
 For each promise: {"is_promise":true, "text":"verbatim","category":"revenue|product|margin|rd|market|other","severity":1-10,"deadline":"Q3 2024"|null,"measurable_outcome":"one sentence","search_terms":["term1",...]}
 
 Severity: 1-3=minor, 4-6=meaningful, 7-8=major, 9-10=company-defining.
-Exclude: compensation, buybacks, dividends, debt, legal, governance, historical statements, vague aspirations.
+
+ONLY extract strategic business promises about: revenue targets, product launches, margin goals, R&D investments, capacity expansion, and market expansion — statements where management commits to a FUTURE outcome.
+
+EXCLUDE (do not return these): accounting policies; lease obligations; tax classifications or positions; revenue-recognition descriptions (ASC 606, performance obligations); fair-value measurements; legal-proceeding summaries; compensation, buybacks, dividends, debt, governance; PAST-TENSE or historical statements (e.g. "revenue WAS up 41%", "sales REPRESENTED 13% of total"); vague aspirations; and table/figure fragments or table-of-contents text.
+
 Generate 5-10 specific search terms for evidence retrieval."""
 
     sentences_block = "\n".join(
@@ -564,6 +598,7 @@ class PromiseAuditAgent:
         progress: optional callback(message, kind) for live, human-readable
         milestone updates (WS5)."""
         self._log = []
+        _t0 = time.time()  # PART 3: for the run-archive performance block
         ticker = ticker.upper()
 
         def _emit(msg, kind="info"):
@@ -703,7 +738,8 @@ class PromiseAuditAgent:
                 )[:STAGE2_EVIDENCE_CAP]
             prompt = build_stage2_prompt(batch_promises, batch_evidence)
             try:
-                resp, model = _call_llm(prompt, max_tokens=4000)
+                resp, model = _call_llm(prompt, max_tokens=4000,
+                                        provider_idx=_start_tier("promise_audit:stage2"))
             except Exception as e:
                 # An LLM failure must NOT crash the agent — defer to the deterministic
                 # net below so every promise still gets an honest verdict.
@@ -714,20 +750,23 @@ class PromiseAuditAgent:
                 return parse_stage2_response(resp, batch_promises)
             return []
 
-        if unique_evidence:
-            if len(promises) > 5:
-                categories = sorted(set(p.get("category", "other") for p in promises))
-                self._add_log("STAGE2_LLM", f"{len(promises)} promises > 5 — splitting across {len(categories)} categories")
-                for cat in categories:
-                    cat_promises = [p for p in promises if p.get("category", "other") == cat]
-                    cat_pids = {p.get("promise_id", "") for p in cat_promises}
-                    cat_evidence = [e for e in unique_evidence if e.get("promise_id") in cat_pids]
-                    evidence_results.extend(_run_llm_batch(cat_promises, cat_evidence))
-                self._add_log("STAGE2_LLM", f"Category-split matching produced {len(evidence_results)} results")
-            else:
-                evidence_results = _run_llm_batch(promises, unique_evidence)
+        # Per architecture: ALWAYS call the Stage 2 LLM — even with an EMPTY evidence
+        # list it must still classify every promise (UNRESOLVED, or BROKEN/PENDING by
+        # deadline). The deterministic net below is reserved for genuine LLM *failures*
+        # only, never used as a substitute for a skipped call.
+        if not unique_evidence:
+            self._add_log("STAGE2_LLM", "No evidence candidates — calling LLM to classify by deadline")
+        if len(promises) > 5:
+            categories = sorted(set(p.get("category", "other") for p in promises))
+            self._add_log("STAGE2_LLM", f"{len(promises)} promises > 5 — splitting across {len(categories)} categories")
+            for cat in categories:
+                cat_promises = [p for p in promises if p.get("category", "other") == cat]
+                cat_pids = {p.get("promise_id", "") for p in cat_promises}
+                cat_evidence = [e for e in unique_evidence if e.get("promise_id") in cat_pids]
+                evidence_results.extend(_run_llm_batch(cat_promises, cat_evidence))
+            self._add_log("STAGE2_LLM", f"Category-split matching produced {len(evidence_results)} results")
         else:
-            self._add_log("STAGE2_LLM", "No evidence candidates found — all promises unresolved")
+            evidence_results = _run_llm_batch(promises, unique_evidence)
 
         # ── Deterministic safety net (3-tier, honest) ────────────────
         # Runs for any promise the LLM left unmatched (failure, overflow, or no
@@ -791,6 +830,18 @@ class PromiseAuditAgent:
                 if ev_id == ev_sid:
                     matched_ev = ev
                     break
+            # Evidence must come from a LATER filing than the promise. Because the
+            # evidence pool is global, the LLM can match a promise to evidence that was
+            # collected for a different, earlier promise. Such a match cannot confirm a
+            # promise made afterwards — drop it and let the deadline logic decide.
+            if matched_ev:
+                _ev_date = matched_ev.get("filing_date", "") or ""
+                _p_date = p.get("source", {}).get("filing_date", "") or ""
+                if _ev_date and _p_date and _ev_date <= _p_date:
+                    if p["status"] in ("KEPT", "PARTIAL"):
+                        p["status"] = "UNRESOLVED"
+                        p["reasoning"] = "Best-matching evidence pre-dates the promise — not valid confirmation."
+                    matched_ev = None
             if matched_ev:
                 ev_url = matched_ev.get("htm_url", "")
                 # Skip if same filing as promise
@@ -833,11 +884,17 @@ class PromiseAuditAgent:
                 p["evidence_date"] = ""
                 p["reasoning"] = "Same disclosure found in later filing — no independent confirmation."
 
-            # If no evidence match and deadline is in the past, mark as BROKEN
+            # If no evidence match and a *forward-looking* deadline is now in the past,
+            # mark as BROKEN. Guard: the deadline must post-date the filing that made the
+            # promise. Otherwise the "promise" is a past-tense/historical statement
+            # (e.g. "During 2019 the Company released X") and flipping it to BROKEN is a
+            # false negative, not a missed commitment.
             if p["status"] == "UNRESOLVED" and p.get("deadline_date"):
                 try:
                     dl_date = date.fromisoformat(p["deadline_date"])
-                    if dl_date < date.today():
+                    p_filing = p.get("source", {}).get("filing_date", "")
+                    is_forward_looking = (not p_filing) or (p["deadline_date"] > p_filing)
+                    if is_forward_looking and dl_date < date.today():
                         p["status"] = "BROKEN"
                         p["reasoning"] = f"Deadline {p['deadline_date']} has passed with no evidence of completion"
                 except (ValueError, TypeError):
@@ -874,11 +931,12 @@ class PromiseAuditAgent:
                 p['status'] = 'PENDING'
                 p['reasoning'] = 'Evidence from same filing as promise — excluded'
 
-        top5 = select_top_promises(promises, 5)
-        _emit("Promise audit complete — surfaced %d notable promises" % len(top5), "done")
+        # Output EVERY promise found (priority-sorted, de-duplicated) — no top-N cap.
+        ranked_promises = select_top_promises(promises, len(promises))
+        _emit("Promise audit complete — surfaced %d promises" % len(ranked_promises), "done")
 
         # Build output
-        return {
+        _result = {
             "ticker": ticker,
             "agent": "Agent 2 — Promise Audit",
             "run_timestamp": datetime.now().isoformat(),
@@ -891,6 +949,8 @@ class PromiseAuditAgent:
             "total_stale": status_counts.get("STALE", 0),
             "total_unresolved": status_counts["UNRESOLVED"],
             "score": score,
+            "signal": breakdown.get("signal", "NEUTRAL"),
+            "score_rationale": breakdown.get("score_rationale", ""),
             "top_promises": [
                 {
                     "rank": i + 1,
@@ -912,10 +972,18 @@ class PromiseAuditAgent:
                     "confidence": p.get("confidence", "low"),
                     "reasoning": p.get("reasoning", ""),
                 }
-                for i, p in enumerate(top5)
+                for i, p in enumerate(ranked_promises)
             ],
             "agent_log": self._log,
         }
+        # PART 3: archive this run (manifest + index line). Exception-safe.
+        try:
+            from src.utils.run_archive import save_run
+            save_run("promise_audit", ticker, datetime.now().year, _result,
+                     duration_ms=(time.time() - _t0) * 1000)
+        except Exception:
+            pass
+        return _result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -957,9 +1025,13 @@ def extract_promises_from_documents(
         ticker_f = filing.get('ticker', ticker)
         filing_date = filing.get('filing_date', '')
         
-        # Check text cache first
-        cached_mda = get_cached_text(ticker_f, acc) if acc else None
-        
+        # Check the MD&A cache (its OWN namespace). Reading the plain key here was
+        # the texts-cache collision: when Agent 1/3/4 had cached RAW HTML under the
+        # plain accession key, Stage 1 used the whole filing (incl. financial-note
+        # boilerplate) as "MD&A". content_type="mda" guarantees we only ever read
+        # MD&A that Stage 1 itself extracted.
+        cached_mda = get_cached_text(ticker_f, acc, content_type="mda") if acc else None
+
         if cached_mda and len(cached_mda) > 500:
             mda_text = cached_mda
             log_entries.append({
@@ -977,10 +1049,15 @@ def extract_promises_from_documents(
                     ticker_f
                 )
                 if html:
+                    # Write the RAW HTML to the PLAIN key (the canonical full-filing
+                    # text that Stage 2 evidence search and Agents 1/3/4 read). This
+                    # also stops Agent 2 from polluting the plain key with MD&A.
+                    if acc:
+                        cache_text(ticker_f, acc, html)
                     mda_text = edgar.extract_mda(html)
                     if mda_text and len(mda_text) > 100:
                         if acc:
-                            cache_text(ticker_f, acc, mda_text)
+                            cache_text(ticker_f, acc, mda_text, content_type="mda")
                         log_entries.append({
                             "timestamp": datetime.now().isoformat(),
                             "step": "STAGE1_TEXT",
@@ -1067,7 +1144,8 @@ def extract_promises_from_documents(
     
     for batch_idx, batch in enumerate(batches):
         prompt = _build_stage1_prompt(batch)
-        response, model = _call_llm(prompt, max_tokens=2000)
+        response, model = _call_llm(prompt, max_tokens=2000,
+                                    provider_idx=_start_tier("promise_audit:stage1"))
         
         if response:
             promises = _parse_stage1_response(response, batch)
@@ -1180,7 +1258,6 @@ def _search_evidence_fast(
         # Skip the same filing the promise came from
         promise_acc = promise.get('source', {}).get('accession', '')
         if promise_acc and filing.get('accession_number', '') == promise_acc:
-            continue
             continue
         acc = filing.get('accession_number', '')
         sents = tokenized_cache.get(acc, [])
@@ -1510,18 +1587,27 @@ def calculate_decay(
     return 1.0
 
 
-def calculate_score(promises: List[Dict[str, Any]]) -> Tuple[float, Dict[str, float]]:
-    """Calculate the 0-100 credibility score from classified promises."""
+def calculate_score(promises: List[Dict[str, Any]]) -> Tuple[float, Dict[str, Any]]:
+    """Calculate the 0-100 credibility score from classified promises.
+
+    PART 2: the weighted KEPT/PARTIAL/BROKEN ratio (severity x recency-decay) was
+    conceptually sound but produced THIN-SAMPLE EXTREMES — a perfect 3-of-3 record
+    scored the same 90 as a 90-verdict record, and a single BROKEN promise scored
+    10. The ratio is now passed to score_promise_audit(), which shrinks it toward
+    neutral (50) with a small pseudo-prior so a score's confidence scales with the
+    size of the track record. Large records are essentially unaffected; thin ones
+    sit near neutral. See src/utils/scoring.py.
+    """
     weighted_kept = 0.0
     weighted_partial = 0.0
     weighted_broken = 0.0
-    
+
     for p in promises:
         severity = p.get("severity", 5)
         decay = p.get("decay", 0.5)
         weighted = severity * decay
         p["weighted_importance"] = round(weighted, 2)
-        
+
         status = p.get("status", "UNRESOLVED")
         if status == "KEPT":
             weighted_kept += weighted
@@ -1530,23 +1616,18 @@ def calculate_score(promises: List[Dict[str, Any]]) -> Tuple[float, Dict[str, fl
         elif status in ("BROKEN", "STALE"):
             weighted_broken += weighted
         # PENDING and UNRESOLVED (non-stale) excluded
-    
-    weighted_total = weighted_kept + weighted_partial + weighted_broken
-    
-    if weighted_total > 0:
-        score = ((weighted_kept + 0.5 * weighted_partial) / weighted_total) * 100
-    else:
-        score = 50.0  # No track record yet — neutral
-    # Clamp to the unified Sollia range [10, 90]: no management's record is
-    # perfectly broken (0) or perfectly kept (100), and one missed promise
-    # shouldn't read as a zero. Higher = more promises kept = more bullish.
-    score = max(10.0, min(90.0, score))
 
-    return round(score, 1), {
+    weighted_total = weighted_kept + weighted_partial + weighted_broken
+    score, signal, rationale = score_promise_audit(
+        weighted_kept, weighted_partial, weighted_broken)
+
+    return score, {
         "weighted_kept": round(weighted_kept, 2),
         "weighted_partial": round(weighted_partial, 2),
         "weighted_broken": round(weighted_broken, 2),
         "weighted_total": round(weighted_total, 2),
+        "signal": signal,
+        "score_rationale": rationale,
     }
 
 
@@ -1617,6 +1698,7 @@ def run_promise_audit(ticker: str) -> Dict[str, Any]:
     return agent.run(ticker)
 
 
-print("promise_audit.py module ready")
-print(f"Functions: run_promise_audit, PromiseAuditAgent.run")
-print(f"Constants: {len(FUTURE_KEYWORDS)} future keywords, {len(METRIC_PATTERNS)} metric patterns, {len(EXCLUDE_PATTERNS)} exclude patterns")
+logger.debug(
+    "promise_audit ready — %d future keywords, %d metric patterns, %d exclude patterns",
+    len(FUTURE_KEYWORDS), len(METRIC_PATTERNS), len(EXCLUDE_PATTERNS),
+)

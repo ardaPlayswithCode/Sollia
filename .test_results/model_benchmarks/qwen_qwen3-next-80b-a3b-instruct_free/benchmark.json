@@ -1,0 +1,210 @@
+{
+  "model": "qwen/qwen3-next-80b-a3b-instruct:free",
+  "timestamp": "2026-06-25T21:20:22.981561+00:00",
+  "price_in_per_m": 0.0,
+  "price_out_per_m": 0.0,
+  "context": 262144,
+  "tests": {
+    "test1_agent2_stage2": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 306.3,
+        "prompt_tokens": 3010,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 306.3,
+          "prompt_tokens": 3010,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+          "response_text": ""
+        }
+      ]
+    },
+    "test2_agent1_discrepancy": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 754.2,
+        "prompt_tokens": 1074,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 754.2,
+          "prompt_tokens": 1074,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+          "response_text": ""
+        }
+      ]
+    },
+    "test3_agent3_legal": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 284.9,
+        "prompt_tokens": 2158,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 284.9,
+          "prompt_tokens": 2158,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+          "response_text": ""
+        }
+      ]
+    },
+    "test4_agent4_risk": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 267.2,
+        "prompt_tokens": 3265,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 267.2,
+          "prompt_tokens": 3265,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"qwen/qwen3-next-80b-a3b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to acc",
+          "response_text": ""
+        }
+      ]
+    },
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 227.0,
+        "prompt_tokens": 865,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/qwen/qwen3-next-80b-a3b-inst"
+        },
+        "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/qwen/qwen3-next-80b-a3b-instruct-2509/94248808-ba97-4e3c-be60-1cb0928db51d. High demand for qwen/qwen3-next-80b-a3b-instruct:free on OpenRouter - li",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 227.0,
+          "prompt_tokens": 865,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/qwen/qwen3-next-80b-a3b-inst"
+          },
+          "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/qwen/qwen3-next-80b-a3b-instruct-2509/94248808-ba97-4e3c-be60-1cb0928db51d. High demand for qwen/qwen3-next-80b-a3b-instruct:free on OpenRouter - li",
+          "response_text": ""
+        }
+      ]
+    }
+  },
+  "determinism": null
+}

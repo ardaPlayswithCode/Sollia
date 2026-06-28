@@ -1,0 +1,70 @@
+{
+  "ticker": "MSFT",
+  "year": 2025,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-25T23:58:57.455478",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 1,
+  "total_discrepancies_found": 0,
+  "top_discrepancies": [],
+  "score": 50,
+  "elapsed_seconds": 27.0,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T23:58:30.484951",
+      "step": "START",
+      "detail": "Agent 1 initiated for MSFT 2025"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:51.080450",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:51.100540",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:52.877165",
+      "step": "CHUNK",
+      "detail": "Chunked into 55 total chunks"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:56.733949",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:56.740979",
+      "step": "ALIGN",
+      "detail": "Found 1 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:57.455286",
+      "step": "CLASSIFY",
+      "detail": "LLM found 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:57.455319",
+      "step": "RANK",
+      "detail": "Selected top 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:57.455457",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-25T23:58:57.455473",
+      "step": "OUTPUT",
+      "detail": "Complete in 27.0s"
+    }
+  ]
+}

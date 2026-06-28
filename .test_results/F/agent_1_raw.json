@@ -1,0 +1,121 @@
+{
+  "ticker": "F",
+  "year": 2024,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-25T19:11:27.682882",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 5,
+  "total_discrepancies_found": 1,
+  "top_discrepancies": [
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "numerical_contradiction",
+      "severity": "high",
+      "weight": 100,
+      "reasoning": "The 10-K report states that the total assets for the company, excluding Ford Credit, are $131,154 million, while the 10-Q report states that the total assets are $273,310 million for the full year and $274,341 million for the first quarter, indicating a significant difference in the reported total assets between the two documents.",
+      "sentence_index_a": 1,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "Total assets $131,154",
+      "quoted_phrase_b": "Total assets $273,310",
+      "batch_key": "10-K_Item 7. Management\u2019s Discussio_0_0_263",
+      "same_filing": false,
+      "final_score": 94.1,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 100,
+        "pair_importance": 100,
+        "confidence": 88.0,
+        "same_filing": false
+      },
+      "rank": 1,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "Item 7. Management\u2019s Discussion and Analysis of Financial Condition and Results of Operations (Continued)",
+        "page_number": 59,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "The following tables provide supplemental balance sheet information (in millions):\nDecember 31, 2024\nAssets\nCompany excluding\nFord Credit\nFord Credit\nEliminations\nConsolidated\nCash and cash equivalents\n$\n13,663\n$\n9,272\n$\n\u2014\n$\n22,935\nMarketable securities\n14,707\n706\n\u2014\n15,413\nFord Credit finance receivables, net\n\u2014\n51,850\n\u2014\n51,850\nTrade and other receivables, net\n5,868\n8,855\n\u2014\n14,723\nInventories\n14,951\n\u2014\n\u2014\n14,951\nOther assets\n3,339\n1,263\n\u2014\n4,602\nReceivable from other segments\n1,134\n2,285\n(3,419)\n\u2014\nTotal current assets\n53,662\n74,231\n(3,419)\n124,474\nFord Credit finance receivables, net\n\u2014\n59,786\n\u2014\n59,786\nNet investment in operating leases\n1,258\n21,689\n\u2014\n22,947\nNet property\n41,645\n283\n\u2014\n41,928\nEquity in net assets of affiliated companies\n6,691\n130\n\u2014\n6,821\nDeferred income taxes\n16,196\n178\n1\n16,375\nOther assets\n11,628\n1,237\n\u2014\n12,865\nReceivable from other segments\n74\n\u2014\n(74)\n\u2014\nTotal assets\n$\n131,154\n$\n157,534\n$\n(3,492)\n$\n285,196\nLiabilities\nPayables\n$\n23,167\n$\n961\n$\n\u2014\n$\n24,128\nOther liabilities and deferred revenue\n24,963\n2,819\n\u2014\n27,782\nCompany excluding Ford Credit debt payable within one year\n1,756\n\u2014\n\u2014\n1,756\nFord Credit debt payable within one year\n\u2014\n53,193\n\u2014\n53,193\nPayable to other segments\n3,394\n25\n(3,419)\n\u2014\nTotal current liabilities\n53,280\n56,998\n(3,419)\n106,859\nOther liabilities and deferred revenue\n27,165\n1,667\n\u2014\n28,832\nCompany excluding Ford Credit long-term debt\n18,898\n\u2014\n\u2014\n18,898\nFord Credit long-term debt\n\u2014\n84,675\n\u2014\n84,675\nDeferred income taxes\n709\n364\n1\n1,074\nPayable to other segments\n\u2014\n74\n(74)\n\u2014\nTotal liabilities\n$\n100,052\n$\n143,778\n$\n(3,492)\n$\n240,338\n80",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm",
+        "year": 2024,
+        "ticker": "F"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q1 2024)",
+        "document_type_raw": "10-Q_Q1",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Financial Statements (continued) FORD MOTOR COMPANY AND SUBSIDIARIES CONSOLIDATED BALANCE SHEETS (in millions) December 31, 2023 March 31, 2024 (unaudited) ASSETS Cash and cash equivalents (Note 7) $ 24,862 $ 19,721 Marketable securities (Note 7) 15,309 14,742 Ford Credit finance receivables, net of allowance for credit losses of $ 256 and $ 254 (Note 8) 46,425 44,600 Trade and other receivables, less allowances of $ 64 and $ 59 15,601 18,698 Inventories (Note 9) 15,651 18,632 Other assets 3,633 4,202 Total current assets 121,481 120,595 Ford Credit finance receivables, net of allowance for credit losses of $ 626 and $ 626 (Note 8) 55,650 56,985 Net investment in operating leases 21,384 21,118 Net property 40,821 40,515 Equity in net assets of affiliated companies 5,548 6,336 Deferred income taxes 16,985 16,726 Other assets 11,441 12,066 Total assets $ 273,310 $ 274,341 LIABILITIES Payables $ 25,992 $ 27,384 Other liabilities and deferred revenue (Note 10 and Note 18) 25,870 26,032 Debt payable within one year (Note 12) Company excluding Ford Credit 477 727 Ford Credit 49,192 49,063 Total current liabilities 101,531 103,206 Other liabilities and deferred revenue (Note 10 and Note 18) 28,414 27,724 Long-term debt (Note 12) Company excluding Ford Credit 19,467 19,430 Ford Credit 80,095 80,195 Deferred income taxes 1,005 889 Total liabilities 230,512 231,444 EQUITY Common Stock, par value $ 0.01 per share ( 4,105 million shares issued of 6 billion authorized) 41 41 Class B Stock, par value $ 0.01 per share ( 71 million shares issued of 530 million authorized) 1 1 Capital in excess of par value of stock 23,128 23,125 Retained earnings 31,029 31,019 Accumulated other comprehensive income/(loss) (Note 16) ( 9,042 ) ( 8,932 ) Treasury stock ( 2,384 ) ( 2,384 ) Total equity attributable to Ford Motor Company 42,773 42,870 Equity attributable to noncontrolling interests 25 27 Total equity 42,798 42,897 Total liabilities and equity $ 273,310 $ 274,341 The following table includes assets to be used to settle liabilities of the consolidated variable interest entities ( VIEs ).",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799624000075/f-20240331.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/37996/000003799624000075/f-20240331.htm",
+        "year": 2024,
+        "ticker": "F"
+      },
+      "pair_display": "10-K vs 10-Q (Q1 2024)"
+    }
+  ],
+  "score": 10,
+  "elapsed_seconds": 112.0,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T19:09:35.633821",
+      "step": "START",
+      "detail": "Agent 1 initiated for F 2024"
+    },
+    {
+      "timestamp": "2026-06-25T19:10:56.741043",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-25T19:10:56.818307",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:11.261782",
+      "step": "CHUNK",
+      "detail": "Chunked into 436 total chunks"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:25.684575",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:25.858928",
+      "step": "ALIGN",
+      "detail": "Found 5 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:27.682485",
+      "step": "CLASSIFY",
+      "detail": "LLM found 1 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:27.682751",
+      "step": "RANK",
+      "detail": "Selected top 1 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:27.682873",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-25T19:11:27.682878",
+      "step": "OUTPUT",
+      "detail": "Complete in 112.0s"
+    }
+  ]
+}

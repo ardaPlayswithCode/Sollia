@@ -1,0 +1,12 @@
+{
+  "ticker": "JPM",
+  "year": 2025,
+  "error": "Insufficient filings for JPM in 2025. Missing: EARNINGS_CALL.",
+  "agent_log": [
+    {
+      "timestamp": "2026-06-26T00:04:19.522865",
+      "step": "START",
+      "detail": "Agent 1 initiated for JPM 2025"
+    }
+  ]
+}

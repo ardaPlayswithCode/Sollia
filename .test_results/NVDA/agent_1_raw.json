@@ -1,0 +1,70 @@
+{
+  "ticker": "NVDA",
+  "year": 2024,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-25T19:17:43.683371",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 1,
+  "total_discrepancies_found": 0,
+  "top_discrepancies": [],
+  "score": 50,
+  "elapsed_seconds": 19.7,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-25T19:17:24.004633",
+      "step": "START",
+      "detail": "Agent 1 initiated for NVDA 2024"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:40.637252",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:40.642689",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:41.028536",
+      "step": "CHUNK",
+      "detail": "Chunked into 13 total chunks"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.681850",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.683277",
+      "step": "ALIGN",
+      "detail": "Found 1 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.683353",
+      "step": "CLASSIFY",
+      "detail": "LLM found 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.683357",
+      "step": "RANK",
+      "detail": "Selected top 0 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.683367",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-25T19:17:43.683369",
+      "step": "OUTPUT",
+      "detail": "Complete in 19.7s"
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "ticker": "MSFT",
+  "year": 2025,
+  "timestamp": "2026-06-25T23:58:30Z",
+  "agents": {
+    "agent_1": {
+      "status": "success",
+      "runtime_seconds": 27.0,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "agent_log",
+        "documents_analyzed",
+        "elapsed_seconds",
+        "run_timestamp",
+        "score",
+        "ticker",
+        "top_discrepancies",
+        "total_aligned_pairs",
+        "total_discrepancies_found",
+        "year"
+      ],
+      "documents_analyzed": [
+        "10-K",
+        "10-Q",
+        "8-K",
+        "DEF14A",
+        "EARNINGS_CALL"
+      ],
+      "total_aligned_pairs": 1,
+      "discrepancies_found": 0,
+      "top_score": null,
+      "score": 50
+    },
+    "agent_2": {
+      "status": "success",
+      "runtime_seconds": 67.5,
+      "llm_calls_recorded": 11,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "agent_log",
+        "run_timestamp",
+        "score",
+        "ticker",
+        "top_promises",
+        "total_broken",
+        "total_filings_analyzed",
+        "total_kept",
+        "total_partial",
+        "total_pending",
+        "total_promises_extracted",
+        "total_stale",
+        "total_unresolved"
+      ],
+      "promises_extracted": 18,
+      "filings_analyzed": 142,
+      "score": 51.9,
+      "status_distribution": {
+        "KEPT": 3,
+        "BROKEN": 1,
+        "PARTIAL": 3,
+        "UNRESOLVED": 11
+      }
+    },
+    "agent_3": {
+      "status": "success",
+      "runtime_seconds": 12.4,
+      "llm_calls_recorded": 2,
+      "error": null,
+      "top_level_keys": [
+        "findings",
+        "ticker",
+        "timestamp"
+      ],
+      "findings_count": 3,
+      "proceedings_count": 2,
+      "quietly_removed_count": 0,
+      "score": 50
+    },
+    "agent_4": {
+      "status": "success",
+      "runtime_seconds": 0.1,
+      "llm_calls_recorded": 0,
+      "error": null,
+      "top_level_keys": [
+        "agent",
+        "changes_found",
+        "cik",
+        "new_filing_date",
+        "new_url",
+        "old_filing_date",
+        "old_url",
+        "run_timestamp",
+        "score",
+        "signal",
+        "summary",
+        "ticker",
+        "top_changes",
+        "total_risks_new",
+        "total_risks_old"
+      ],
+      "changes_found": 0,
+      "distribution": {},
+      "verified_count": 0,
+      "score": 50,
+      "signal": "NEUTRAL"
+    }
+  }
+}

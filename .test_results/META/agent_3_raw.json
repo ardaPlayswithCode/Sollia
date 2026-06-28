@@ -1,0 +1,84 @@
+{
+  "ticker": "META",
+  "timestamp": "2026-06-26T03:20:09.693604",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-01-30",
+      "current_date": "2026-01-29",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0001326801",
+      "current_accession": "0001628280-26-003942",
+      "current_primary_doc": "meta-20251231.htm",
+      "prior_accession": "0001326801-25-000017",
+      "prior_primary_doc": "meta-20241231.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026003942/meta-20251231.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000132680125000017/meta-20241231.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-10-30",
+      "current_date": "2026-04-30",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-Q.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0001326801",
+      "current_accession": "0001628280-26-028526",
+      "current_primary_doc": "meta-20260331.htm",
+      "prior_accession": "0001628280-25-047240",
+      "prior_primary_doc": "meta-20250930.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026028526/meta-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828025047240/meta-20250930.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-05-04",
+      "current_date": "2026-05-29",
+      "proceedings": [
+        {
+          "item": "8.01",
+          "description": "Completion of debt securities offering",
+          "prior_quote": null,
+          "current_quote": "On May 4, 2026, Meta Platforms, Inc. completed an offering of $3,000,000,000 aggregate principal amount of its 4.550% Senior Notes due 2031, $2,000,000,000 aggregate principal amount of its 4.875% Senior Notes due 2033, $6,000,000,000 aggregate principal amount of its 5.250% Senior Notes due 2036, $4,000,000,000 aggregate principal amount of its 6.200% Senior Notes due 2046, $6,000,000,000 aggregate principal amount of its 6.300% Senior Notes due 2056, and $4,000,000,000 aggregate principal amount of its 6.450% Senior Notes due 2066",
+          "counterparties": [
+            "Citigroup Global Markets Inc.",
+            "Morgan Stanley & Co. LLC"
+          ],
+          "amount": "$25,000,000,000",
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026039193/meta-20260527.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000119312526204128/d134616d8k.htm"
+        },
+        {
+          "item": "5.07",
+          "description": "Submission of matters to a vote of security holders",
+          "prior_quote": null,
+          "current_quote": "On May 27, 2026, Meta Platforms, Inc. held its annual meeting of shareholders via live audio webcast",
+          "counterparties": [],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026039193/meta-20260527.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000119312526204128/d134616d8k.htm"
+        }
+      ],
+      "summary": "Meta Platforms, Inc. completed a debt securities offering and held its annual meeting of shareholders",
+      "agent3_score": 40,
+      "current_accession": "0001628280-26-039193",
+      "current_primary_doc": "meta-20260527.htm",
+      "prior_accession": "0001193125-26-204128",
+      "prior_primary_doc": "d134616d8k.htm",
+      "empty": false,
+      "cik": "0001326801",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000162828026039193/meta-20260527.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1326801/000119312526204128/d134616d8k.htm"
+    }
+  ]
+}

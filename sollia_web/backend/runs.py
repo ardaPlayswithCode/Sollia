@@ -153,11 +153,12 @@ def _agent_signal(aid: str, score: float) -> str:
     material changed" (Agent 1's discrepancy severity is inverted at its source,
     Agent 4's risk delta already pushes escalations DOWN). So one shared threshold
     serves them all and the UI badge always agrees with this export: above 65
-    BULLISH, below 35 BEARISH, otherwise NEUTRAL. Mirrors RiskFactorAgent._signal.
+    BULLISH, below 35 BEARISH, otherwise NEUTRAL. Mirrors scoring.classify_signal
+    (>=65 / <=35) so the export badge always agrees with each agent's own signal.
     """
-    if score > 65:
+    if score >= 65:
         return "BULLISH"
-    if score < 35:
+    if score <= 35:
         return "BEARISH"
     return "NEUTRAL"
 
@@ -449,8 +450,10 @@ _FINDING_BUILDERS = {
 
 
 def _agent_score(aid: str, result: dict) -> float:
+    # Agent 3 now emits an agent-level `score` (Part 2); fall back to the legacy
+    # agent3_score for any older cached result that predates the redesign.
     if aid == "legal_proceedings":
-        return round(float(result.get("agent3_score", 50)), 1)
+        return round(float(result.get("score", result.get("agent3_score", 50))), 1)
     return round(float(result.get("score", 50)), 1)
 
 
@@ -532,12 +535,15 @@ def run_pipeline(run_id: str, ticker: str, selected, year: int):
                           "summary": "Synthesis failed: %s" % str(e)[:120],
                           "agents_run": list(results.keys())}
 
+        # Agent 3 now computes a single agent-level legal-trend score over ALL
+        # proceedings (Part 2) and sets both `score` and `agent3_score`. The old
+        # code here averaged per-finding scores (which double-counted empty
+        # findings at 50); just trust the agent's value, defaulting defensively.
         lp = results.get("legal_proceedings")
-        if lp and lp.get("findings"):
-            scs = [f.get("agent3_score", 50) for f in lp["findings"]]
-            lp["agent3_score"] = sum(scs) / len(scs) if scs else 50
+        if lp and "score" in lp:
+            lp["agent3_score"] = lp["score"]
         elif lp:
-            lp["agent3_score"] = 50
+            lp["agent3_score"] = lp.get("agent3_score", 50)
 
         rich = _build_rich_result(ticker, merged, results)
         export = build_clean_export(ticker, year, merged, results)

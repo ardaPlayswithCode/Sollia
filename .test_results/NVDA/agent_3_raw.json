@@ -1,0 +1,337 @@
+{
+  "ticker": "NVDA",
+  "timestamp": "2026-06-25T12:21:09.151715",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-02-26",
+      "current_date": "2026-02-25",
+      "proceedings": [
+        {
+          "case_name": "Note 12 of the Notes to the Consolidated Financial Statements in Part IV, Item 15 of this Annual Report on Form 10-K",
+          "prior_quote": null,
+          "current_quote": "Please see Note 12 of the Notes to the Consolidated Financial Statements in Part IV, Item 15 of this Annual Report on Form 10-K for a discussion of our legal proceedings.",
+          "status": "UNCHANGED",
+          "liability_change": null,
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/nvda-20250126.htm"
+        }
+      ],
+      "summary": "No new legal proceedings mentioned.",
+      "agent3_score": 50,
+      "current_accession": "0001045810-26-000021",
+      "current_primary_doc": "nvda-20260125.htm",
+      "prior_accession": "0001045810-25-000023",
+      "prior_primary_doc": "nvda-20250126.htm",
+      "empty": false,
+      "cik": "0001045810",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000021/nvda-20260125.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000023/nvda-20250126.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-11-19",
+      "current_date": "2026-05-20",
+      "proceedings": [
+        {
+          "case_name": null,
+          "prior_quote": "Refer to Part I, Item 1, Note 11 of the Notes to Condensed Consolidated Financial Statements for a discussion of significant developments in our legal proceedings since January 26, 2025.",
+          "current_quote": "Refer to Part I, Item 1, Note 10 of the Notes to the Condensed Consolidated Financial Statements for a discussion of significant developments in our legal proceedings since January 25, 2026.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Also refer to Item 3, \u201cLegal Proceedings\u201d in our Annual Report on Form 10-K for the fiscal year ended January 26, 2025 for a prior discussion of our legal proceedings.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Item 1A. Risk Factors Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 26, 2025 and Item 1A of our Quarterly Reports on Form 10-Q for the fiscal quarters ended April 27, 2025 and July 27, 2025.",
+          "current_quote": "Item 1A. Risk Factors Other than the risk factors listed below, there have been no material changes from the risk factors previously described under Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Purchasing or owning NVIDIA common stock involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 26, 2025, and Item 1A of our Quarterly 33 Reports on Form 10-Q for the fiscal quarters ended April 27, 2025 and July 27, 2025, and below.",
+          "current_quote": "Purchasing or owning NVIDIA common stock involves investment risks including, but not limited to, the risks described in Item 1A of our Annual Report on Form 10-K for the fiscal year ended January 25, 2026, and below.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline.",
+          "current_quote": "Any one of those risks could harm our business, financial condition and results of operations or reputation, which could cause our stock price to decline.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Additional risks, trends and uncertainties not presently known to us or that we currently believe are immaterial may also harm our business, financial condition, results of operations or reputation.",
+          "current_quote": "Additional risks, trends and uncertainties not presently known to us or that we currently believe are immaterial may also harm our business, financial condition, results of operations or reputation.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could lead to mismatches between supply and demand.",
+          "current_quote": "Long manufacturing lead times and uncertain supply and capacity availability, combined with a failure to estimate customer demand accurately, has led and could in the future lead to mismatches between supply and demand.",
+          "status": "NO_UPDATE",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "We have long manufacturing lead times and build finished products and maintain inventory in advance of anticipated demand.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "In periods of shortages impacting the semiconductor industry and/or limited supply or capacity in our supply chain, the lead times for certain supply may be extended.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "We have previously experienced and may continue to experience extended lead times of more than 12 months.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "To secure future supply and capacity, we have paid premiums, provided deposits, and entered into long-term supply agreements and capacity commitments, which have increased our product costs and this may continue.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "We may still be unable to secure sufficient commitments for capacity to address our business needs.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "If we inaccurately estimate demand, or our customers change orders, as we have experienced in the past, we may not be able to reduce our supply commitments in time, at the same rate, or at all.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Significant mismatches between supply and demand have varied across our market platforms, resulted in both product shortages and excess inventory, significantly harmed our financial results and could reoccur.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "If we underestimate demand, and our foundry partners and contract manufacturers are unable to increase production or provide sufficient supply, we may not be able to meet increased customer demand in a timely manner, or at all.",
+          "current_quote": null,
+          "status": "NO_UPDATE",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": "Our reputation",
+          "current_quote": "If we are unable to successfully compete in this environment, demand for our products, services, and technologies could decrease, which may negatively impact our business.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Competition could adversely impact our market share and financial results.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Our target markets remain competitive, and competition may intensify with expanding and changing product and service offerings, industry standards, customer and market needs, new entrants and consolidations.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Other companies compete 31 with us on a wide range of parameters including price, total cost of ownership, and performance, which has resulted and may in the future result in lower-than-expected selling prices or demand for our products.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Some of our competitors operate their own fabrication facilities, and have longer operating histories, larger customer bases, more comprehensive IP portfolios and patent protections, more design wins, and greater financial, sales, marketing and distribution resources than we do.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "These competitors may be able to acquire market share and/or prevent us from doing so, more effectively identify and capitalize upon opportunities in new markets and end-user trends, more quickly transition their products, and impinge on our ability to procure sufficient foundry capacity and scarce input materials during a supply-constrained environment, which could harm our business.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Some of our customers are developing their own ASICs and other products, including designs optimized for certain workloads that may not require all of the features and functionality our data center systems provide.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        },
+        {
+          "case_name": null,
+          "prior_quote": null,
+          "current_quote": "Others may offer cloud-based services that compete with our AI cloud service offerings, and we may not be able to establish market share sufficient to achieve the scale necessary to meet our business objectives.",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+        }
+      ],
+      "summary": "There are no material changes in legal proceedings since the last report.",
+      "agent3_score": 10,
+      "current_accession": "0001045810-26-000052",
+      "current_primary_doc": "nvda-20260426.htm",
+      "prior_accession": "0001045810-25-000230",
+      "prior_primary_doc": "nvda-20251026.htm",
+      "empty": false,
+      "cik": "0001045810",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000052/nvda-20260426.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581025000230/nvda-20251026.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-05-20",
+      "current_date": "2026-06-18",
+      "proceedings": [
+        {
+          "item": "2.02",
+          "description": "Results of Operations and Financial Condition",
+          "prior_quote": "On May 20, 2026, NVIDIA Corporation, or the Company, issued a press release announcing its results for the quarter ended April 26, 2026.",
+          "current_quote": null,
+          "counterparties": [],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000119312526275783/d48176d8k.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000051/nvda-20260520.htm"
+        },
+        {
+          "item": "9.01",
+          "description": "Financial Statements and Exhibits",
+          "prior_quote": "Exhibit Description 99.1 Press Release, dated May 20, 2026, entitled \"NVIDIA Announces Financial Results for First Quarter Fiscal 2027\"",
+          "current_quote": null,
+          "counterparties": [],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000119312526275783/d48176d8k.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000051/nvda-20260520.htm"
+        },
+        {
+          "item": "8.01",
+          "description": "Other Events",
+          "prior_quote": null,
+          "current_quote": "On June 18, 2026, NVIDIA Corporation (the \"Company\") completed an offering of $3,500,000,000 aggregate principal amount of its 4.250% Notes due 2028 (the \"2028 Notes\"), $3,500,000,000 aggregate principal amount of its 4.350% Notes due 2029 (the \"2029 Notes\"), $4,000,000,000 aggregate principal amount of its 4.500% Notes due 2031 (the \"2031 Notes\"), $3,500,000,000 aggregate principal amount of its 4.750% Notes due 2033 (the \"2033 Notes\"), $4,000,000,000 aggregate principal amount of its 4.950% Notes due 2036 (the \"2036 Notes\"), $3,000,000,000 aggregate principal amount of its 5.550% Notes due 2046 (the \"2046 Notes\") and $3,500,000,000 aggregate principal amount of its 5.625% Notes due 2056 (the \"2056 Notes\" and, together with the 2028 Notes, the 2029 Notes, the 2031 Notes, the 2033 Notes, the 2036 Notes, and the 2046 Notes, the \"Notes\").",
+          "counterparties": [],
+          "amount": "$3,500,000,000",
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000119312526275783/d48176d8k.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000051/nvda-20260520.htm"
+        }
+      ],
+      "summary": "NVIDIA Corporation filed two 8-K reports, one on May 20, 2026, and another on June 15, 2026, announcing financial results and completing a debt offering.",
+      "agent3_score": 35,
+      "current_accession": "0001193125-26-275783",
+      "current_primary_doc": "d48176d8k.htm",
+      "prior_accession": "0001045810-26-000051",
+      "prior_primary_doc": "nvda-20260520.htm",
+      "empty": false,
+      "cik": "0001045810",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000119312526275783/d48176d8k.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1045810/000104581026000051/nvda-20260520.htm"
+    }
+  ]
+}

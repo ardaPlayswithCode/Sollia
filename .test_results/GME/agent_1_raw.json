@@ -1,0 +1,471 @@
+{
+  "ticker": "GME",
+  "year": 2025,
+  "agent": "Corporate Discrepancy",
+  "run_timestamp": "2026-06-26T01:40:43.550094",
+  "documents_analyzed": [
+    "10-K",
+    "10-Q",
+    "8-K",
+    "DEF14A",
+    "EARNINGS_CALL"
+  ],
+  "total_aligned_pairs": 28,
+  "total_discrepancies_found": 8,
+  "top_discrepancies": [
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "numerical_contradiction",
+      "severity": "high",
+      "weight": 100,
+      "reasoning": "The gross profit decrease in fiscal 2024 compared to the prior year is $180.3 million in the 10-K, but $124.5 million in the 10-Q, indicating a discrepancy in the reported decrease in gross profit.",
+      "sentence_index_a": 0,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "Gross profit decreased $180.3 million or 13.9% in fiscal 2024 compared to the prior year",
+      "quoted_phrase_b": "Gross profit decreased $124.5 million, or 14.2%, compared to the prior year",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_16_16",
+      "same_filing": false,
+      "final_score": 96.5,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 100,
+        "pair_importance": 100,
+        "confidence": 100.0,
+        "same_filing": false
+      },
+      "rank": 1,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 3,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "24\nGross Profit\nGross profit decreased $180.3 million or 13.9% in fiscal 2024 compared to the prior year, and gross profit as a percentage of net sales increased to 29.1% in fiscal 2024 compared to 24.5% in the prior year.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q3 2025)",
+        "document_type_raw": "10-Q_Q3",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 4,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "During the nine months ended November 2, 2024, gross profit decreased $124.5 million, or 14.2%, compared to the prior year.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q3 2025)"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "numerical_contradiction",
+      "severity": "high",
+      "weight": 100,
+      "reasoning": "The 10-K states that the 2026 Revolver was terminated on August 27, 2024, while the 10-Q states that $20.5 million remains outstanding as of November 2, 2024, indicating that the 2026 Revolver was still active at that time.",
+      "sentence_index_a": 4,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "On August 27, 2024, we voluntarily terminated the 2026 Revolver, including all commitments and obligations thereunder.",
+      "quoted_phrase_b": "As of November 2, 2024, $20.5 million remains outstanding.",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_24_24",
+      "same_filing": false,
+      "final_score": 96.4,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 100,
+        "pair_importance": 100,
+        "confidence": 99.5,
+        "same_filing": false
+      },
+      "rank": 2,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 5,
+        "paragraph_index": 0,
+        "sentence_index": 4,
+        "sentence_text": "On August 27, 2024, we voluntarily terminated the 2026 Revolver, including all commitments and obligations thereunder.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q3 2025)",
+        "document_type_raw": "10-Q_Q3",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 7,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "As of November 2, 2024, $20.5 million remains outstanding.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q3 2025)"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "numerical_contradiction",
+      "severity": "high",
+      "weight": 100,
+      "reasoning": "Cash provided by operating activities during fiscal 2024 was primarily due to the impact of our net income, a decrease in merchandise inventories, and a decrease in receivables, partially offset by a decrease in accounts payable and accrued liabilities, whereas Cash used in operating activities during the three months ended May 4, 2024 was primarily due to the impact of our net loss, an increase in merchandise inventory, and a decrease in trade payables, partially offset by a reduction in accounts receivable.",
+      "sentence_index_a": 0,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "Cash provided by operating activities during fiscal 2024 was primarily due to the impact of our net income, a decrease in merchandise inventories, and a decrease in receivables, partially offset by a decrease in accounts payable and accrued liabilities.",
+      "quoted_phrase_b": "Cash used in operating activities during the three months ended May 4, 2024 was primarily due to the impact of our net loss, an increase in merchandise inventory, and a decrease in trade payables, partially offset by a reduction in accounts receivable.",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_29_29",
+      "same_filing": false,
+      "final_score": 94.8,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 100,
+        "pair_importance": 100,
+        "confidence": 91.4,
+        "same_filing": false
+      },
+      "rank": 3,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 6,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Cash provided by operating activities during fiscal 2024 was primarily due to the impact of our net income, a decrease in merchandise inventories, and a decrease in receivables, partially offset by a decrease in accounts payable and accrued liabilities.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q1 2025)",
+        "document_type_raw": "10-Q_Q1",
+        "section": "ITEM 2.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 6,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Cash used in operating activities during the three months ended May 4, 2024 was primarily due to the impact of our net loss, an increase in merchandise inventory, and a decrease in trade payables, partially offset by a reduction in accounts receivable.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000030/gme-20240504.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000030/gme-20240504.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q1 2025)"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "numerical_contradiction",
+      "severity": "high",
+      "weight": 100,
+      "reasoning": "The cash provided by investing activities in fiscal 2024 was $265.1 million in the 10-K, but $247.7 million in the 10-Q, indicating a discrepancy in the reported cash inflow for the same time period.",
+      "sentence_index_a": 0,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "$265.1 million",
+      "quoted_phrase_b": "$247.7 million",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_30_30",
+      "same_filing": false,
+      "final_score": 94.2,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 100,
+        "pair_importance": 100,
+        "confidence": 88.6,
+        "same_filing": false
+      },
+      "rank": 4,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 7,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Investing Activities\nIn fiscal 2024, cash provided by investing activities were $265.1 million, compared to cash used in investing activities of $33.2\u00a0million in fiscal 2023.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q3 2025)",
+        "document_type_raw": "10-Q_Q3",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 8,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Investing Activities\nCash provided by investing activities were an inflow of $247.7 million during the nine months ended November 2, 2024 compared to an outflow of $53.8 million during the nine months ended October 28, 2023.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q3 2025)"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "high",
+      "weight": 80,
+      "reasoning": "The 10-K states that cash provided by financing activities during fiscal 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance and sale of shares of our Class A Common Stock in connection with the ATM Offerings, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026, whereas the 10-Q states that cash flows provided by financing activities during the nine months ended November 2, 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance of shares of our common stock in connection with the ATM Offering, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026.",
+      "sentence_index_a": 0,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "Cash provided by financing activities during fiscal 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance and sale of shares of our Class A Common Stock in connection with the ATM Offerings, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026.",
+      "quoted_phrase_b": "Cash flows provided by financing activities during the nine months ended November 2, 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance of shares of our common stock in connection with the ATM Offering, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026.",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_32_32",
+      "same_filing": false,
+      "final_score": 85.0,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 70,
+        "pair_importance": 100,
+        "confidence": 87.3,
+        "same_filing": false
+      },
+      "rank": 5,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 7,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Cash provided by financing activities during fiscal 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance and sale of shares of our Class A Common Stock in connection with the ATM Offerings, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q3 2025)",
+        "document_type_raw": "10-Q_Q3",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 9,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "Cash flows provided by financing activities during the nine months ended November 2, 2024 was primarily due to net proceeds of $3,453.8 million received from the issuance of shares of our common stock in connection with the ATM Offering, partially offset by repayments on our government-guaranteed low interest French term loans due October 2022 through October 2026.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q3 2025)"
+    },
+    {
+      "pair": "EARNINGS_CALL_0_vs_8-K",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "high",
+      "weight": 80,
+      "reasoning": "The EARNINGS_CALL_0 passage states that the press release is attached as Exhibit 99.1, while the 8-K passage does not mention Exhibit 99.1.",
+      "sentence_index_a": 2,
+      "sentence_index_b": 0,
+      "quoted_phrase_a": "A copy of the press release is attached hereto as Exhibit 99.1.",
+      "quoted_phrase_b": "The information contained in this Current Report, including the exhibit, shall not be incorporated by reference into any filing of GameStop Corp., whether made before or after the date hereof, regardless of any general incorporation language in such filing, except as otherwise expressly set forth therein.",
+      "batch_key": "EARNINGS_CALL_0_Full Document_0_0_0",
+      "same_filing": false,
+      "final_score": 81.6,
+      "score_components": {
+        "severity": 90,
+        "type_objectivity": 70,
+        "pair_importance": 70,
+        "confidence": 93.2,
+        "same_filing": false
+      },
+      "rank": 6,
+      "source_a": {
+        "document_type": "Earnings Call",
+        "document_type_raw": "EARNINGS_CALL_0",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 2,
+        "sentence_text": "A copy of the press release is attached hereto as Exhibit 99.1.",
+        "edgar_url": "",
+        "htm_link": "",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "8-K",
+        "document_type_raw": "8-K",
+        "section": "Full Document",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 0,
+        "sentence_text": "The information contained in this Current Report, including the exhibit, shall not be incorporated by reference into any filing of GameStop Corp., whether made before or after the date hereof, regardless of any general incorporation language in such filing, except as otherwise expressly set forth therein.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000168/gme-20241206.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000168/gme-20241206.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "Earnings Call vs 8-K"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "narrative_contradiction",
+      "severity": "medium",
+      "weight": 80,
+      "reasoning": "The 10-K states that the Investment Committee regularly reviews risks related to the Company's investment portfolio, including concentration risk, whereas the 10-Q does not mention concentration risk in its discussion of the revised Investment Policy.",
+      "sentence_index_a": 1,
+      "sentence_index_b": 1,
+      "quoted_phrase_a": "The Investment Committee regularly reviews risks related to the Company's investment portfolio, including concentration risk.",
+      "quoted_phrase_b": "In accordance with the revised Investment Policy, the Board of Directors has delegated authority to manage the Company\u2019s portfolio of securities investments to an Investment Committee consisting of the Company\u2019s Chairman of the Board of Directors and Chief Executive Officer, Ryan Cohen, and two independent members of the Board of Directors, together with such personnel and advisors as the Investment Committee may choose.",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_3_3",
+      "same_filing": false,
+      "final_score": 71.2,
+      "score_components": {
+        "severity": 50,
+        "type_objectivity": 70,
+        "pair_importance": 100,
+        "confidence": 88.3,
+        "same_filing": false
+      },
+      "rank": 7,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 1,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "The Investment Committee regularly reviews risks related to the Company's investment portfolio, including concentration risk.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q2 2025)",
+        "document_type_raw": "10-Q_Q2",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 2,
+        "paragraph_index": 0,
+        "sentence_index": 1,
+        "sentence_text": "In accordance with the revised Investment Policy, the Board of Directors has delegated authority to manage the Company\u2019s portfolio of securities investments to an Investment Committee consisting of the Company\u2019s Chairman of the Board of Directors and Chief Executive Officer, Ryan Cohen, and two independent members of the Board of Directors, together with such personnel and advisors as the Investment Committee may choose.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000109/gme-20240803.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000109/gme-20240803.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q2 2025)"
+    },
+    {
+      "pair": "10-K_vs_10-Q",
+      "is_discrepancy": true,
+      "discrepancy_type": "omission_discrepancy",
+      "severity": "medium",
+      "weight": 60,
+      "reasoning": "The 10-K passage mentions that as of February 1, 2025, $16.9 million remains outstanding, which is not mentioned in the 10-Q passage.",
+      "sentence_index_a": 4,
+      "sentence_index_b": 5,
+      "quoted_phrase_a": "As of February 1, 2025, $16.9 million remains outstanding.",
+      "quoted_phrase_b": "In fiscal 2021, the six separate unsecured term loans held by our French subsidiary, Micromania SAS, for a total of \u20ac40.0 million, were extended for five years.",
+      "batch_key": "10-K_ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUS_0_23_23",
+      "same_filing": false,
+      "final_score": 66.3,
+      "score_components": {
+        "severity": 50,
+        "type_objectivity": 50,
+        "pair_importance": 100,
+        "confidence": 93.9,
+        "same_filing": false
+      },
+      "rank": 8,
+      "source_a": {
+        "document_type": "10-K",
+        "document_type_raw": "10-K",
+        "section": "ITEM 7.\u00a0\u00a0\u00a0\u00a0MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 5,
+        "paragraph_index": 0,
+        "sentence_index": 4,
+        "sentence_text": "As of February 1, 2025, $16.9 million remains outstanding.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000162828025014731/gme-20250201.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "source_b": {
+        "document_type": "10-Q (Q3 2025)",
+        "document_type_raw": "10-Q_Q3",
+        "section": "ITEM 2. MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION AND RESULTS OF OPERATIONS",
+        "page_number": 7,
+        "paragraph_index": 0,
+        "sentence_index": 5,
+        "sentence_text": "In fiscal 2021, the six separate unsecured term loans held by our French subsidiary, Micromania SAS, for a total of \u20ac40.0\u00a0million, were extended for five years.",
+        "edgar_url": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "htm_link": "https://www.sec.gov/Archives/edgar/data/1326380/000132638024000170/gme-20241102.htm",
+        "year": 2025,
+        "ticker": "GME"
+      },
+      "pair_display": "10-K vs 10-Q (Q3 2025)"
+    }
+  ],
+  "score": 10,
+  "elapsed_seconds": 906.8,
+  "agent_log": [
+    {
+      "timestamp": "2026-06-26T01:25:36.759277",
+      "step": "START",
+      "detail": "Agent 1 initiated for GME 2025"
+    },
+    {
+      "timestamp": "2026-06-26T01:26:15.295296",
+      "step": "FETCH",
+      "detail": "Fetched all 5 document types"
+    },
+    {
+      "timestamp": "2026-06-26T01:26:15.305739",
+      "step": "CLEAN",
+      "detail": "Cleaned all documents"
+    },
+    {
+      "timestamp": "2026-06-26T01:26:21.914440",
+      "step": "CHUNK",
+      "detail": "Chunked into 196 total chunks"
+    },
+    {
+      "timestamp": "2026-06-26T01:26:30.470553",
+      "step": "EMBED",
+      "detail": "Embedded all chunks with FinBERT"
+    },
+    {
+      "timestamp": "2026-06-26T01:26:30.514068",
+      "step": "ALIGN",
+      "detail": "Found 28 aligned pairs"
+    },
+    {
+      "timestamp": "2026-06-26T01:40:43.549347",
+      "step": "CLASSIFY",
+      "detail": "LLM found 8 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T01:40:43.549796",
+      "step": "RANK",
+      "detail": "Selected top 8 discrepancies"
+    },
+    {
+      "timestamp": "2026-06-26T01:40:43.550083",
+      "step": "CITE",
+      "detail": "Built exact sentence citations"
+    },
+    {
+      "timestamp": "2026-06-26T01:40:43.550089",
+      "step": "OUTPUT",
+      "detail": "Complete in 906.8s"
+    }
+  ]
+}

@@ -1,0 +1,210 @@
+{
+  "model": "meta-llama/llama-3.3-70b-instruct:free",
+  "timestamp": "2026-06-25T21:17:34.634751+00:00",
+  "price_in_per_m": 0.0,
+  "price_out_per_m": 0.0,
+  "context": 131072,
+  "tests": {
+    "test1_agent2_stage2": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 292.4,
+        "prompt_tokens": 3010,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 292.4,
+          "prompt_tokens": 3010,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+          "response_text": ""
+        }
+      ]
+    },
+    "test2_agent1_discrepancy": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 265.7,
+        "prompt_tokens": 1074,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 265.7,
+          "prompt_tokens": 1074,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+          "response_text": ""
+        }
+      ]
+    },
+    "test3_agent3_legal": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 278.7,
+        "prompt_tokens": 2158,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+        },
+        "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 278.7,
+          "prompt_tokens": 2158,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta"
+          },
+          "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"meta-llama/llama-3.3-70b-instruct:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to ac",
+          "response_text": ""
+        }
+      ]
+    },
+    "test4_agent4_risk": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 183.1,
+        "prompt_tokens": 3265,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-ins"
+        },
+        "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-instruct/839b2e30-a1b4-4974-b980-3e534b5873b1. High demand for meta-llama/llama-3.3-70b-instruct:free on OpenRouter - limit",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 183.1,
+          "prompt_tokens": 3265,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-ins"
+          },
+          "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-instruct/839b2e30-a1b4-4974-b980-3e534b5873b1. High demand for meta-llama/llama-3.3-70b-instruct:free on OpenRouter - limit",
+          "response_text": ""
+        }
+      ]
+    },
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 429,
+        "ttft_ms": null,
+        "total_ms": 167.1,
+        "prompt_tokens": 865,
+        "completion_tokens": 0,
+        "cost_usd": 0.0,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-ins"
+        },
+        "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-instruct/839b2e30-a1b4-4974-b980-3e534b5873b1. High demand for meta-llama/llama-3.3-70b-instruct:free on OpenRouter - limit",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 429,
+          "ttft_ms": null,
+          "total_ms": 167.1,
+          "prompt_tokens": 865,
+          "completion_tokens": 0,
+          "cost_usd": 0.0,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 429: {\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-ins"
+          },
+          "error": "{\"error\":{\"message\":\"Rate limit exceeded: limit_rpm/meta-llama/llama-3.3-70b-instruct/839b2e30-a1b4-4974-b980-3e534b5873b1. High demand for meta-llama/llama-3.3-70b-instruct:free on OpenRouter - limit",
+          "response_text": ""
+        }
+      ]
+    }
+  },
+  "determinism": null
+}

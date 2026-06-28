@@ -1,0 +1,17 @@
+{
+  "ticker": "GE",
+  "agent": "Agent 4 \u2014 Risk Factor Delta",
+  "run_timestamp": "2026-06-25T17:10:05.703719",
+  "old_filing_date": "2025-02-03",
+  "new_filing_date": "2026-01-29",
+  "total_risks_old": 0,
+  "total_risks_new": 0,
+  "changes_found": 0,
+  "top_changes": [],
+  "score": 50,
+  "signal": "NEUTRAL",
+  "old_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054525000015/ge-20241231.htm",
+  "new_url": "https://www.sec.gov/Archives/edgar/data/40545/000004054526000008/ge-20251231.htm",
+  "cik": "0000040545",
+  "summary": "Item 1A (Risk Factors) not found in one or both 10-Ks."
+}

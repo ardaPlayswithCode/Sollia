@@ -1,0 +1,107 @@
+{
+  "ticker": "F",
+  "timestamp": "2026-06-25T12:13:39.708384",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-02-06",
+      "current_date": "2026-02-11",
+      "proceedings": [
+        {
+          "case_name": "Asbestos Litigation",
+          "prior_quote": "The extent of our financial exposure to asbestos litigation remains very difficult to estimate and could include both compensatory and punitive damage awards.",
+          "current_quote": "The extent of our financial exposure to asbestos litigation remains very difficult to estimate and could include both compensatory and punitive damage awards.",
+          "status": "UNCHANGED",
+          "liability_change": null,
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000015/f-20251231.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm"
+        },
+        {
+          "case_name": "Asbestos Litigation",
+          "prior_quote": "Annual payout and defense costs may become significant in the future.",
+          "current_quote": "Annual payout and defense costs may become significant in the future.",
+          "status": "UNCHANGED",
+          "liability_change": null,
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000015/f-20251231.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm"
+        },
+        {
+          "case_name": "Asbestos Litigation",
+          "prior_quote": "Our accrual for asbestos matters includes probable losses for both asserted and unasserted claims.",
+          "current_quote": "Our accrual for asbestos matters includes probable losses for both asserted and unasserted claims.",
+          "status": "UNCHANGED",
+          "liability_change": null,
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000015/f-20251231.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm"
+        }
+      ],
+      "summary": "Asbestos litigation remains ongoing with uncertain financial exposure, and annual payout and defense costs may become significant in the future.",
+      "agent3_score": 50,
+      "current_accession": "0000037996-26-000015",
+      "current_primary_doc": "f-20251231.htm",
+      "prior_accession": "0000037996-25-000013",
+      "prior_primary_doc": "f-20241231.htm",
+      "empty": false,
+      "cik": "0000037996",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000015/f-20251231.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000013/f-20241231.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-10-24",
+      "current_date": "2026-04-30",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-Q.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0000037996",
+      "current_accession": "0000037996-26-000086",
+      "current_primary_doc": "f-20260331.htm",
+      "prior_accession": "0000037996-25-000186",
+      "prior_primary_doc": "f-20250930.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000086/f-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799625000186/f-20250930.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-05-19",
+      "current_date": "2026-05-21",
+      "proceedings": [
+        {
+          "item": "5.07",
+          "description": "Submission of Matters to a Vote of Security Holders",
+          "prior_quote": "On May 14, 2026, the Annual Meeting of Shareholders of Ford Motor Company (the \"Company\") was held.",
+          "current_quote": "As previously disclosed, on December 13, 2024, BlueOval SK, LLC (\"BOSK\"), a joint venture company formed by Ford Motor Company (\"Ford\" or \"Company\"), SK On Co., Ltd. (\"SK On\"), and SK Battery America, Inc. (\"SKBA,\" a wholly owned subsidiary of SK On) to build and operate an EV battery plant in Tennessee and two EV battery plants in Kentucky, entered into a Loan Arrangement and Reimbursement Agreement (the \"BOSK DOE Loan Agreement\") pursuant to which the U.S. Department of Energy (\"DOE\") agreed to arrange for the Federal Financing Bank to purchase a note or notes from BOSK and to make advances from time to time thereunder up to $9,633,040,000 (the \"BOSK DOE Loan\") to finance the construction of battery manufacturing plants in Tennessee and Kentucky.",
+          "counterparties": [
+            "Ford Motor Company",
+            "SK On Co., Ltd.",
+            "SK Battery America, Inc.",
+            "U.S. Department of Energy"
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000093/f-20260520.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000090/f-20260514.htm"
+        }
+      ],
+      "summary": "Ford Motor Company filed two 8-K reports, one on May 14, 2026, and another on May 20, 2026, disclosing various events, including the submission of matters to a vote of security holders and the entry into a material definitive agreement.",
+      "agent3_score": 45,
+      "current_accession": "0000037996-26-000093",
+      "current_primary_doc": "f-20260520.htm",
+      "prior_accession": "0000037996-26-000090",
+      "prior_primary_doc": "f-20260514.htm",
+      "empty": false,
+      "cik": "0000037996",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000093/f-20260520.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/37996/000003799626000090/f-20260514.htm"
+    }
+  ]
+}

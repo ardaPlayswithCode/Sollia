@@ -1,0 +1,33 @@
+{
+  "status": "success",
+  "runtime_seconds": 0.9,
+  "llm_calls_recorded": 2,
+  "error": null,
+  "top_level_keys": [
+    "agent",
+    "changes_found",
+    "cik",
+    "new_filing_date",
+    "new_url",
+    "old_filing_date",
+    "old_url",
+    "run_timestamp",
+    "score",
+    "signal",
+    "summary",
+    "ten_q_findings",
+    "ticker",
+    "top_changes",
+    "total_risks_new",
+    "total_risks_old"
+  ],
+  "changes_found": 7,
+  "distribution": {
+    "ESCALATED": 3,
+    "NEW": 3,
+    "REMOVED": 1
+  },
+  "verified_count": 3,
+  "score": 10,
+  "signal": "BEARISH"
+}

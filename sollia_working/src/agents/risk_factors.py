@@ -33,7 +33,8 @@ _SOLLIA_WORKING = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspat
 if _SOLLIA_WORKING not in sys.path:
     sys.path.insert(0, _SOLLIA_WORKING)
 
-from src.config.llm_config import call_llm
+from src.config.llm_config import call_llm, start_tier
+from src.utils.scoring import score_risk_factors
 from src.providers.filings.sec_edgar import (
     SECEdgarProvider,
     get_cached_filings,
@@ -544,7 +545,8 @@ class RiskFactorAgent:
 
     def run(self, ticker: str, progress=None) -> dict:
         """Run the full Risk Factor Delta scan for a ticker."""
-        ticker = (ticker or "").upper()
+        _t0 = datetime.now()  # PART 3: run-archive performance block
+        ticker = (ticker or "").strip().upper().replace(".", "-")  # BRK.A -> BRK-A (SEC form)
 
         def _emit(msg, kind="info"):
             if progress:
@@ -608,7 +610,8 @@ class RiskFactorAgent:
 
         _emit("Comparing risk factors risk-by-risk...", "analyze")
         try:
-            response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS)
+            response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                      provider_idx=start_tier("risk_factors"))
         except Exception as e:
             _emit("LLM comparison failed: %s" % str(e)[:120], "flag")
             result["summary"] = "Risk factor comparison failed (LLM error)."
@@ -623,9 +626,12 @@ class RiskFactorAgent:
 
         result["top_changes"] = top_changes
         result["changes_found"] = len(top_changes)
-        ten_k_score = self._calculate_score(top_changes)
-        result["score"] = ten_k_score
-        result["signal"] = self._signal(ten_k_score)
+        # Provisional 10-K-only score (the 10-Q phase below may refine it). PART 2:
+        # routed through the shared scorer so the band/signal/rationale are unified.
+        _score, _signal, _rationale = score_risk_factors(top_changes)
+        result["score"] = _score
+        result["signal"] = _signal
+        result["score_rationale"] = _rationale
         result["summary"] = (
             "%d material change(s) in Item 1A between %s and %s." % (
                 len(top_changes), result["old_filing_date"], result["new_filing_date"])
@@ -645,16 +651,26 @@ class RiskFactorAgent:
 
         # Final score reflects BOTH comparisons; the 10-Q is weighted 1.5x because
         # it's more recent. With no 10-Q this is exactly the 10-K score as before.
+        # PART 2: final score via the shared scorer — same category+rank model
+        # (already the most mature scorer), now with the 10-Q blended in (1.5x,
+        # more recent), the band unified to [10,95], and a rationale attached.
         tqf = result.get("ten_q_findings")
         if tqf and tqf.get("changes") is not None:
-            ten_q_score = self._calculate_score(tqf["changes"])
-            final = (ten_k_score + 1.5 * ten_q_score) / 2.5
-            result["score"] = int(round(max(10.0, min(90.0, final))))
-            result["signal"] = self._signal(result["score"])
+            _score, _signal, _rationale = score_risk_factors(top_changes, tqf["changes"])
+            result["score"] = _score
+            result["signal"] = _signal
+            result["score_rationale"] = _rationale
 
         verified_n = sum(1 for c in top_changes if c["verified"])
         _emit("Risk factor scan complete — %d change(s), %d quote-verified. Score %d (%s)." % (
             len(top_changes), verified_n, result["score"], result["signal"]), "done")
+        # PART 3: archive this run (manifest + index line). Exception-safe.
+        try:
+            from src.utils.run_archive import save_run
+            save_run("risk_factors", ticker, datetime.now().year, result,
+                     duration_ms=(datetime.now() - _t0).total_seconds() * 1000)
+        except Exception:
+            pass
         return result
 
     def _build_top_changes(self, response: str, old_rf: str, new_rf: str,
@@ -683,7 +699,7 @@ class RiskFactorAgent:
         if update_only:
             changes = self._filter_update_only(changes)
         changes.sort(key=lambda c: c.get("rank", 999) if isinstance(c.get("rank"), int) else 999)
-        changes = changes[:10]
+        # Output EVERY significant change found (ranked), not just the top 10.
 
         top_changes = []
         for i, c in enumerate(changes, start=1):
@@ -774,7 +790,8 @@ class RiskFactorAgent:
 
         emit("Comparing 10-Q risk factors against %s..." % old_doc_type, "analyze")
         try:
-            response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS)
+            response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                      provider_idx=start_tier("risk_factors"))
         except Exception as e:
             emit("10-Q comparison failed: %s" % str(e)[:120], "flag")
             return

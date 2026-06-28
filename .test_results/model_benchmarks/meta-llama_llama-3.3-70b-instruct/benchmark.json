@@ -1,0 +1,210 @@
+{
+  "model": "meta-llama/llama-3.3-70b-instruct",
+  "timestamp": "2026-06-25T20:49:40.269375+00:00",
+  "price_in_per_m": 0.09999999999999999,
+  "price_out_per_m": 0.32,
+  "context": 131072,
+  "tests": {
+    "test1_agent2_stage2": {
+      "best": {
+        "status": 402,
+        "ttft_ms": null,
+        "total_ms": 551.1,
+        "prompt_tokens": 3010,
+        "completion_tokens": 0,
+        "cost_usd": 0.000301,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+        },
+        "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 4000 tokens, but can only afford 80. To increase, visit https://openrouter.ai/settings/credits and upg",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 402,
+          "ttft_ms": null,
+          "total_ms": 551.1,
+          "prompt_tokens": 3010,
+          "completion_tokens": 0,
+          "cost_usd": 0.000301,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+          },
+          "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 4000 tokens, but can only afford 80. To increase, visit https://openrouter.ai/settings/credits and upg",
+          "response_text": ""
+        }
+      ]
+    },
+    "test2_agent1_discrepancy": {
+      "best": {
+        "status": 402,
+        "ttft_ms": null,
+        "total_ms": 209.1,
+        "prompt_tokens": 1074,
+        "completion_tokens": 0,
+        "cost_usd": 0.000107,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+        },
+        "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 800 tokens, but can only afford 55. To increase, visit https://openrouter.ai/settings/credits and upgr",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 402,
+          "ttft_ms": null,
+          "total_ms": 209.1,
+          "prompt_tokens": 1074,
+          "completion_tokens": 0,
+          "cost_usd": 0.000107,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+          },
+          "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 800 tokens, but can only afford 55. To increase, visit https://openrouter.ai/settings/credits and upgr",
+          "response_text": ""
+        }
+      ]
+    },
+    "test3_agent3_legal": {
+      "best": {
+        "status": 402,
+        "ttft_ms": null,
+        "total_ms": 156.2,
+        "prompt_tokens": 2158,
+        "completion_tokens": 0,
+        "cost_usd": 0.000216,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+        },
+        "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2000 tokens, but can only afford 73. To increase, visit https://openrouter.ai/settings/credits and upg",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 402,
+          "ttft_ms": null,
+          "total_ms": 156.2,
+          "prompt_tokens": 2158,
+          "completion_tokens": 0,
+          "cost_usd": 0.000216,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+          },
+          "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2000 tokens, but can only afford 73. To increase, visit https://openrouter.ai/settings/credits and upg",
+          "response_text": ""
+        }
+      ]
+    },
+    "test4_agent4_risk": {
+      "best": {
+        "status": 402,
+        "ttft_ms": null,
+        "total_ms": 145.2,
+        "prompt_tokens": 3265,
+        "completion_tokens": 0,
+        "cost_usd": 0.000327,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+        },
+        "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2500 tokens, but can only afford 48. To increase, visit https://openrouter.ai/settings/credits and upg",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 402,
+          "ttft_ms": null,
+          "total_ms": 145.2,
+          "prompt_tokens": 3265,
+          "completion_tokens": 0,
+          "cost_usd": 0.000327,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+          },
+          "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2500 tokens, but can only afford 48. To increase, visit https://openrouter.ai/settings/credits and upg",
+          "response_text": ""
+        }
+      ]
+    },
+    "test5_agent2_stage1": {
+      "best": {
+        "status": 402,
+        "ttft_ms": null,
+        "total_ms": 103.2,
+        "prompt_tokens": 865,
+        "completion_tokens": 0,
+        "cost_usd": 8.6e-05,
+        "quality": 0.0,
+        "validation": {
+          "parse": 0,
+          "schema": 0,
+          "verbatim": 0,
+          "classification": 0,
+          "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+        },
+        "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2000 tokens, but can only afford 48. To increase, visit https://openrouter.ai/settings/credits and upg",
+        "response_text": ""
+      },
+      "runs": [
+        {
+          "status": 402,
+          "ttft_ms": null,
+          "total_ms": 103.2,
+          "prompt_tokens": 865,
+          "completion_tokens": 0,
+          "cost_usd": 8.6e-05,
+          "quality": 0.0,
+          "validation": {
+            "parse": 0,
+            "schema": 0,
+            "verbatim": 0,
+            "classification": 0,
+            "notes": "HTTP 402: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. Yo"
+          },
+          "error": "{\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. You requested up to 2000 tokens, but can only afford 48. To increase, visit https://openrouter.ai/settings/credits and upg",
+          "response_text": ""
+        }
+      ]
+    }
+  },
+  "determinism": null
+}

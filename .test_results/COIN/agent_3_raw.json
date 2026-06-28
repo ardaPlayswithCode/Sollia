@@ -1,0 +1,94 @@
+{
+  "ticker": "COIN",
+  "timestamp": "2026-06-26T03:19:39.942206",
+  "findings": [
+    {
+      "doc_type": "10-K",
+      "prior_date": "2025-02-13",
+      "current_date": "2026-02-12",
+      "proceedings": [],
+      "summary": "No legal proceedings disclosed in 10-K.",
+      "agent3_score": 50,
+      "empty": true,
+      "cik": "0001679788",
+      "current_accession": "0001679788-26-000015",
+      "current_primary_doc": "coin-20251231.htm",
+      "prior_accession": "0001679788-25-000022",
+      "prior_primary_doc": "coin-20241231.htm",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000015/coin-20251231.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978825000022/coin-20241231.htm"
+    },
+    {
+      "doc_type": "10-Q",
+      "prior_date": "2025-10-30",
+      "current_date": "2026-05-07",
+      "proceedings": [
+        {
+          "case_name": "Item 1A. Risk Factors",
+          "prior_quote": "48 Item 1A. Risk Factors 48",
+          "current_quote": "43 Item 1A. Risk Factors 43",
+          "status": "NEW",
+          "current_quote_verified": true,
+          "prior_quote_verified": true,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000054/coin-20260331.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978825000208/coin-20250930.htm"
+        }
+      ],
+      "summary": "Risk Factors section updated from 48 to 43 in Item 1A.",
+      "agent3_score": 45,
+      "current_accession": "0001679788-26-000054",
+      "current_primary_doc": "coin-20260331.htm",
+      "prior_accession": "0001679788-25-000208",
+      "prior_primary_doc": "coin-20250930.htm",
+      "empty": false,
+      "cik": "0001679788",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000054/coin-20260331.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978825000208/coin-20250930.htm"
+    },
+    {
+      "doc_type": "8-K",
+      "prior_date": "2026-05-07",
+      "current_date": "2026-06-18",
+      "proceedings": [
+        {
+          "item": "2.02",
+          "description": "Results of Operations and Financial Condition",
+          "prior_quote": "On May 7, 2026, Coinbase Global, Inc. published a presentation related to its financial results for the quarter ended March 31, 2026",
+          "current_quote": null,
+          "counterparties": [],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000075/coin-20260616.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000053/coin-20260507.htm"
+        },
+        {
+          "item": "5.07",
+          "description": "Submission of Matters to a Vote of Security Holders",
+          "prior_quote": null,
+          "current_quote": "On June 16, 2026, Coinbase Global, Inc. held its 2026 annual meeting of shareholders",
+          "counterparties": [
+            "Deloitte & Touche LLP"
+          ],
+          "amount": null,
+          "status": "NEW",
+          "current_quote_verified": false,
+          "prior_quote_verified": false,
+          "edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000075/coin-20260616.htm",
+          "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000053/coin-20260507.htm"
+        }
+      ],
+      "summary": "Coinbase Global, Inc. filed two 8-K reports, one for results of operations and financial condition, and another for submission of matters to a vote of security holders",
+      "agent3_score": 40,
+      "current_accession": "0001679788-26-000075",
+      "current_primary_doc": "coin-20260616.htm",
+      "prior_accession": "0001679788-26-000053",
+      "prior_primary_doc": "coin-20260507.htm",
+      "empty": false,
+      "cik": "0001679788",
+      "current_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000075/coin-20260616.htm",
+      "prior_edgar_url": "https://www.sec.gov/Archives/edgar/data/1679788/000167978826000053/coin-20260507.htm"
+    }
+  ]
+}

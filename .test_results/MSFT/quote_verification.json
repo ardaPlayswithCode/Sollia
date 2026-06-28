@@ -1,0 +1,288 @@
+{
+  "ticker": "MSFT",
+  "total": 24,
+  "per_agent": {
+    "agent_2": {
+      "n": 22,
+      "present": 22,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 0,
+      "disagree": 0
+    },
+    "agent_3": {
+      "n": 2,
+      "present": 2,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 0,
+      "disagree": 2
+    }
+  },
+  "results": [
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_014",
+      "side": "promise",
+      "quote": "We see more emerging use cases and needs for compute and security at the edge and are accelerating our innovation across the spectrum of intelligent edge devices, from Internet of Things (\"IoT\") sensors to gateway devices and edge hardware to build, manage, and secure edge workloads.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017023035122/msft-20230630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_006",
+      "side": "promise",
+      "quote": "Other Planned Uses of Capital We will continue to invest in sales, marketing, product support infrastructure, and existing and advanced areas of technology, as well as acquisitions that align with our business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_006",
+      "side": "evidence",
+      "quote": "FINA NCIAL STATEMENTS INCOME STA TEMENTS (In millions, except per share amounts) (Unaudited) Three Months Ended March 31, Nine Months Ended March 31, 2026 2025 2026 2025 Revenue: Product $ 15,089 $ 15,319 $ 47,462 $ 46,810 Service and other 67,797 54,747 194,370 158,473 Total revenue 82,886 70,066 241,832 205,283 Cost of revenue: Product 2,733 3,037 9,160 10,187 Service and other 24,095 18,882 67,689 53,630 Total cost of revenue 26,828 21,919 76,849 63,817 Gross margin 56,058 48,147 164,983 141,466 Research and development 8,915 8,198 25,565 23,659 Sales and marketing 6,814 6,212 19,115 18,369 General and administrative 1,931 1,737 5,669 5,233 Operating income 38,398 32,000 114,634 94,205 Other income (expense), net 942 ( 623 ) 7,253 ( 3,194 ) Income before income taxes 39,340 31,377 121,887 91,011 Provision for income taxes 7,562 5,553 23,904 16,412 Net income $ 31,778 $ 25,824 $ 97,983 $ 74,599 Earnings per share: Basic $ 4.28 $ 3.47 $ 13.19 $ 10.03 Diluted $ 4.27 $ 3.46 $ 13.14 $ 9.99 Weighted average shares outstanding: Basic 7,426 7,434 7,430 7,434 Diluted 7,445 7,461 7,457 7,466 Refer to accompanying notes. 3 PART I Item 1 COMPREHENSIVE IN COME STATEMENTS (In millions) (Unaudited) Three Months Ended March 31, Nine Months Ended March 31, 2026 2025 2026 2025 Net income $ 31,778 $ 25,824 $ 97,983 $ 74,599 Other comprehensive income (loss), net of tax: Net change related to derivatives 0 ( 20 ) ( 6 ) 4 Net change related to investments ( 239 ) 450 287 1,130 Translation adjustments and other ( 287 ) 353 ( 162 ) ( 377 ) Other comprehensive income (loss) ( 526 ) 783 119 757 Comprehensive income $ 31,252 $ 26,607 $ 98,102 $ 75,356 Refer to accompanying notes. 4 PART I Item 1 BALANCE SHEETS (In millions) (Unaudited) March 31, 2026 June 30, 2025 Assets Current assets: Cash and cash equivalents $ 32,105 $ 30,242 Short-term investments 46,167 64,323 Total cash, cash equivalents, and short-term investments 78,272 94,565 Accounts receivable, net of allowance for doubtful accounts of $ 794 and $ 944 60,041 69,905 Inventories 1,219 938 Other current assets 35,797 25,723 Total current assets 175,329 191,131 Property and equipment, net of accumulated depreciation of $ 111,723 and $ 93,653 283,228 204,966 Operating lease right-of-use assets 24,403 24,823 Equity and other investments 33,683 15,405 Goodwill 119,661 119,509 Intangible assets, net 19,325 22,604 Other long-term assets 38,599 40,565 Total assets $ 694,228 $ 619,003 Liabilities and stockholders equity Current liabilities: Accounts payable $ 37,513 $ 27,724 Current portion of long-term debt 8,839 2,999 Accrued compensation 11,270 13,709 Short-term income taxes 3,563 7,211 Short-term unearned revenue 50,924 64,555 Other current liabilities 24,552 25,020 Total current liabilities 136,661 141,218 Long-term debt 31,423 40,152 Long-term income taxes 27,941 25,986 Long-term unearned revenue 2,753 2,710 Deferred income taxes 2,899 2,835 Operating lease liabilities 16,703 17,437 Other long-term liabilities 61,481 45,186 Total liabilities 279,861 275,524 Commitments and contingencies Stockholders equity: Common stock and paid-in capital shares authorized 24,000 ; outstanding 7,429 and 7,434 115,069 109,095 Retained earnings 302,526 237,731 Accumulated other comprehensive loss ( 3,228 ) ( 3,347 ) Total stockholders equity 414,367 343,479 Total liabilities and stockholders equity $ 694,228 $ 619,003 Refer to accompanying notes. 5 PART I Item 1 CASH FLOWS STATEMENTS (In millions) (Unaudited) Three Months Ended March 31, Nine Months Ended March 31, 2026 2025 2026 2025 Operations Net income $ 31,778 $ 25,824 $ 97,983 $ 74,599 Adjustments to reconcile net income to net cash from operations: Depreciation, amortization, and other 10,167 7,734 27,512 20,116 Stock-based compensation expense 3,081 2,980 9,283 8,901 Net recognized losses (gains) on investments and derivatives ( 1,280 ) 708 ( 7,304 ) 3,387 Deferred income taxes 2,602 ( 2,244 ) 9,539 ( 4,835 ) Changes in operating assets and liabilities: Accounts receivable ( 4,707 ) ( 2,461 ) 8,347 5,598 Inventories ( 161 ) 52 ( 283 ) 390 Other current assets 758 1,076 215 642 Other long-term assets ( 932 ) ( 518 ) ( 2,614 ) ( 3,368 ) Accounts payable 2,320 1,179 2,903 1,221 Unearned revenue ( 166 ) ( 1,032 ) ( 13,067 ) ( 12,923 ) Income taxes 2,296 1,298 ( 1,568 ) ( 1,081 ) Other current liabilities 2,539 2,839 ( 166 ) 576 Other long-term liabilities ( 1,616 ) ( 391 ) ( 3,286 ) 292 Net cash from operations 46,679 37,044 127,494 93,515 Financing Repayments of debt, maturities of 90 days or less 0 0 0 ( 5,746 ) Repayments of debt 0 ( 2,250 ) ( 3,000 ) ( 3,216 ) Common stock issued 541 546 1,489 1,508 Common stock repurchased ( 4,627 ) ( 4,781 ) ( 17,692 ) ( 13,874 ) Common stock cash dividends paid ( 6,756 ) ( 6,169 ) ( 19,687 ) ( 17,913 ) Other, net ( 509 ) ( 382 ) ( 1,877 ) ( 1,614 ) Net cash used in financing ( 11,351 ) ( 13,036 ) ( 40,767 ) ( 40,855 ) Investing Additions to property and equipment ( 30,876 ) ( 16,745 ) ( 80,146 ) ( 47,472 ) Acquisition of companies, net of cash acquired and divestitures, and purchases of intangible and other assets ( 258 ) ( 981 ) ( 1,291 ) ( 4,235 ) Purchases of investments ( 12,006 ) ( 4,474 ) ( 39,522 ) ( 8,144 ) Maturities of investments 11,976 6,721 30,424 11,461 Sales of investments 6,358 2,161 15,311 6,688 Other, net ( 2,599 ) 604 ( 9,445 ) ( 325 ) Net cash used in investing ( 27,405 ) ( 12,714 ) ( 84,669 ) ( 42,027 ) Effect of foreign exchange rates on cash and cash equivalents ( 114 ) 52 ( 195 ) ( 120 ) Net change in cash and cash equivalents 7,809 11,346 1,863 10,513 Cash and cash equivalents, beginning of period 24,296 17,482 30,242 18,315 Cash and cash equivalents, end of period $ 32,105 $ 28,828 $ 32,105 $ 28,828 Refer to accompanying notes. 6 PART I Item 1 STOCKHOLDERS EQ UITY STATEMENTS (In millions, except per share amounts) (Unaudited) Three Months Ended March 31, Nine Months Ended March 31, 2026 2025 2026 2025 Common stock and paid-in capital Balance, beginning of period $ 112,788 $ 104,829 $ 109,095 $ 100,923 Common stock issued 541 546 1,489 1,508 Common stock repurchased ( 1,341 ) ( 1,390 ) ( 4,796 ) ( 4,366 ) Stock-based compensation expense 3,081 2,980 9,283 8,901 Other, net 0 0 ( 2 ) ( 1 ) Balance, end of period 115,069 106,965 115,069 106,965 Retained earnings Balance, beginning of period 280,789 203,482 237,731 173,144 Net income 31,778 25,824 97,983 74,599 Common stock cash dividends ( 6,756 ) ( 6,168 ) ( 20,277 ) ( 18,508 ) Common stock repurchased ( 3,285 ) ( 3,379 ) ( 12,911 ) ( 9,476 ) Balance, end of period 302,526 219,759 302,526 219,759 Accumulated other comprehensive loss Balance, beginning of period ( 2,702 ) ( 5,616 ) ( 3,347 ) ( 5,590 ) Other comprehensive income (loss) ( 526 ) 783 119 757 Balance, end of period ( 3,228 ) ( 4,833 ) ( 3,228 ) ( 4,833 ) Total stockholders equity $ 414,367 $ 321,891 $ 414,367 $ 321,891 Cash dividends declared per common share $ 0.91 $ 0.83 $ 2.73 $ 2.49 Refer to accompanying notes. 7 PART I Item 1 NOTES TO FINANCI AL STATEMENTS (Unaudited) NOTE 1 ACCOUNTING POLICIES Accounting Principles Our unaudited interim consolidated financial statements and accompanying notes are prepared in accordance with accounting principles generally accepted in the United States of America.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526191507/msft-20260331.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_016",
+      "side": "promise",
+      "quote": "Our Racial Equity Initiative focuses on three multi-year pillars, each containing actions and progress we expect to make or exceed by 2025. \u2022 Strengthening our communities: using data, technology, and partnerships to help improve the lives of Black and African American people in the United States, including our employees and their communities. \u2022 Engaging our ecosystem: using our balance sheet and relationships with suppliers and partners to foster societal change and create new opportunities. \u2022 Increasing representation and strengthening inclusion: building on our momentum by adding a $150 million investment to strengthen inclusion and double the number of Black, African American, Hispanic, and Latinx leaders in the United States by 2025. 7 PART I Item 1 In fiscal year 2023, we collaborated with partners and worked within neighborhoods and communities to launch and scale a number of projects and programs, including: \u2022 Working with 103 unique organizations in 165 cities and counties on our Justice Reform Initiative to empower communities and advance racial equity and fairness in the justice system. \u2022 Increasing access to affordable broadband, devices, and digital literacy training across 14 geographies, including 11 cities and three states in the Black Rural south. \u2022 Growing our Nonprofit Tech Acceleration for Black and African American Communities program, which uses data, technology, and partnerships to help more than 2,000 local organizations to modernize and streamline operations. \u2022 Expanding our Technology Education and Learning Support (\"TEALS\") program to reach nearly 400 high schools in 21 communities to increase computer science opportunities for Black and African American students.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017023035122/msft-20230630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_016",
+      "side": "evidence",
+      "quote": "Addressing Racial Injustice and Inequity In June 2020, we outlined a series of multi-year commitments designed to address the racial injustice and inequity experienced by racial and ethnic minorities in the United States, including Black and African American communities.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024087843/msft-20240630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_017",
+      "side": "promise",
+      "quote": "We will continue our practice of investing in stock for all rewards-eligible employees, salaried and hourly, and investing in bonuses for all eligible employees. 9 PART I Item 1 Since 2016, we have reported on pay equity as part of our annual Diversity and Inclusion report.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017023035122/msft-20230630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_017",
+      "side": "evidence",
+      "quote": "PART II Item 8 \nEmployee Stock Purchase Plan We have an ESPP for all eligible employees.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20241030_013",
+      "side": "promise",
+      "quote": "Other Planned Uses of Capital \nWe will continue to invest in sales, marketing, product support infrastructure, and existing and advanced areas of technology, as well as acquisitions that align with our business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024118967/msft-20240930.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20241030_013",
+      "side": "evidence",
+      "quote": "PART I Item 2 \nOther Planned Uses of Capital We will continue to invest in sales, marketing, product support infrastructure, and existing and advanced areas of technology, as well as acquisitions that align with our business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20241030_003",
+      "side": "promise",
+      "quote": "We will bear significant development and operational costs to build and support the AI models, services, platforms, and infrastructure necessary to meet the needs of our customers.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024118967/msft-20240930.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_007",
+      "side": "promise",
+      "quote": "As discussed above, our business strategy is tied to the SFI and we are committed to continuously monitoring cybersecurity threats, enhancing the security of our products, investing in our cybersecurity infrastructure, and collaborating with peers, customers, service providers, regulators, and governments to advance our and the entire digital ecosystem's cybersecurity defenses and resiliency.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_004",
+      "side": "promise",
+      "quote": "We will continue to make significant investments in research, development, and marketing for existing products, services, and technologies, including AI-based products and services.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_008",
+      "side": "promise",
+      "quote": "PART II Item 7 \nFiscal Year 2025 Compared with Fiscal Year 2024 Research and development expenses increased $3.0 billion or 10% driven by investments in cloud and AI engineering and Gaming, including the impact of the Activision Blizzard acquisition.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250129_012",
+      "side": "promise",
+      "quote": "We expect to recognize approximately 40 % of our total company remaining performance obligation revenue over the next 12 months and the remainder thereafter.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025010491/msft-20241231.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_002",
+      "side": "promise",
+      "quote": "We plan to continue to make significant investments in a broad range of product research and development activities, and as appropriate, we will coordinate our research and development across operating segments and leverage the results across the company.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250730_009",
+      "side": "promise",
+      "quote": "We will continue to invest in capital expenditures to support growth in our cloud offerings and our investments in AI infrastructure and training.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20241030_005",
+      "side": "promise",
+      "quote": "We expect to continue making acquisitions and entering into joint ventures and strategic alliances as part of our long-term business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017024118967/msft-20240930.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20220728_001",
+      "side": "promise",
+      "quote": "Our goal is to lead the industry in several distinct areas of technology over the long term, which we expect will translate to sustained growth.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000156459022026876/msft-10k_20220630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20230727_015",
+      "side": "promise",
+      "quote": "Addressing Racial Injustice and Inequity We are committed to addressing racial injustice and inequity in the United States for Black and African American communities and helping improve lived experiences at Microsoft, in employees' communities, and beyond.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017023035122/msft-20230630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20200730_018",
+      "side": "promise",
+      "quote": "Addressing Racial Injustice Our future opportunity depends on reaching and empowering all communities, and we are committed to taking action to help address racial injustice and inequity.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000156459020034944/msft-10k_20200630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250430_010",
+      "side": "promise",
+      "quote": "PART I Item 2 \nOther Planned Uses of Capital We will continue to invest in sales, marketing, product support infrastructure, and existing and advanced areas of technology, as well as acquisitions that align with our business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025061046/msft-20250331.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_2",
+      "fid": "MSFT_20250430_010",
+      "side": "evidence",
+      "quote": "Other Planned Uses of Capital We will continue to invest in sales, marketing, product support infrastructure, and existing and advanced areas of technology, as well as acquisitions that align with our business strategy.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000095017025100235/msft-20250630.htm",
+      "agent_flag": null,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": null
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f2p0",
+      "side": "current",
+      "quote": "On June 2, 2026, Reid Hoffman, a member of the Board of Directors of Microsoft Corporation (the \u201cCompany\u201d) since 2017, informed the Company of his decision not to stand for re-election at the Company\u2019s 2026 annual shareholder meeting (the \u201cAnnual Meeting\u201d). Mr. Hoffman will continue to serve as a director until the Annual Meeting. His decision not to stand for re-election is not as a result of any disagreement with management on any matter relating to the Company\u2019s operations, policies, or practices. The Company thanks Mr. Hoffman for his contributions during his tenure as a director.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526258667/d26760d8k.htm",
+      "agent_flag": false,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": false
+    },
+    {
+      "agent": "agent_3",
+      "fid": "f2p1",
+      "side": "prior",
+      "quote": "On May 14, 2026, Microsoft Corporation (the \u201cCompany\u201d) issued a press release to announce that the Company\u2019s Board of Directors appointed Carmine Di Sibio to its Board of Directors, effective May 13, 2026. Mr. Di Sibio will serve on the Audit Committee and the Compensation Committee of the Board. Mr. Di Sibio will receive the same compensation as other non-employee Microsoft directors as described in the Microsoft 2025 Proxy Statement under \u201cDirector Compensation.\u201d There is no arrangement or understanding between Mr. Di Sibio and any other persons pursuant to which he was selected as a director. Mr. Di Sibio has no direct or indirect material interest in any transaction required to be disclosed pursuant to Item 404(a) of Regulation S-K. Mr. Di Sibio and Microsoft will enter into the standard Microsoft director indemnification agreement, whereby Microsoft agrees to indemnify, defend and hold its directors harmless from and against losses and expenses incurred as a result of their board service, subject to the terms and conditions provided in the agreement.",
+      "url": "https://www.sec.gov/Archives/edgar/data/789019/000119312526224155/d125909d8k.htm",
+      "agent_flag": false,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": false
+    }
+  ]
+}
