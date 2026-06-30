@@ -144,6 +144,7 @@ AGENT_START_TIER: Dict[str, int] = {
     "promise_audit:stage2":  1,   # single high-quality verdict pass -> Groq-70B
     "legal_proceedings":     3,   # low volume -> Gemini (fully independent of Groq)
     "risk_factors":          1,   # single high-quality call -> Groq-70B
+    "constraint_auditor":    1,   # one sector-classification call -> Groq-70B (Agent 5)
 }
 
 

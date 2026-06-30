@@ -11,6 +11,7 @@ from src.agents.corporate_discrepancy import run_discrepancy_agent as run_corpor
 from src.agents.promise_audit import PromiseAuditAgent
 from src.agents.legal_proceedings import track_legal
 from src.agents.risk_factors import RiskFactorAgent
+from src.agents.constraint_auditor import ConstraintAuditor
 from src.schemas import AgentLogMessage
 
 @dataclass
@@ -51,6 +52,15 @@ AGENTS: Dict[str, AgentDefinition] = {
         runner=RiskFactorAgent(),
         weight=0.5,
     ),
+    "constraint_auditor": AgentDefinition(
+        id="constraint_auditor",
+        name="Constraint Auditor",
+        description="Audits whether a sector's projected growth is physically possible "
+                    "given raw-material supply constraints",
+        # Audit, not a bull/bear score — weight 0 so it never moves the composite (PART 6b).
+        runner=ConstraintAuditor(),
+        weight=0.0,
+    ),
 }
 
 def get_agents_meta() -> List[dict]:
@@ -87,6 +97,8 @@ def run_selected_agents(
             ticker, progress=_progress_for("legal_proceedings")),
         "risk_factors": lambda: AGENTS["risk_factors"].runner.run(
             ticker, progress=_progress_for("risk_factors")),
+        "constraint_auditor": lambda: AGENTS["constraint_auditor"].runner.run(
+            ticker, progress=_progress_for("constraint_auditor"), year=year),
     }
     to_run = {aid: fn for aid, fn in runners.items() if aid in selected and aid in AGENTS}
 
@@ -107,7 +119,8 @@ def run_selected_agents(
     weights: Dict[str, float] = {}
     all_logs: List[AgentLogMessage] = []
     # Deterministic ordering regardless of which agent finished first.
-    for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings", "risk_factors"]:
+    for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings", "risk_factors",
+                "constraint_auditor"]:
         result = raw.get(aid)
         if not result:
             continue
@@ -127,6 +140,12 @@ def run_selected_agents(
             all_logs.append(AgentLogMessage(speaker="Legal Proceedings", message=f"Legal analysis complete. Score: {result.get('agent3_score', 50):.1f}%"))
         elif aid == "risk_factors":
             all_logs.append(AgentLogMessage(speaker="Risk Factors", message=f"Risk factor delta complete. Score: {result.get('score', 50):.1f}%"))
+        elif aid == "constraint_auditor":
+            if result.get("status") == "unsupported":
+                all_logs.append(AgentLogMessage(speaker="Constraint Auditor", message="Sector not in the constraint library — audit skipped."))
+            else:
+                _n = sum(1 for c in result.get("constraints", []) if c.get("status") == "success")
+                all_logs.append(AgentLogMessage(speaker="Constraint Auditor", message=f"Constraint audit complete ({result.get('sector','?')}): {_n} material constraint(s) evaluated."))
 
     return results, weights, all_logs
 

@@ -99,6 +99,20 @@ def _extract_documents(agent_id: str, result: Dict) -> List[Dict]:
         for d in result.get("top_discrepancies", []) or []:
             for c in (d.get("citations", []) or []):
                 add(c.get("accession", ""), c.get("url", ""), c.get("date", ""), c.get("role", ""))
+    elif agent_id == "constraint_auditor":
+        # Agent 5 cites market/economic sources (not SEC accessions): record the
+        # CAGR sources and each material's supply/demand source URLs + dates.
+        pc = result.get("projected_cagr", {}) or {}
+        for role in ("management", "industry"):
+            blk = pc.get(role) or {}
+            if blk.get("url"):
+                add(url=blk.get("url", ""), date=blk.get("date", ""), role="CAGR %s" % role)
+        for c in result.get("constraints", []) or []:
+            for which in ("supply", "demand"):
+                s = c.get(which, {}) if isinstance(c, dict) else {}
+                if s.get("url"):
+                    add(url=s.get("url", ""), date=s.get("date", ""),
+                        role="%s %s" % (c.get("material", ""), which))
     return docs
 
 
@@ -115,6 +129,8 @@ def _extract_findings(agent_id: str, result: Dict) -> List[Dict]:
         return out
     if agent_id == "risk_factors":
         return result.get("top_changes", []) or []
+    if agent_id == "constraint_auditor":
+        return result.get("constraints", []) or []
     return []
 
 

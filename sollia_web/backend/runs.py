@@ -32,6 +32,7 @@ AGENT_NAMES = {
     "promise_audit": "Promise Audit",
     "legal_proceedings": "Legal Proceedings",
     "risk_factors": "Risk Factors",
+    "constraint_auditor": "Constraint Auditor",
 }
 
 _RUNS: Dict[str, dict] = {}
@@ -146,8 +147,11 @@ def snapshot_since(run_id: str, since_seq: int) -> Optional[dict]:
 
 # ── clean export schema ───────────────────────────────────────────────────────
 
-def _agent_signal(aid: str, score: float) -> str:
+def _agent_signal(aid: str, score) -> str:
     """Map any agent's score to a signal on the unified BULLISHNESS scale.
+
+    AUDIT agents report score=None (they pressure-test assumptions rather than
+    casting a bull/bear vote); their badge is "AUDIT", not a directional signal.
 
     Every agent now reports the same way — higher = better prospects, 50 = "nothing
     material changed" (Agent 1's discrepancy severity is inverted at its source,
@@ -156,6 +160,8 @@ def _agent_signal(aid: str, score: float) -> str:
     BULLISH, below 35 BEARISH, otherwise NEUTRAL. Mirrors scoring.classify_signal
     (>=65 / <=35) so the export badge always agrees with each agent's own signal.
     """
+    if score is None:
+        return "AUDIT"
     if score >= 65:
         return "BULLISH"
     if score <= 35:
@@ -441,20 +447,63 @@ def _findings_risk(result: dict):
     return out
 
 
+_CONSTRAINT_SEVERITY = {"red": "high", "orange": "medium", "yellow": "low",
+                        "green": "low", "gray": "info"}
+
+
+def _findings_constraint(result: dict):
+    """One finding per constraining material: the crossover quarters + supply/demand
+    citations. Materials whose data couldn't be retrieved are surfaced too (so the
+    analyst sees what was and wasn't evaluable), ordered earliest-crossover first."""
+    out = []
+    for c in result.get("constraints", []) or []:
+        cits = []
+        for which, role in (("supply", "supply"), ("demand", "demand")):
+            blk = c.get(which) or {}
+            if blk.get("quote"):
+                cits.append({"role": role,
+                             "document": "%s (%s)" % (blk.get("source", ""), blk.get("date", "")),
+                             "excerpt": blk.get("quote", ""), "url": blk.get("url", ""),
+                             "verified": bool(blk.get("quote_verified", True))})
+        status = c.get("status")
+        if status == "success":
+            summary = "%s — demand crosses supply: management %s, industry %s" % (
+                c.get("material", "?"), c.get("crossover_management"), c.get("crossover_industry"))
+        else:
+            summary = "%s — %s: %s" % (c.get("material", "?"), status, c.get("reason", ""))
+        out.append({
+            "type": "constraint",
+            "severity": _CONSTRAINT_SEVERITY.get(c.get("severity", "gray"), "info"),
+            "source": "Market & Economic Data",
+            "summary": summary,
+            "crossover_management": c.get("crossover_management"),
+            "crossover_industry": c.get("crossover_industry"),
+            "model_note": c.get("model_note", ""),
+            "citations": cits,
+        })
+    return out
+
+
 _FINDING_BUILDERS = {
     "corporate_discrepancy": _findings_corporate,
     "promise_audit": _findings_promise,
     "legal_proceedings": _findings_legal,
     "risk_factors": _findings_risk,
+    "constraint_auditor": _findings_constraint,
 }
 
 
-def _agent_score(aid: str, result: dict) -> float:
+def _agent_score(aid: str, result: dict):
+    # AUDIT agents (Constraint Auditor) carry score=None — they don't vote on the
+    # composite (PART 6b). Preserve the null so the export badge reads "AUDIT".
+    raw = result.get("score", 50)
+    if raw is None:
+        return None
     # Agent 3 now emits an agent-level `score` (Part 2); fall back to the legacy
     # agent3_score for any older cached result that predates the redesign.
     if aid == "legal_proceedings":
         return round(float(result.get("score", result.get("agent3_score", 50))), 1)
-    return round(float(result.get("score", 50)), 1)
+    return round(float(raw), 1)
 
 
 def build_clean_export(ticker: str, year: int, merged: dict, results: dict) -> dict:
@@ -507,6 +556,7 @@ def _build_rich_result(ticker: str, merged: dict, results: dict) -> dict:
         "promise_audit": _strip_internal(results.get("promise_audit")),
         "legal_proceedings": _strip_internal(results.get("legal_proceedings")),
         "risk_factors": _strip_internal(results.get("risk_factors")),
+        "constraint_auditor": _strip_internal(results.get("constraint_auditor")),
     }
 
 

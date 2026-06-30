@@ -7,6 +7,7 @@ const defaultAgents = [
   { id: 'promise_audit', name: 'Promise Audit' },
   { id: 'legal_proceedings', name: 'Legal Proceedings' },
   { id: 'risk_factors', name: 'Risk Factors' },
+  { id: 'constraint_auditor', name: 'Constraint Auditor' },
 ]
 const AGENT_LABELS = Object.fromEntries(defaultAgents.map(a => [a.id, a.name]))
 
@@ -20,7 +21,7 @@ const KIND_COLOR = {
 export default function App() {
   const [ticker, setTicker] = useState('F')
   const [year, setYear] = useState(2025)
-  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors'])
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors', 'constraint_auditor'])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [exportData, setExportData] = useState(null)
@@ -292,6 +293,9 @@ export default function App() {
               </Card>
             )}
 
+            {/* AGENT 5 - Constraint Auditor (audit, not a bull/bear score) */}
+            {result.constraint_auditor && <ConstraintAuditorCard data={result.constraint_auditor} />}
+
             {/* JSON EXPORT — clean, analyst-ready schema */}
             <JsonPanel data={exportData} ticker={result.ticker} />
           </div>
@@ -354,6 +358,91 @@ function JsonPanel({ data, ticker }) {
       </div>
       {view && (
         <pre className="bg-[#04060C] rounded-xl p-4 max-h-96 overflow-auto text-xs text-emerald-400/80 whitespace-pre-wrap border border-white/5 font-mono">{text}</pre>
+      )}
+    </Card>
+  )
+}
+
+// ── Agent 5: Constraint Auditor ───────────────────────────────────────────────
+// Severity → color (PART 6c): crossover <2yr red, 2-5yr orange, 5+yr yellow,
+// no-crossover green, unknown gray. The backend computes `severity` per material.
+const SEV_BADGE = { red: 'RED', orange: 'STALE', yellow: 'YELLOW', green: 'GREEN', gray: 'UNCHANGED' }
+const SEV_DOT = { red: '#EF4444', orange: '#F97316', yellow: '#F59E0B', green: '#22C55E', gray: '#64748B' }
+
+function CagrLine({ label, c }) {
+  if (!c || c.value == null) return (
+    <p className="text-slate-500 text-xs"><span className="uppercase font-semibold">{label} CAGR</span> · unavailable</p>
+  )
+  return (
+    <div className="text-slate-400 text-sm">
+      <span className="text-slate-500 text-[10px] uppercase font-semibold">{label} CAGR</span>{' '}
+      <span className="text-white font-semibold">{c.value}%</span>
+      <span className="text-slate-600 text-[10px]"> · {c.source} · {c.date}</span>
+      {c.quote_verified === false && <span className="text-amber-400/70 text-[10px]"> ⚠ unverified</span>}
+      <Quote text={c.quote} url={c.url} label="" />
+    </div>
+  )
+}
+
+function ConstraintAuditorCard({ data }) {
+  if (data.status === 'unsupported') {
+    return (
+      <Card title="Constraint Auditor" subtitle="Supply-constraint audit — 14 resource-intensive sectors">
+        <p className="text-slate-500 text-sm">{data.message}</p>
+      </Card>
+    )
+  }
+  const pc = data.projected_cagr || {}
+  const constraints = data.constraints || []
+  const evaluated = constraints.filter(c => c.status === 'success').length
+  const prov = data.data_provisioning
+  return (
+    <Card
+      title="Constraint Auditor"
+      subtitle={`${data.sector || '—'} · ${constraints.length} materials · ${evaluated} with live supply/demand · AUDIT (no bull/bear score)`}
+    >
+      <div className="border border-white/[0.06] rounded-xl p-4 space-y-2">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Projected CAGR being pressure-tested</p>
+        <CagrLine label="Management" c={pc.management} />
+        <CagrLine label="Industry" c={pc.industry} />
+      </div>
+
+      {constraints.map((c, i) => {
+        const ok = c.status === 'success'
+        return (
+          <Row
+            key={i}
+            badge={SEV_BADGE[c.severity] || 'UNCHANGED'}
+            badgeText={ok ? (c.crossover_management || '—') : 'NO DATA'}
+            meta={c.material}
+          >
+            {ok ? (
+              <>
+                <p className="text-slate-400 text-xs mb-2">
+                  <span style={{ color: SEV_DOT[c.severity] }}>●</span>{' '}
+                  Demand exceeds supply — management CAGR <b>{c.crossover_management}</b>, industry CAGR <b>{c.crossover_industry}</b>
+                </p>
+                {c.supply && (
+                  <Quote text={c.supply.quote} url={c.supply.url}
+                    label={`Supply ${c.supply.value ?? ''} ${c.supply.unit ?? ''} @ ${c.supply.growth_rate_pct ?? '?'}%`} />
+                )}
+                {c.demand && (
+                  <Quote text={c.demand.quote} url={c.demand.url}
+                    label={`Demand ${c.demand.value ?? ''} ${c.demand.unit ?? ''}`} />
+                )}
+                {c.model_note && <p className="text-slate-600 text-[11px] mt-1 italic">{c.model_note}</p>}
+              </>
+            ) : (
+              <p className="text-slate-500 text-xs">{c.reason || c.status}</p>
+            )}
+          </Row>
+        )
+      })}
+
+      {prov && (prov.missing_keys?.length > 0 || prov.needs_pdf_parser?.length > 0) && (
+        <p className="text-slate-600 text-[10px] mt-2">
+          To enable live supply/demand &amp; industry-CAGR data: provision {[...(prov.missing_keys || []), ...(prov.needs_pdf_parser || []).map(s => s + ' parser')].join(', ')}.
+        </p>
       )}
     </Card>
   )

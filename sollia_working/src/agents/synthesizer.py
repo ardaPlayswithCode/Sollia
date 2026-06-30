@@ -140,18 +140,30 @@ class Synthesizer:
                 "agents_run": [], "log": logs
             }
         
-        # Extract scores from each agent
+        # Extract scores from each agent. AUDIT agents (e.g. Constraint Auditor)
+        # intentionally report score=None — they pressure-test assumptions, they do
+        # NOT cast a bull/bear vote (PART 6b) — so they are excluded from the
+        # composite average. A non-numeric score is treated the same way.
         scores = {}
         for agent_id, result in agent_results.items():
-            if "score" in result:
-                scores[agent_id] = result["score"]
-            elif "s1" in result:
-                scores[agent_id] = result["s1"]
-            elif "final_score" in result:
-                scores[agent_id] = result.get("final_score", 50.0)
+            raw = result.get("score", result.get("s1", result.get("final_score")))
+            if raw is None:
+                continue  # audit/non-scoring agent — not part of the composite
+            if isinstance(raw, (int, float)):
+                scores[agent_id] = float(raw)
             else:
                 scores[agent_id] = 50.0
-        
+
+        # If every selected agent was non-scoring (audit-only run), there is no
+        # composite to compute — return a neutral, clearly-labeled result.
+        if not scores:
+            return {
+                "ticker": ticker, "company": company_name,
+                "score": 50.0, "signal": "HOLD", "signal_color": "#F59E0B",
+                "summary": "Audit-only run — no bull/bear score was produced.",
+                "agents_run": list(agent_results.keys()), "log": logs,
+            }
+
         agents_run = list(scores.keys())
         _add_log(f"Merging {len(scores)} agents: {agents_run}")
         
