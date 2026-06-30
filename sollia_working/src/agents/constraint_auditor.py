@@ -52,6 +52,11 @@ from src.data.constraint_database import (  # noqa: E402
 )
 from src.data.sector_sources import SOURCE_REGISTRY, missing_capabilities  # noqa: E402
 
+try:  # USGS MCS PDF parser (pdfplumber); optional — degrades to data_unavailable
+    from src.data.usgs_parser import extract as usgs_extract
+except Exception:  # pragma: no cover
+    usgs_extract = None  # type: ignore
+
 try:  # transcripts + filings (already used by Agents 1-4)
     from src.providers.transcripts.sec_transcript import SECTranscriptProvider
     from src.providers.filings.sec_edgar import SECEdgarProvider
@@ -263,6 +268,15 @@ def compute_crossovers(supply0: float, supply_growth: float, demand0: float,
         "crossover_management": None, "crossover_industry": None,
         "model_note": "", "insufficient_data": False,
     }
+    # Already constrained today (demand >= supply) — true regardless of any growth
+    # rate (PART 7c #5). Report it even when no CAGR is available.
+    if demand0 >= supply0:
+        out["crossover_management"] = "ALREADY CONSTRAINED"
+        out["crossover_industry"] = "ALREADY CONSTRAINED"
+        out["model_note"] = ("Apparent consumption (%.0f) already meets or exceeds production "
+                             "(%.0f) as of %s — the constraint binds today." %
+                             (demand0, supply0, _fmt_month(supply_date)))
+        return out
     if management_cagr is None and industry_cagr is None:
         out["insufficient_data"] = True
         out["model_note"] = "Insufficient data: neither a management nor an industry CAGR was available."
@@ -509,15 +523,26 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
     }
 
 
+def _get_usgs_extract(commodity: str) -> Optional[Dict[str, Any]]:
+    """Cached full MCS extract (supply + demand together, one PDF fetch) for a USGS
+    commodity. The second of the supply/demand pair is a cache hit, so the PDF is
+    fetched/parsed once per commodity per year (PART 7d #6)."""
+    if not commodity or usgs_extract is None:
+        return None
+    yr = datetime.now().year
+    return get_market_data("usgs", "%s_%d" % (_slug(commodity), yr),
+                           lambda: usgs_extract(commodity, yr))
+
+
 def _fetch_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Supply value + 5-yr growth for a material from its registry source.
-    Returns None when the live source needs a parser/key not available here
-    (handled by the caller as data_unavailable)."""
+    USGS is live (pdfplumber); USA Trade / EIA need API keys (return None ->
+    data_unavailable)."""
     route = material.get("supply_source", "usgs")
     commodity = material.get("usgs_commodity")
     if route == "usgs" and commodity:
-        return get_market_data("usgs", "%s_%d" % (_slug(commodity), datetime.now().year),
-                               lambda: _fetch_usgs_supply(material))
+        ext = _get_usgs_extract(commodity)
+        return ext.get("supply") if ext else None
     if route == "usa_trade" and material.get("hs_code"):
         return get_market_data("usa_trade", "HS%s_%s" % (str(material["hs_code"]).replace(".", ""),
                                                          datetime.now().strftime("%Y-%m")),
@@ -530,28 +555,16 @@ def _fetch_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def _fetch_demand(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Apparent-consumption (demand) for a material — for USGS materials this comes
-    from the same annual PDF (apparent consumption). None until the parser is wired."""
+    """Apparent-consumption (demand). For USGS materials this comes from the same
+    annual MCS PDF (apparent consumption row). None for materials USGS doesn't track."""
     commodity = material.get("usgs_commodity")
     if commodity:
-        return get_market_data("usgs", "%s_%d_demand" % (_slug(commodity), datetime.now().year),
-                               lambda: _fetch_usgs_demand(material))
+        ext = _get_usgs_extract(commodity)
+        return ext.get("demand") if ext else None
     return None
 
 
-# -- live fetchers: structured + cited, but require provisioning (return None here) --
-def _fetch_usgs_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """USGS Mineral Commodity Summaries supply + 5-yr CAGR (PART 3a). Requires a PDF
-    table parser (camelot/pdfplumber) to read mcs{YEAR}-{commodity}.pdf and a
-    verbatim sentence — not installed in this environment, so returns None."""
-    return None
-
-
-def _fetch_usgs_demand(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """USGS apparent consumption from the same annual PDF. Requires the PDF parser."""
-    return None
-
-
+# -- non-USGS live fetchers: structured + cited, but require API keys (None here) --
 def _fetch_usa_trade(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """USA Trade Online / Census intltrade net-imports proxy. Requires CENSUS_API_KEY
     (or the bulk CSV path) — returns None until provisioned."""
@@ -566,7 +579,7 @@ def _fetch_eia(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _unavailable_reason(material: Dict[str, Any], supply, demand) -> str:
     route = material.get("supply_source", "usgs")
     needs = {
-        "usgs": "USGS PDF table parser (camelot/pdfplumber) not installed",
+        "usgs": "USGS withheld the value (\"W\") or the MCS PDF was unavailable",
         "usa_trade": "USA Trade/Census fetch needs CENSUS_API_KEY (or bulk CSV parser)",
         "eia": "EIA fetch needs EIA_API_KEY",
         "usitc": "USITC DataWeb fetch needs a session token",

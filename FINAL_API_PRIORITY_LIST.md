@@ -48,7 +48,7 @@ These sources supplement the SEC filing APIs for Agent 5 (Constraint Auditor). A
 
 | # | Source | Endpoint / Format | Cadence | Used for | Date location | Provisioning |
 |--:|--------|-------------------|:-------:|----------|---------------|--------------|
-| 1 | **USGS Mineral Commodity Summaries** | `pubs.usgs.gov/periodicals/mcs{YEAR}/mcs{YEAR}-{commodity}.pdf` (PDF tables) | annual (Jan) | Production, apparent consumption, 5-yr growth for most minerals | "January {YEAR}" cover → Jan 1 | needs PDF table parser |
+| 1 | **USGS Mineral Commodity Summaries** | `pubs.usgs.gov/periodicals/mcs{YEAR}/mcs{YEAR}-{commodity}.pdf` (PDF tables) | annual (Jan) | Production, apparent consumption, 5-yr growth for most minerals | "January {YEAR}" cover → Jan 1 | **LIVE** (pdfplumber; `usgs_parser.py`) |
 | 2 | **FRED** | `api.stlouisfed.org/fred/series/observations` (JSON) | monthly | IP indices, commodity prices | `observation_date` | `FRED_API_KEY` |
 | 3 | **EIA** | `api.eia.gov/v2/seriesid/{ID}` (JSON) | monthly | Energy, uranium, natural gas, coal | `period` field | `EIA_API_KEY` |
 | 4 | **USA Trade Online** | Census intltrade API / CSV download | monthly | Import/export by HS code (net-imports supply proxy) | data month → 1st of month | `CENSUS_API_KEY` (or CSV) |

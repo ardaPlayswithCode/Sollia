@@ -10,6 +10,11 @@ pydantic-settings>=2.0
 # Web UI / app layer:
 streamlit>=1.30
 
+# Agent 5 (Constraint Auditor) — USGS Mineral Commodity Summaries PDF table parsing.
+# Pure-Python (no Ghostscript/system deps). If absent, Agent 5's USGS supply/demand
+# extraction degrades to data_unavailable (the rest of the agent still runs).
+pdfplumber>=0.11
+
 # Agent 1 (Corporate Discrepancy) — sentence tokenization + FinBERT embeddings.
 # NOTE: en_core_web_sm must also be downloaded:  python -m spacy download en_core_web_sm
 # If spaCy/transformers/torch are absent, Agent 1 degrades (regex tokenizer) or, for

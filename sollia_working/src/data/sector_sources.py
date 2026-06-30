@@ -41,8 +41,9 @@ SOURCE_REGISTRY: List[Dict[str, Any]] = [
        fmt="PDF tables (annual)", frequency="annual (January)",
        used_for="Production, apparent consumption, 5-yr growth for most minerals",
        date_location="'January {YEAR}' on the PDF cover — use January 1 of {YEAR}",
-       requires_key=None, status="needs_parser",
-       notes="Primary supply/demand source. Needs a PDF table parser (camelot/pdfplumber)."),
+       requires_key=None, status="live",
+       notes="Primary supply/demand source. LIVE via pdfplumber (src/data/usgs_parser.py): "
+             "parses the Salient Statistics table for Production + apparent consumption."),
     _s("fred", "FRED (Federal Reserve Economic Data)",
        category="index_price",
        endpoint="https://api.stlouisfed.org/fred/series/observations?series_id={ID}&api_key={KEY}&file_type=json",
