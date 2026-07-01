@@ -57,6 +57,11 @@ try:  # USGS MCS PDF parser (pdfplumber); optional — degrades to data_unavaila
 except Exception:  # pragma: no cover
     usgs_extract = None  # type: ignore
 
+try:  # FRED client (needs FRED_API_KEY); optional — degrades silently if absent
+    from src.data.fred_client import fetch_fred
+except Exception:  # pragma: no cover
+    fetch_fred = None  # type: ignore
+
 try:  # transcripts + filings (already used by Agents 1-4)
     from src.providers.transcripts.sec_transcript import SECTranscriptProvider
     from src.providers.filings.sec_edgar import SECEdgarProvider
@@ -498,11 +503,18 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
     name = material["name"]
     supply = _fetch_supply(material)
     demand = _fetch_demand(material)
+    # FRED price/index signal — attached whether or not USGS tonnage is available,
+    # since a price trend is itself constraint context (a cited indicator, not a
+    # crossover input: FRED indices/prices don't share units with tonnage).
+    indicator = _get_fred(material.get("fred_series")) if material.get("fred_series") else None
 
     if not supply or not demand:
         reason = _unavailable_reason(material, supply, demand)
-        return {"material": name, "status": "data_unavailable", "reason": reason,
-                "crossover_management": None, "crossover_industry": None}
+        out = {"material": name, "status": "data_unavailable", "reason": reason,
+               "crossover_management": None, "crossover_industry": None}
+        if indicator:
+            out["indicator"] = _indicator_block(indicator)
+        return out
 
     supply_date = _parse_iso(supply.get("date")) or date.today()
     mgmt_date = _parse_iso(mgmt.get("date")) if mgmt else None
@@ -513,14 +525,58 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
         management_cagr=(mgmt or {}).get("decimal"),
     )
     if cross["insufficient_data"]:
-        return {"material": name, "status": "insufficient_data", "reason": cross["model_note"],
-                "crossover_management": None, "crossover_industry": None}
-    return {
+        out = {"material": name, "status": "insufficient_data", "reason": cross["model_note"],
+               "crossover_management": None, "crossover_industry": None}
+        if indicator:
+            out["indicator"] = _indicator_block(indicator)
+        return out
+    out = {
         "material": name, "status": "success",
         "crossover_management": cross["crossover_management"],
         "crossover_industry": cross["crossover_industry"],
         "supply": supply, "demand": demand, "model_note": cross["model_note"],
     }
+    if indicator:
+        ib = _indicator_block(indicator)
+        # PART 7.6e: flag when the FRED reading and the USGS supply data are from
+        # materially different periods (FRED is monthly, USGS annual) so the analyst
+        # knows the price/index signal is fresher than the tonnage it sits beside.
+        fnote = _date_mismatch_note(indicator.get("date"), supply.get("date"),
+                                    label_a="FRED reading", label_b="USGS data")
+        if fnote:
+            ib["as_of_note"] = fnote
+        out["indicator"] = ib
+    # Date-consistency check (PART 7.6e): flag if supply & demand periods diverge.
+    dnote = _date_mismatch_note(supply.get("date"), demand.get("date"))
+    if dnote:
+        out["date_note"] = dnote
+    return out
+
+
+def _indicator_block(ind: Dict[str, Any]) -> Dict[str, Any]:
+    """The cited FRED signal exposed in output (no API key, public URL)."""
+    return {
+        "type": "FRED index/price", "series_id": ind.get("series_id"),
+        "value": ind.get("value"), "units": ind.get("units"), "date": ind.get("date"),
+        "growth_1y_pct": ind.get("growth_1y_pct"),
+        "growth_5y_cagr_pct": ind.get("growth_5y_cagr_pct"),
+        "source": ind.get("source"), "url": ind.get("url"),
+        "quote": ind.get("quote"), "reading": ind.get("reading"),
+        "quote_verified": ind.get("quote_verified", False),
+    }
+
+
+def _date_mismatch_note(d1: Optional[str], d2: Optional[str],
+                        label_a: str = "Supply", label_b: str = "demand") -> str:
+    a, b = _parse_iso(d1), _parse_iso(d2)
+    if not a or not b:
+        return ""
+    days = abs((a - b).days)
+    if days > 30:
+        return ("%s (%s) and %s (%s) are %d days apart — the figures describe "
+                "different periods; interpret the comparison accordingly."
+                % (label_a, d1, label_b, d2, days))
+    return ""
 
 
 def _get_usgs_extract(commodity: str) -> Optional[Dict[str, Any]]:
@@ -532,6 +588,15 @@ def _get_usgs_extract(commodity: str) -> Optional[Dict[str, Any]]:
     yr = datetime.now().year
     return get_market_data("usgs", "%s_%d" % (_slug(commodity), yr),
                            lambda: usgs_extract(commodity, yr))
+
+
+def _get_fred(series_id: str) -> Optional[Dict[str, Any]]:
+    """Cached FRED indicator fetch (PART 7.5b; 30-day staleness via get_market_data).
+    Returns a cited index/price datum, or None if FRED is unavailable (no key /
+    invalid series / network) — the caller simply omits the indicator."""
+    if not series_id or fetch_fred is None:
+        return None
+    return get_market_data("fred", _slug(series_id), lambda: fetch_fred(series_id))
 
 
 def _fetch_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -765,6 +830,9 @@ class ConstraintAuditor:
         mgmt = _extract_management_cagr(ticker, sector, log)
         industry = _extract_industry_cagr(sector, log)
 
+        # Sector-level FRED production-trend indicator (the IP index), cited.
+        sector_indicators = self._sector_indicators(sector, log)
+
         # materials
         materials = SECTOR_DATABASE[sector]["materials"]
         constraints: List[Dict[str, Any]] = []
@@ -792,12 +860,14 @@ class ConstraintAuditor:
                 "management": _cagr_block(mgmt),
                 "industry": _cagr_block(industry),
             },
+            "sector_indicators": sector_indicators,
             "constraints": constraints,
             "data_provisioning": {  # honest provenance: what must be added to go fully live
                 "missing_keys": caps["missing_keys"],
                 "needs_pdf_parser": caps["needs_pdf_parser"],
-                "note": ("Live supply/demand & industry-CAGR extraction is gated on the above. "
-                         "Management CAGR + sector classification are live."),
+                "note": ("LIVE: sector classification, USGS supply/demand, FRED indices/prices, "
+                         "management CAGR. Gated on the above: EIA/USA-Trade materials and "
+                         "industry-CAGR (WSTS/IEA/USDA) extraction."),
             },
             "agent_log": log,
             "elapsed_ms": round((time.time() - t0) * 1000, 1),
@@ -805,6 +875,22 @@ class ConstraintAuditor:
         result["human_readable"] = render_human_readable(result)
         self._archive(ticker, year, result, t0)
         return result
+
+    def _sector_indicators(self, sector: str, log: List[Dict[str, str]]) -> Dict[str, Any]:
+        """The sector's FRED Industrial Production index (production-trend signal),
+        cited. Empty if the sector has no index or FRED is unavailable."""
+        sid = (SECTOR_DATABASE.get(sector) or {}).get("fred_sector_index")
+        if not sid:
+            return {}
+        ind = _get_fred(sid)
+        if not ind:
+            log.append({"step": "FRED", "detail": "Sector IP index %s unavailable" % sid})
+            return {}
+        log.append({"step": "FRED",
+                    "detail": "Sector IP index %s = %.1f %s (%s; 1y %s%%, 5y CAGR %s%%)"
+                              % (sid, ind["value"], ind["units"], ind["date"],
+                                 ind.get("growth_1y_pct"), ind.get("growth_5y_cagr_pct"))})
+        return {"production_index": _indicator_block(ind)}
 
     def _error_result(self, ticker, company, log, t0, msg) -> Dict[str, Any]:
         return {
@@ -855,6 +941,16 @@ def render_human_readable(result: Dict[str, Any]) -> str:
         lines.append("    \"%s\" [%s]" % (ind.get("quote", ""), ind.get("url", "")))
     else:
         lines.append("  Industry: unavailable")
+
+    pix = (result.get("sector_indicators") or {}).get("production_index")
+    if pix:
+        lines.append("")
+        lines.append("SECTOR PRODUCTION INDEX (FRED, %s):" % pix.get("date", "?"))
+        lines.append("  %s = %.1f %s  (1y %s%%, 5y CAGR %s%%)" % (
+            pix.get("quote", ""), pix.get("value", 0), pix.get("units", ""),
+            pix.get("growth_1y_pct"), pix.get("growth_5y_cagr_pct")))
+        lines.append("    [%s]" % pix.get("url", ""))
+
     for c in result.get("constraints", []):
         lines.append("")
         lines.append("───")
@@ -862,6 +958,7 @@ def render_human_readable(result: Dict[str, Any]) -> str:
             lines.append("MATERIAL: %s — %s" % (c.get("material", "?"), c.get("status", "")))
             if c.get("reason"):
                 lines.append("  %s" % c["reason"])
+            _render_indicator(lines, c.get("indicator"))
             continue
         lines.append("BINDING CONSTRAINT: %s" % c.get("material", "?"))
         lines.append("  Management CAGR: demand exceeds supply in %s" % c.get("crossover_management"))
@@ -877,7 +974,19 @@ def render_human_readable(result: Dict[str, Any]) -> str:
         lines.append("    Quote: \"%s\" [%s]" % (d.get("quote", ""), d.get("url", "")))
         if c.get("model_note"):
             lines.append("  Note: %s" % c["model_note"])
+        if c.get("date_note"):
+            lines.append("  ⚠ %s" % c["date_note"])
+        _render_indicator(lines, c.get("indicator"))
     return "\n".join(lines)
+
+
+def _render_indicator(lines: List[str], ind: Optional[Dict[str, Any]]) -> None:
+    if not ind:
+        return
+    lines.append("  Price/Index (FRED): %s = %s %s (%s; 5y CAGR %s%%)" % (
+        ind.get("quote", ""), ind.get("value"), ind.get("units", ""),
+        ind.get("date", ""), ind.get("growth_5y_cagr_pct")))
+    lines.append("    [%s]" % ind.get("url", ""))
 
 
 def run_constraint_auditor(ticker: str, progress: Optional[Callable] = None,

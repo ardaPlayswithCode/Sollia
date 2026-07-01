@@ -49,7 +49,7 @@ These sources supplement the SEC filing APIs for Agent 5 (Constraint Auditor). A
 | # | Source | Endpoint / Format | Cadence | Used for | Date location | Provisioning |
 |--:|--------|-------------------|:-------:|----------|---------------|--------------|
 | 1 | **USGS Mineral Commodity Summaries** | `pubs.usgs.gov/periodicals/mcs{YEAR}/mcs{YEAR}-{commodity}.pdf` (PDF tables) | annual (Jan) | Production, apparent consumption, 5-yr growth for most minerals | "January {YEAR}" cover → Jan 1 | **LIVE** (pdfplumber; `usgs_parser.py`) |
-| 2 | **FRED** | `api.stlouisfed.org/fred/series/observations` (JSON) | monthly | IP indices, commodity prices | `observation_date` | `FRED_API_KEY` |
+| 2 | **FRED** | `api.stlouisfed.org/fred/series` + `/series/observations` (JSON) | monthly | IP indices, commodity prices (cited indicator signals) | `observation_date` | **LIVE** (`FRED_API_KEY`; `fred_client.py`) |
 | 3 | **EIA** | `api.eia.gov/v2/seriesid/{ID}` (JSON) | monthly | Energy, uranium, natural gas, coal | `period` field | `EIA_API_KEY` |
 | 4 | **USA Trade Online** | Census intltrade API / CSV download | monthly | Import/export by HS code (net-imports supply proxy) | data month → 1st of month | `CENSUS_API_KEY` (or CSV) |
 | 5 | **USITC DataWeb** | `dataweb.usitc.gov` CSV | monthly | Trade data (aerospace materials) | month column | session token |
@@ -66,6 +66,8 @@ These sources supplement the SEC filing APIs for Agent 5 (Constraint Auditor). A
 | 16 | **EvaluatePharma** | evaluate.com free exec summary | annual | Pharma/biotech market growth (industry CAGR) | report date | live |
 | 17 | **AIA Industry Outlook** | aia-aerospace.org free exec summary | quarterly | Aerospace industry outlook (industry CAGR) | report date | live |
 | 18 | **DOE HALEU reports** | energy.gov/ne PDF | semi-annual | HALEU nuclear-fuel availability | cover date | needs PDF parser |
+
+**FRED role (units matter):** FRED serves *indices* (e.g. `IPG3344S`, Index 2017=100) and *prices* (e.g. `PCOPPUSDM`, $/metric ton) — NOT tonnage. They therefore do **not** share units with USGS production/apparent-consumption and are **not** crossover inputs; they attach as cited *indicator* signals (sector production-trend + material price-pressure). Each cites the verbatim FRED series title (independently re-verifiable via `/fred/series`) + the dated reading; the citation URL is the public series page (never carries the API key).
 
 **Caching:** `.cache/market_data/{usgs,fred,eia,usa_trade,industry_bodies}/` (PART 7.5b). USGS re-fetched only in a later year past January; EIA/FRED/USA-Trade re-fetched if >30 days old; industry bodies trust cache (manual bust). Common config: `User-Agent: "Sollia contact@sollia.app"`, rate limit 10 req/s, temperature 0 (the lone LLM call is sector classification).
 

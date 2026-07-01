@@ -50,7 +50,9 @@ SOURCE_REGISTRY: List[Dict[str, Any]] = [
        fmt="JSON/CSV API", frequency="monthly",
        used_for="Industrial production indices, commodity prices",
        date_location="observation_date in the JSON response",
-       requires_key="FRED_API_KEY", status="needs_key"),
+       requires_key="FRED_API_KEY", status="live",
+       notes="LIVE: FRED_API_KEY provisioned. src/data/fred_client.py fetches the "
+             "verbatim series title + dated reading as a cited index/price indicator."),
     _s("eia", "EIA (U.S. Energy Information Administration)",
        category="supply_demand",
        endpoint="https://api.eia.gov/v2/seriesid/{ID}?api_key={KEY}",

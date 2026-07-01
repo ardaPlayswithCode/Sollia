@@ -29,6 +29,18 @@ os.makedirs(DLCACHE, exist_ok=True)
 
 UA = {"User-Agent": "Sollia Audit contact@sollia.app"}
 
+# Agent 5 citations are USGS PDFs and FRED series (not EDGAR HTML). Independent
+# verification re-fetches the PDF (pdfplumber) or the FRED metadata (title) itself.
+sys.path.insert(0, WORKING)
+try:
+    import pdfplumber  # type: ignore
+except Exception:
+    pdfplumber = None
+try:
+    from src.data.fred_client import verify_title as _fred_verify_title  # type: ignore
+except Exception:
+    _fred_verify_title = None
+
 
 def _norm(s):
     s = re.sub(r"[‘’“”\"'`]", "", s or "")
@@ -80,8 +92,49 @@ def download_text(url):
         return ""
 
 
+def download_pdf_text(url):
+    """Independently re-download a USGS MCS PDF and extract its text (pdfplumber),
+    so an Agent-5 supply/demand table-row quote can be confirmed verbatim."""
+    if not url or pdfplumber is None:
+        return ""
+    key = hashlib.sha256(("pdf:" + url).encode()).hexdigest()[:16]
+    path = os.path.join(DLCACHE, key + ".txt")
+    if os.path.exists(path):
+        return open(path, encoding="utf-8", errors="ignore").read()
+    try:
+        import io
+        time.sleep(0.2)
+        r = requests.get(url, headers=UA, timeout=60)
+        if r.status_code != 200 or r.content[:4] != b"%PDF":
+            return ""
+        parts = []
+        with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+            for pg in pdf.pages[:2]:
+                parts.append(pg.extract_text() or "")
+        text = _norm(" ".join(parts))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return text
+    except Exception:
+        return ""
+
+
+def verify_fred(url, quote):
+    """Independently confirm a FRED citation: re-fetch the series metadata and check
+    the cited title matches verbatim. Returns True/False, or None if unreachable."""
+    if _fred_verify_title is None:
+        return None
+    m = re.search(r"/series/([A-Za-z0-9_.-]+)", url or "")
+    if not m:
+        return None
+    try:
+        return _fred_verify_title(m.group(1), quote)
+    except Exception:
+        return None
+
+
 def collect_quotes(ticker):
-    """Yield dicts: {agent, fid, side, quote, url, agent_flag}."""
+    """Yield dicts: {agent, fid, side, quote, url, agent_flag[, source_type]}."""
     tdir = os.path.join(RESULTS_DIR, ticker)
     out = []
 
@@ -140,6 +193,41 @@ def collect_quotes(ticker):
             out.append(dict(agent="agent_4", fid=f"chg{i}", side="new",
                             quote=c["new_quote"], url=c.get("new_url", ""),
                             agent_flag=c.get("new_quote_verified")))
+
+    # Agent 5 — constraint auditor. Citations are USGS PDF table rows and FRED
+    # series titles (+ optional management-CAGR from EDGAR). Tag each with a
+    # source_type so main() picks the right independent re-fetch.
+    def _src(url):
+        if "pubs.usgs.gov" in (url or ""):
+            return "usgs"
+        if "fred.stlouisfed.org" in (url or ""):
+            return "fred"
+        return "edgar"
+
+    d5 = load("agent_5")
+    si = (d5.get("sector_indicators") or {}).get("production_index")
+    if si and si.get("quote"):
+        out.append(dict(agent="agent_5", fid="sector_index", side="fred_title",
+                        quote=si["quote"], url=si.get("url", ""),
+                        agent_flag=si.get("quote_verified"), source_type="fred"))
+    for ci, c in enumerate(d5.get("constraints", []) or []):
+        for side in ("supply", "demand"):
+            blk = c.get(side) or {}
+            if blk.get("quote"):
+                out.append(dict(agent="agent_5", fid=f"c{ci}", side=side,
+                                quote=blk["quote"], url=blk.get("url", ""),
+                                agent_flag=blk.get("quote_verified"),
+                                source_type=_src(blk.get("url", ""))))
+        ind = c.get("indicator") or {}
+        if ind.get("quote"):
+            out.append(dict(agent="agent_5", fid=f"c{ci}", side="indicator",
+                            quote=ind["quote"], url=ind.get("url", ""),
+                            agent_flag=ind.get("quote_verified"), source_type="fred"))
+    mgmt = (d5.get("projected_cagr") or {}).get("management") or {}
+    if mgmt.get("quote") and str(mgmt.get("url", "")).startswith("http"):
+        out.append(dict(agent="agent_5", fid="cagr_mgmt", side="management",
+                        quote=mgmt["quote"], url=mgmt.get("url", ""),
+                        agent_flag=mgmt.get("quote_verified"), source_type="edgar"))
     return out
 
 
@@ -151,12 +239,21 @@ def main():
     per_agent = {}
     alnum_cache = {}
     for q in quotes:
-        text = download_text(q["url"])
-        if q["url"] not in alnum_cache:
-            alnum_cache[q["url"]] = _alnum(text)
-        ta = alnum_cache[q["url"]]
-        present = quote_present(q["quote"], ta) if text else None
-        rec = dict(q, downloaded=bool(text), independently_present=present)
+        st = q.get("source_type", "edgar")
+        downloaded = True
+        if st == "fred":
+            # FRED: independently re-fetch series metadata; the title is the quote.
+            present = verify_fred(q["url"], q["quote"])
+            downloaded = present is not None
+        else:
+            if q["url"] not in alnum_cache:
+                text = download_pdf_text(q["url"]) if st == "usgs" else download_text(q["url"])
+                alnum_cache[q["url"]] = _alnum(text)
+                q["_dl"] = bool(text)
+            ta = alnum_cache[q["url"]]
+            present = quote_present(q["quote"], ta) if ta else None
+            downloaded = bool(ta)
+        rec = dict(q, downloaded=downloaded, independently_present=present)
         # disagreement = the agent claimed verified True but we could not find it
         rec["agreement"] = (None if (q["agent_flag"] is None or present is None)
                             else (bool(q["agent_flag"]) == bool(present)))

@@ -103,11 +103,11 @@ SECTOR_DATABASE: Dict[str, Dict[str, Any]] = {
                hs="2836.91", notes="Battery cathode material"),
             _m("Cobalt", usgs="Cobalt", hs="8105.20",
                notes="Battery cathode; DRC supply concentration risk"),
-            _m("Nickel (Class 1 battery-grade)", usgs="Nickel", hs="7501.10",
+            _m("Nickel (Class 1 battery-grade)", usgs="Nickel", hs="7501.10", fred="PNICKUSDM",
                notes="Battery cathode; Class 1 shortage"),
             _m("Rare Earths (Nd, Dy)", usgs="Rare Earths", hs="2805.30",
                notes="EV traction-motor magnets"),
-            _m("Copper", usgs="Copper", hs="7403.11", fred="PCU3273273",
+            _m("Copper", usgs="Copper", hs="7403.11", fred="PCOPPUSDM",
                notes="Wiring, motors, busbars — ~4x more per EV vs ICE"),
         ],
         "raw_material_sources": {
@@ -158,7 +158,7 @@ SECTOR_DATABASE: Dict[str, Dict[str, Any]] = {
             _m("Silver", usgs="Silver", notes="PV cell metallization paste"),
             _m("Rare Earths (Nd, Pr, Dy)", usgs="Rare Earths", hs="2805.30",
                notes="Wind-turbine permanent magnets"),
-            _m("Copper", usgs="Copper", hs="7403.11", fred="PCU3273273",
+            _m("Copper", usgs="Copper", hs="7403.11", fred="PCOPPUSDM",
                notes="Wiring, transformers, grid interconnect"),
             _m("Electrical steel", unit="metric tons", fred="WPU101707",
                supply_source="usa_trade",
@@ -203,7 +203,7 @@ SECTOR_DATABASE: Dict[str, Dict[str, Any]] = {
     },
     # ───────────────────────────────────────────────────────────────────────
     "Steel Manufacturing": {
-        "fred_sector_index": "IPN331S",  # Industrial Production: Primary Metals (proxy)
+        "fred_sector_index": "IPG331S",  # Industrial Production: Primary Metal (steel proxy)
         "materials": [
             _m("Graphite electrodes", usgs="Graphite", notes="EAF electrodes"),
             _m("Metallurgical coal", unit="metric tons", supply_source="eia",
@@ -229,7 +229,8 @@ SECTOR_DATABASE: Dict[str, Dict[str, Any]] = {
     "Aluminum Production": {
         "fred_sector_index": None,
         "materials": [
-            _m("Alumina", usgs="Bauxite and Alumina", notes="Smelter feedstock"),
+            _m("Alumina", usgs="Bauxite and Alumina", fred="PALUMUSDM",
+               notes="Smelter feedstock (FRED tracks the aluminum price signal)"),
             _m("Petroleum coke", unit="metric tons", supply_source="eia",
                eia="PET.MCRRIUS1.M", notes="Calcined anode coke; EIA petroleum data"),
             _m("Coal tar pitch", unit="metric tons", supply_source="usa_trade",
@@ -346,7 +347,7 @@ SECTOR_DATABASE: Dict[str, Dict[str, Any]] = {
     },
     # ───────────────────────────────────────────────────────────────────────
     "Cement & Concrete": {
-        "fred_sector_index": "IPN3273S",  # Industrial Production: Cement & Concrete Product Mfg
+        "fred_sector_index": "IPG3273S",  # Industrial Production: Cement
         "materials": [
             _m("Cement (clinker)", usgs="Cement", notes="Primary binder"),
             _m("Fly ash", unit="metric tons", supply_source="eia",
