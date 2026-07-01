@@ -12,6 +12,7 @@ from src.agents.promise_audit import PromiseAuditAgent
 from src.agents.legal_proceedings import track_legal
 from src.agents.risk_factors import RiskFactorAgent
 from src.agents.constraint_auditor import ConstraintAuditor
+from src.agents.moat_auditor import MoatAuditor
 from src.schemas import AgentLogMessage
 
 @dataclass
@@ -61,6 +62,15 @@ AGENTS: Dict[str, AgentDefinition] = {
         runner=ConstraintAuditor(),
         weight=0.0,
     ),
+    "moat_auditor": AgentDefinition(
+        id="moat_auditor",
+        name="Moat Auditor",
+        description="Pressure-tests a company's claimed competitive moats against "
+                    "competitor SEC filings, citing every claim and challenge",
+        # Audit, not a bull/bear score — weight 0 so it never moves the composite (PART 6b).
+        runner=MoatAuditor(),
+        weight=0.0,
+    ),
 }
 
 def get_agents_meta() -> List[dict]:
@@ -99,6 +109,8 @@ def run_selected_agents(
             ticker, progress=_progress_for("risk_factors")),
         "constraint_auditor": lambda: AGENTS["constraint_auditor"].runner.run(
             ticker, progress=_progress_for("constraint_auditor"), year=year),
+        "moat_auditor": lambda: AGENTS["moat_auditor"].runner.run(
+            ticker, progress=_progress_for("moat_auditor"), year=year),
     }
     to_run = {aid: fn for aid, fn in runners.items() if aid in selected and aid in AGENTS}
 
@@ -120,7 +132,7 @@ def run_selected_agents(
     all_logs: List[AgentLogMessage] = []
     # Deterministic ordering regardless of which agent finished first.
     for aid in ["corporate_discrepancy", "promise_audit", "legal_proceedings", "risk_factors",
-                "constraint_auditor"]:
+                "constraint_auditor", "moat_auditor"]:
         result = raw.get(aid)
         if not result:
             continue
@@ -146,6 +158,10 @@ def run_selected_agents(
             else:
                 _n = sum(1 for c in result.get("constraints", []) if c.get("status") == "success")
                 all_logs.append(AgentLogMessage(speaker="Constraint Auditor", message=f"Constraint audit complete ({result.get('sector','?')}): {_n} material constraint(s) evaluated."))
+        elif aid == "moat_auditor":
+            _m = result.get("moats_audited", []) or []
+            _dt = sum(1 for x in _m if x.get("verdict") == "DIRECT THREAT")
+            all_logs.append(AgentLogMessage(speaker="Moat Auditor", message=f"Moat audit complete: {len(_m)} moat(s) audited across {len(result.get('competitors_analyzed', []))} competitors, {_dt} direct threat(s)."))
 
     return results, weights, all_logs
 

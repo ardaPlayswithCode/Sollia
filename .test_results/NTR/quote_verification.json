@@ -1,0 +1,78 @@
+{
+  "ticker": "NTR",
+  "total": 5,
+  "per_agent": {
+    "agent_5": {
+      "n": 5,
+      "present": 5,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 5,
+      "disagree": 0
+    }
+  },
+  "results": [
+    {
+      "agent": "agent_5",
+      "fid": "sector_index",
+      "side": "fred_title",
+      "quote": "Producer Price Index by Industry: Nitrogenous Fertilizer Manufacturing",
+      "url": "https://fred.stlouisfed.org/series/PCU325311325311",
+      "agent_flag": true,
+      "source_type": "fred",
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c0",
+      "side": "supply",
+      "quote": "Production, marketable 21,600 e19,800 e19,600 e19,400 20,000",
+      "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf",
+      "agent_flag": true,
+      "source_type": "usgs",
+      "_dl": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c0",
+      "side": "demand",
+      "quote": "Consumption, apparent1 24,400 e22,300 e22,600 e22,500 21,000",
+      "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf",
+      "agent_flag": true,
+      "source_type": "usgs",
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c1",
+      "side": "supply",
+      "quote": "Production, marketable1 480 430 390 410 500",
+      "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf",
+      "agent_flag": true,
+      "source_type": "usgs",
+      "_dl": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c1",
+      "side": "demand",
+      "quote": "Consumption, apparent1, 2 6,900 5,100 5,900 6,200 5,900",
+      "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf",
+      "agent_flag": true,
+      "source_type": "usgs",
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    }
+  ]
+}

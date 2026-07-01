@@ -1,0 +1,147 @@
+{
+  "agent": "Constraint Auditor",
+  "agent_id": "constraint_auditor",
+  "ticker": "TSLA",
+  "company": "Tesla, Inc.",
+  "sector": "Automotive & EV Manufacturing",
+  "run_timestamp": "2026-07-01T05:10:21.901729Z",
+  "status": "success",
+  "score": null,
+  "signal": null,
+  "projected_cagr": {
+    "management": {
+      "status": "unavailable"
+    },
+    "industry": {
+      "status": "unavailable"
+    }
+  },
+  "sector_indicators": {
+    "production_index": {
+      "type": "FRED index/price",
+      "series_id": "IPG3361T3S",
+      "value": 108.5958,
+      "units": "Index 2017=100",
+      "date": "2026-05-01",
+      "growth_1y_pct": -1.7,
+      "growth_5y_cagr_pct": 3.73,
+      "source": "FRED series IPG3361T3S",
+      "url": "https://fred.stlouisfed.org/series/IPG3361T3S",
+      "quote": "Industrial Production: Manufacturing: Durable Goods: Motor Vehicles and Parts (NAICS = 3361-3)",
+      "reading": "108.60 Index 2017=100 as of 2026-05-01",
+      "quote_verified": true
+    }
+  },
+  "constraints": [
+    {
+      "material": "Lithium (battery-grade)",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Lithium (battery-grade): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Cobalt",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Cobalt: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Nickel (Class 1 battery-grade)",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Nickel (Class 1 battery-grade): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "indicator": {
+        "type": "FRED index/price",
+        "series_id": "PNICKUSDM",
+        "value": 18879.23461538462,
+        "units": "U.S. $ per Metric Ton",
+        "date": "2026-05-01",
+        "growth_1y_pct": 22.99,
+        "growth_5y_cagr_pct": 1.41,
+        "source": "FRED series PNICKUSDM",
+        "url": "https://fred.stlouisfed.org/series/PNICKUSDM",
+        "quote": "Global price of Nickel",
+        "reading": "18879.23 U.S. $ per Metric Ton as of 2026-05-01",
+        "quote_verified": true
+      },
+      "severity": "gray"
+    },
+    {
+      "material": "Rare Earths (Nd, Dy)",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Rare Earths (Nd, Dy): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Copper",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Copper: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "indicator": {
+        "type": "FRED index/price",
+        "series_id": "PCOPPUSDM",
+        "value": 13483.75153846154,
+        "units": "U.S. $ per Metric Ton",
+        "date": "2026-05-01",
+        "growth_1y_pct": 41.47,
+        "growth_5y_cagr_pct": 5.81,
+        "source": "FRED series PCOPPUSDM",
+        "url": "https://fred.stlouisfed.org/series/PCOPPUSDM",
+        "quote": "Global price of Copper",
+        "reading": "13483.75 U.S. $ per Metric Ton as of 2026-05-01",
+        "quote_verified": true
+      },
+      "severity": "gray"
+    }
+  ],
+  "data_provisioning": {
+    "missing_keys": [
+      "eia (set EIA_API_KEY)",
+      "usa_trade (set CENSUS_API_KEY)",
+      "usitc (set USITC_TOKEN)"
+    ],
+    "needs_pdf_parser": [
+      "usda",
+      "dla_strategic",
+      "iea",
+      "doe_haleu"
+    ],
+    "note": "LIVE: sector classification, USGS supply/demand, FRED indices/prices, management CAGR. Gated on the above: EIA/USA-Trade materials and industry-CAGR (WSTS/IEA/USDA) extraction."
+  },
+  "agent_log": [
+    {
+      "step": "CLASSIFY",
+      "detail": "Sector (cached): Automotive & EV Manufacturing"
+    },
+    {
+      "step": "CAGR_MGMT",
+      "detail": "No management CAGR found in transcripts or 10-K MD&A"
+    },
+    {
+      "step": "CAGR_IND",
+      "detail": "Industry CAGR source = IEA Global EV Outlook (annual). Live extraction pending source fetcher/parser; flagged unavailable."
+    },
+    {
+      "step": "FRED",
+      "detail": "Sector IP index IPG3361T3S = 108.6 Index 2017=100 (2026-05-01; 1y -1.7%, 5y CAGR 3.73%)"
+    },
+    {
+      "step": "MATERIALS",
+      "detail": "Analyzed 5 materials, 0 with live supply/demand data"
+    },
+    {
+      "step": "OUTPUT",
+      "detail": "Constraint audit complete"
+    }
+  ],
+  "elapsed_ms": 7988.9,
+  "human_readable": "SECTOR: Automotive & EV Manufacturing\n\nPROJECTED CAGR:\n  Management: unavailable\n  Industry: unavailable\n\nSECTOR PRODUCTION INDEX (FRED, 2026-05-01):\n  Industrial Production: Manufacturing: Durable Goods: Motor Vehicles and Parts (NAICS = 3361-3) = 108.6 Index 2017=100  (1y -1.7%, 5y CAGR 3.73%)\n    [https://fred.stlouisfed.org/series/IPG3361T3S]\n\n\u2500\u2500\u2500\nMATERIAL: Lithium (battery-grade) \u2014 data_unavailable\n  Source unavailable for Lithium (battery-grade): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Cobalt \u2014 data_unavailable\n  Source unavailable for Cobalt: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Nickel (Class 1 battery-grade) \u2014 data_unavailable\n  Source unavailable for Nickel (Class 1 battery-grade): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n  Price/Index (FRED): Global price of Nickel = 18879.23461538462 U.S. $ per Metric Ton (2026-05-01; 5y CAGR 1.41%)\n    [https://fred.stlouisfed.org/series/PNICKUSDM]\n\n\u2500\u2500\u2500\nMATERIAL: Rare Earths (Nd, Dy) \u2014 data_unavailable\n  Source unavailable for Rare Earths (Nd, Dy): USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Copper \u2014 data_unavailable\n  Source unavailable for Copper: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n  Price/Index (FRED): Global price of Copper = 13483.75153846154 U.S. $ per Metric Ton (2026-05-01; 5y CAGR 5.81%)\n    [https://fred.stlouisfed.org/series/PCOPPUSDM]"
+}

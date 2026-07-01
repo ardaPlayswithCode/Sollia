@@ -1,0 +1,155 @@
+{
+  "agent": "Constraint Auditor",
+  "agent_id": "constraint_auditor",
+  "ticker": "NTR",
+  "company": "Nutrien Ltd.",
+  "sector": "Agricultural Inputs \u2014 Fertilizers",
+  "run_timestamp": "2026-07-01T05:10:13.910367Z",
+  "status": "success",
+  "score": null,
+  "signal": null,
+  "projected_cagr": {
+    "management": {
+      "status": "unavailable"
+    },
+    "industry": {
+      "status": "unavailable"
+    }
+  },
+  "sector_indicators": {
+    "production_index": {
+      "type": "FRED index/price",
+      "series_id": "PCU325311325311",
+      "value": 626.285,
+      "units": "Index Dec 1979=100",
+      "date": "2026-05-01",
+      "growth_1y_pct": 38.78,
+      "growth_5y_cagr_pct": 11.31,
+      "source": "FRED series PCU325311325311",
+      "url": "https://fred.stlouisfed.org/series/PCU325311325311",
+      "quote": "Producer Price Index by Industry: Nitrogenous Fertilizer Manufacturing",
+      "reading": "626.28 Index Dec 1979=100 as of 2026-05-01",
+      "quote_verified": true
+    }
+  },
+  "constraints": [
+    {
+      "material": "Phosphate rock",
+      "status": "success",
+      "crossover_management": "ALREADY CONSTRAINED",
+      "crossover_industry": "ALREADY CONSTRAINED",
+      "supply": {
+        "value": 20000.0,
+        "unit": "thousand metric tons, marketable phosphate rock",
+        "growth_rate_pct": -1.91,
+        "source": "USGS Mineral Commodity Summaries 2026",
+        "date": "2026-01-01",
+        "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf",
+        "quote": "Production, marketable 21,600 e19,800 e19,600 e19,400 20,000",
+        "quote_verified": true,
+        "scope": "United States",
+        "growth_calc": "CAGR of [21600.0, 19800.0, 19600.0, 19400.0, 20000.0] (2021-2025)"
+      },
+      "demand": {
+        "value": 21000.0,
+        "unit": "thousand metric tons, marketable phosphate rock",
+        "source": "USGS Mineral Commodity Summaries 2026",
+        "date": "2026-01-01",
+        "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf",
+        "quote": "Consumption, apparent1 24,400 e22,300 e22,600 e22,500 21,000",
+        "quote_verified": true,
+        "scope": "United States"
+      },
+      "model_note": "Apparent consumption (21000) already meets or exceeds production (20000) as of Jan 2026 \u2014 the constraint binds today.",
+      "severity": "red"
+    },
+    {
+      "material": "Potash",
+      "status": "success",
+      "crossover_management": "ALREADY CONSTRAINED",
+      "crossover_industry": "ALREADY CONSTRAINED",
+      "supply": {
+        "value": 500.0,
+        "unit": "metric tons",
+        "growth_rate_pct": 1.03,
+        "source": "USGS Mineral Commodity Summaries 2026",
+        "date": "2026-01-01",
+        "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf",
+        "quote": "Production, marketable1 480 430 390 410 500",
+        "quote_verified": true,
+        "scope": "United States",
+        "growth_calc": "CAGR of [480.0, 430.0, 390.0, 410.0, 500.0] (2021-2025)"
+      },
+      "demand": {
+        "value": 5900.0,
+        "unit": "metric tons",
+        "source": "USGS Mineral Commodity Summaries 2026",
+        "date": "2026-01-01",
+        "url": "https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf",
+        "quote": "Consumption, apparent1, 2 6,900 5,100 5,900 6,200 5,900",
+        "quote_verified": true,
+        "scope": "United States"
+      },
+      "model_note": "Apparent consumption (5900) already meets or exceeds production (500) as of Jan 2026 \u2014 the constraint binds today.",
+      "severity": "red"
+    },
+    {
+      "material": "Natural gas",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Natural gas: EIA fetch needs EIA_API_KEY (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Sulfur",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Sulfur: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    }
+  ],
+  "data_provisioning": {
+    "missing_keys": [
+      "eia (set EIA_API_KEY)",
+      "usa_trade (set CENSUS_API_KEY)",
+      "usitc (set USITC_TOKEN)"
+    ],
+    "needs_pdf_parser": [
+      "usda",
+      "dla_strategic",
+      "iea",
+      "doe_haleu"
+    ],
+    "note": "LIVE: sector classification, USGS supply/demand, FRED indices/prices, management CAGR. Gated on the above: EIA/USA-Trade materials and industry-CAGR (WSTS/IEA/USDA) extraction."
+  },
+  "agent_log": [
+    {
+      "step": "CLASSIFY",
+      "detail": "Sector (cached): Agricultural Inputs \u2014 Fertilizers"
+    },
+    {
+      "step": "CAGR_MGMT",
+      "detail": "No management CAGR found in transcripts or 10-K MD&A"
+    },
+    {
+      "step": "CAGR_IND",
+      "detail": "Industry CAGR source = USDA Agricultural Projections to 2035 (annual). Live extraction pending source fetcher/parser; flagged unavailable."
+    },
+    {
+      "step": "FRED",
+      "detail": "Sector IP index PCU325311325311 = 626.3 Index Dec 1979=100 (2026-05-01; 1y 38.78%, 5y CAGR 11.31%)"
+    },
+    {
+      "step": "MATERIALS",
+      "detail": "Analyzed 4 materials, 2 with live supply/demand data"
+    },
+    {
+      "step": "OUTPUT",
+      "detail": "Constraint audit complete"
+    }
+  ],
+  "elapsed_ms": 2062.1,
+  "human_readable": "SECTOR: Agricultural Inputs \u2014 Fertilizers\n\nPROJECTED CAGR:\n  Management: unavailable\n  Industry: unavailable\n\nSECTOR PRODUCTION INDEX (FRED, 2026-05-01):\n  Producer Price Index by Industry: Nitrogenous Fertilizer Manufacturing = 626.3 Index Dec 1979=100  (1y 38.78%, 5y CAGR 11.31%)\n    [https://fred.stlouisfed.org/series/PCU325311325311]\n\n\u2500\u2500\u2500\nBINDING CONSTRAINT: Phosphate rock\n  Management CAGR: demand exceeds supply in ALREADY CONSTRAINED\n  Industry CAGR:   demand exceeds supply in ALREADY CONSTRAINED\n  Supply: 20000.0 thousand metric tons, marketable phosphate rock growing at -1.91%\n    Source: USGS Mineral Commodity Summaries 2026, 2026-01-01\n    Quote: \"Production, marketable 21,600 e19,800 e19,600 e19,400 20,000\" [https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf]\n  Demand: 21000.0 thousand metric tons, marketable phosphate rock\n    Source: USGS Mineral Commodity Summaries 2026, 2026-01-01\n    Quote: \"Consumption, apparent1 24,400 e22,300 e22,600 e22,500 21,000\" [https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-phosphate.pdf]\n  Note: Apparent consumption (21000) already meets or exceeds production (20000) as of Jan 2026 \u2014 the constraint binds today.\n\n\u2500\u2500\u2500\nBINDING CONSTRAINT: Potash\n  Management CAGR: demand exceeds supply in ALREADY CONSTRAINED\n  Industry CAGR:   demand exceeds supply in ALREADY CONSTRAINED\n  Supply: 500.0 metric tons growing at 1.03%\n    Source: USGS Mineral Commodity Summaries 2026, 2026-01-01\n    Quote: \"Production, marketable1 480 430 390 410 500\" [https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf]\n  Demand: 5900.0 metric tons\n    Source: USGS Mineral Commodity Summaries 2026, 2026-01-01\n    Quote: \"Consumption, apparent1, 2 6,900 5,100 5,900 6,200 5,900\" [https://pubs.usgs.gov/periodicals/mcs2026/mcs2026-potash.pdf]\n  Note: Apparent consumption (5900) already meets or exceeds production (500) as of Jan 2026 \u2014 the constraint binds today.\n\n\u2500\u2500\u2500\nMATERIAL: Natural gas \u2014 data_unavailable\n  Source unavailable for Natural gas: EIA fetch needs EIA_API_KEY (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Sulfur \u2014 data_unavailable\n  Source unavailable for Sulfur: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply not retrieved)."
+}

@@ -1,0 +1,127 @@
+{
+  "agent": "Constraint Auditor",
+  "agent_id": "constraint_auditor",
+  "ticker": "NVDA",
+  "company": "NVIDIA CORP",
+  "sector": "Advanced Semiconductor Manufacturing",
+  "run_timestamp": "2026-07-01T05:10:25.928159Z",
+  "status": "success",
+  "score": null,
+  "signal": null,
+  "projected_cagr": {
+    "management": {
+      "status": "unavailable"
+    },
+    "industry": {
+      "status": "unavailable"
+    }
+  },
+  "sector_indicators": {
+    "production_index": {
+      "type": "FRED index/price",
+      "series_id": "IPG3344S",
+      "value": 188.0105,
+      "units": "Index 2017=100",
+      "date": "2026-05-01",
+      "growth_1y_pct": 14.39,
+      "growth_5y_cagr_pct": 8.68,
+      "source": "FRED series IPG3344S",
+      "url": "https://fred.stlouisfed.org/series/IPG3344S",
+      "quote": "Industrial Production: Manufacturing: Durable Goods: Semiconductor and Other Electronic Component (NAICS = 3344)",
+      "reading": "188.01 Index 2017=100 as of 2026-05-01",
+      "quote_verified": true
+    }
+  },
+  "constraints": [
+    {
+      "material": "High-purity quartz",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for High-purity quartz: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Neon gas",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Neon gas: USA Trade/Census fetch needs CENSUS_API_KEY (or bulk CSV parser) (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Gallium",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Gallium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Germanium",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Germanium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Hafnium",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Hafnium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    },
+    {
+      "material": "Cobalt",
+      "status": "data_unavailable",
+      "reason": "Source unavailable for Cobalt: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).",
+      "crossover_management": null,
+      "crossover_industry": null,
+      "severity": "gray"
+    }
+  ],
+  "data_provisioning": {
+    "missing_keys": [
+      "eia (set EIA_API_KEY)",
+      "usa_trade (set CENSUS_API_KEY)",
+      "usitc (set USITC_TOKEN)"
+    ],
+    "needs_pdf_parser": [
+      "usda",
+      "dla_strategic",
+      "iea",
+      "doe_haleu"
+    ],
+    "note": "LIVE: sector classification, USGS supply/demand, FRED indices/prices, management CAGR. Gated on the above: EIA/USA-Trade materials and industry-CAGR (WSTS/IEA/USDA) extraction."
+  },
+  "agent_log": [
+    {
+      "step": "CLASSIFY",
+      "detail": "Sector (cached): Advanced Semiconductor Manufacturing"
+    },
+    {
+      "step": "CAGR_MGMT",
+      "detail": "No management CAGR found in transcripts or 10-K MD&A"
+    },
+    {
+      "step": "CAGR_IND",
+      "detail": "Industry CAGR source = WSTS Semiconductor Market Forecast (quarterly). Live extraction pending source fetcher/parser; flagged unavailable."
+    },
+    {
+      "step": "FRED",
+      "detail": "Sector IP index IPG3344S = 188.0 Index 2017=100 (2026-05-01; 1y 14.39%, 5y CAGR 8.68%)"
+    },
+    {
+      "step": "MATERIALS",
+      "detail": "Analyzed 6 materials, 0 with live supply/demand data"
+    },
+    {
+      "step": "OUTPUT",
+      "detail": "Constraint audit complete"
+    }
+  ],
+  "elapsed_ms": 4022.7,
+  "human_readable": "SECTOR: Advanced Semiconductor Manufacturing\n\nPROJECTED CAGR:\n  Management: unavailable\n  Industry: unavailable\n\nSECTOR PRODUCTION INDEX (FRED, 2026-05-01):\n  Industrial Production: Manufacturing: Durable Goods: Semiconductor and Other Electronic Component (NAICS = 3344) = 188.0 Index 2017=100  (1y 14.39%, 5y CAGR 8.68%)\n    [https://fred.stlouisfed.org/series/IPG3344S]\n\n\u2500\u2500\u2500\nMATERIAL: High-purity quartz \u2014 data_unavailable\n  Source unavailable for High-purity quartz: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Neon gas \u2014 data_unavailable\n  Source unavailable for Neon gas: USA Trade/Census fetch needs CENSUS_API_KEY (or bulk CSV parser) (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Gallium \u2014 data_unavailable\n  Source unavailable for Gallium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Germanium \u2014 data_unavailable\n  Source unavailable for Germanium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Hafnium \u2014 data_unavailable\n  Source unavailable for Hafnium: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved).\n\n\u2500\u2500\u2500\nMATERIAL: Cobalt \u2014 data_unavailable\n  Source unavailable for Cobalt: USGS withheld the value (\"W\") or the MCS PDF was unavailable (supply+apparent consumption not retrieved)."
+}

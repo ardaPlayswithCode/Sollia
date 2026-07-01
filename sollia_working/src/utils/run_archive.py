@@ -113,6 +113,17 @@ def _extract_documents(agent_id: str, result: Dict) -> List[Dict]:
                 if s.get("url"):
                     add(url=s.get("url", ""), date=s.get("date", ""),
                         role="%s %s" % (c.get("material", ""), which))
+    elif agent_id == "moat_auditor":
+        # Agent 6 cites each moat's company-claim + competitor-challenge SEC docs.
+        for m in result.get("moats_audited", []) or []:
+            cc = m.get("company_claim", {}) or {}
+            if cc.get("url"):
+                add(url=cc.get("url", ""), date=cc.get("date", ""),
+                    role="%s claim" % m.get("moat_type", ""))
+            ch = m.get("strongest_challenge") or {}
+            if ch.get("url"):
+                add(url=ch.get("url", ""), date=ch.get("date", ""),
+                    role="%s challenge (%s)" % (m.get("moat_type", ""), ch.get("competitor", "")))
     return docs
 
 
@@ -131,6 +142,8 @@ def _extract_findings(agent_id: str, result: Dict) -> List[Dict]:
         return result.get("top_changes", []) or []
     if agent_id == "constraint_auditor":
         return result.get("constraints", []) or []
+    if agent_id == "moat_auditor":
+        return result.get("moats_audited", []) or []
     return []
 
 

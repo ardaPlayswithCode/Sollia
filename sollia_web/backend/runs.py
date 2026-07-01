@@ -33,6 +33,7 @@ AGENT_NAMES = {
     "legal_proceedings": "Legal Proceedings",
     "risk_factors": "Risk Factors",
     "constraint_auditor": "Constraint Auditor",
+    "moat_auditor": "Moat Auditor",
 }
 
 _RUNS: Dict[str, dict] = {}
@@ -484,12 +485,72 @@ def _findings_constraint(result: dict):
     return out
 
 
+# A DIRECT THREAT to a claimed moat is high-severity; WATCH is medium; NO THREAT
+# (no credible challenge located) is low. Mirrors Agent 6's verdict scale.
+_MOAT_SEVERITY = {"DIRECT THREAT": "high", "WATCH": "medium", "NO THREAT": "low"}
+
+
+def _moat_severity_reason(verdict: str, moat_type: str, competitor: str) -> str:
+    """One sentence on why a moat-audit finding warrants attention, keyed to the
+    verdict (no fabricated magnitudes — only what the audit established)."""
+    if verdict == "DIRECT THREAT":
+        return "%s's filing presents a real, imminent challenge to the %s moat." % (
+            competitor or "A competitor", moat_type)
+    if verdict == "WATCH":
+        return "A competitor challenge to the %s moat is credible but not imminent or is peripheral." % moat_type
+    return "No credible competitor challenge to the %s moat was found in filings." % moat_type
+
+
+def _findings_moat(result: dict):
+    """One finding per audited moat: the company's claim + the strongest competitor
+    challenge (if any), the verdict, and both verbatim citations. Every quote is
+    document-extracted (the LLM only selects an index), so a non-empty excerpt is
+    confirmed present in the cited filing."""
+    out = []
+    for m in result.get("moats_audited", []) or []:
+        cits = []
+        cc = m.get("company_claim") or {}
+        if cc.get("sentence"):
+            cits.append({
+                "role": "company_claim",
+                "document": cc.get("source", ""),
+                "excerpt": cc.get("sentence", ""),
+                "url": cc.get("url", ""),
+                "verified": bool(cc.get("quote_verified")),
+            })
+        ch = m.get("strongest_challenge")
+        if ch and ch.get("sentence"):
+            cits.append({
+                "role": "competitor_challenge",
+                "document": "%s %s (%s)" % (ch.get("competitor", ""), ch.get("source", ""), ch.get("date", "")),
+                "excerpt": ch.get("sentence", ""),
+                "url": ch.get("url", ""),
+                "verified": bool(ch.get("quote_verified")),
+            })
+        verdict = m.get("verdict", "NO THREAT")
+        severity = _MOAT_SEVERITY.get(verdict, "low")
+        moat_type = m.get("moat_type", "")
+        competitor = (ch or {}).get("competitor", "")
+        finding = {"type": "moat_" + verdict.lower().replace(" ", "_"), "severity": severity}
+        if severity in ("high", "medium"):
+            finding["severity_reason"] = _moat_severity_reason(verdict, moat_type, competitor)
+        finding["moat_type"] = moat_type
+        finding["verdict"] = verdict
+        finding["challenger"] = competitor
+        finding["summary"] = "%s — %s%s" % (
+            moat_type, verdict, (": challenged by %s" % competitor) if competitor else "")
+        finding["citations"] = cits
+        out.append(finding)
+    return out
+
+
 _FINDING_BUILDERS = {
     "corporate_discrepancy": _findings_corporate,
     "promise_audit": _findings_promise,
     "legal_proceedings": _findings_legal,
     "risk_factors": _findings_risk,
     "constraint_auditor": _findings_constraint,
+    "moat_auditor": _findings_moat,
 }
 
 
@@ -557,6 +618,7 @@ def _build_rich_result(ticker: str, merged: dict, results: dict) -> dict:
         "legal_proceedings": _strip_internal(results.get("legal_proceedings")),
         "risk_factors": _strip_internal(results.get("risk_factors")),
         "constraint_auditor": _strip_internal(results.get("constraint_auditor")),
+        "moat_auditor": _strip_internal(results.get("moat_auditor")),
     }
 
 

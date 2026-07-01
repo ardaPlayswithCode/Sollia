@@ -8,6 +8,7 @@ const defaultAgents = [
   { id: 'legal_proceedings', name: 'Legal Proceedings' },
   { id: 'risk_factors', name: 'Risk Factors' },
   { id: 'constraint_auditor', name: 'Constraint Auditor' },
+  { id: 'moat_auditor', name: 'Moat Auditor' },
 ]
 const AGENT_LABELS = Object.fromEntries(defaultAgents.map(a => [a.id, a.name]))
 
@@ -21,7 +22,7 @@ const KIND_COLOR = {
 export default function App() {
   const [ticker, setTicker] = useState('F')
   const [year, setYear] = useState(2025)
-  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors', 'constraint_auditor'])
+  const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors', 'constraint_auditor', 'moat_auditor'])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [exportData, setExportData] = useState(null)
@@ -296,6 +297,9 @@ export default function App() {
             {/* AGENT 5 - Constraint Auditor (audit, not a bull/bear score) */}
             {result.constraint_auditor && <ConstraintAuditorCard data={result.constraint_auditor} />}
 
+            {/* AGENT 6 - Moat Auditor (audit, not a bull/bear score) */}
+            {result.moat_auditor && <MoatAuditorCard data={result.moat_auditor} />}
+
             {/* JSON EXPORT — clean, analyst-ready schema */}
             <JsonPanel data={exportData} ticker={result.ticker} />
           </div>
@@ -444,6 +448,85 @@ function ConstraintAuditorCard({ data }) {
           To enable live supply/demand &amp; industry-CAGR data: provision {[...(prov.missing_keys || []), ...(prov.needs_pdf_parser || []).map(s => s + ' parser')].join(', ')}.
         </p>
       )}
+    </Card>
+  )
+}
+
+// ── Agent 6: Moat Auditor ─────────────────────────────────────────────────────
+// Verdict → color (PART 7c): DIRECT THREAT red, WATCH orange, NO THREAT green.
+const MOAT_VERDICT = {
+  'DIRECT THREAT': 'bg-red-500/10 text-red-400 border-red-500/30',
+  'WATCH': 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+  'NO THREAT': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+}
+
+function MoatQuote({ label, sub, text, url }) {
+  if (!text) return null
+  return (
+    <div className="mt-2">
+      <p className="text-slate-500 text-[10px] uppercase font-semibold tracking-wide">
+        {label}{sub ? <span className="text-slate-600 normal-case"> · {sub}</span> : null}
+        {url && url.startsWith('http') && (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 ml-2 hover:underline">View ↗</a>
+        )}
+      </p>
+      <p className="text-slate-300 text-sm italic leading-snug">"{text}"</p>
+    </div>
+  )
+}
+
+function MoatAuditorCard({ data }) {
+  if (!data) return null
+  if (data.status === 'error') {
+    return (
+      <Card title="Moat Auditor" subtitle="Competitive-moat audit vs competitor SEC filings">
+        <p className="text-slate-500 text-sm">{data.message || 'Moat audit could not complete.'}</p>
+      </Card>
+    )
+  }
+  const competitors = data.competitors_analyzed || []
+  const moats = data.moats_audited || []
+  const threats = moats.filter(m => m.verdict === 'DIRECT THREAT').length
+  const watches = moats.filter(m => m.verdict === 'WATCH').length
+  return (
+    <Card
+      title="Moat Auditor"
+      subtitle={`${data.sector || '—'} · ${competitors.length} competitors · ${moats.length} moats · ${threats} direct threat${threats === 1 ? '' : 's'}, ${watches} watch · AUDIT (no bull/bear score)`}
+    >
+      <div className="border border-white/[0.06] rounded-xl p-4">
+        <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-2">Competitors analyzed</p>
+        <div className="flex flex-wrap gap-2">
+          {competitors.map((c, i) => (
+            <span key={i} title={c.rationale || ''}
+              className="px-2 py-0.5 rounded text-[11px] bg-white/[0.04] text-slate-300 border border-white/5">
+              {c.ticker} <span className="text-slate-600">· {String(c.source || '').startsWith('10-K') ? '10-K' : 'LLM'}</span>
+            </span>
+          ))}
+          {competitors.length === 0 && <span className="text-slate-600 text-xs">None identified.</span>}
+        </div>
+      </div>
+
+      {data.status === 'no_moats' && (
+        <p className="text-slate-500 text-sm">No moat claims identified in company filings.</p>
+      )}
+
+      {moats.map((m, i) => {
+        const cc = m.company_claim || {}
+        const ch = m.strongest_challenge
+        return (
+          <div key={i} className="border border-white/[0.04] rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${MOAT_VERDICT[m.verdict] || MOAT_VERDICT['NO THREAT']}`}>{m.verdict}</span>
+              <span className="text-sm font-semibold text-slate-200">{m.moat_type}</span>
+            </div>
+            <MoatQuote label="Company Claim" sub={cc.source} text={cc.sentence} url={cc.url} />
+            {ch
+              ? <MoatQuote label="Competitor Challenge" sub={`${ch.competitor} · ${ch.source}${ch.date ? ' · ' + ch.date : ''}`} text={ch.sentence} url={ch.url} />
+              : <p className="text-slate-500 text-xs mt-2"><span className="uppercase font-semibold text-[10px]">Competitor Challenge</span> · None found.</p>}
+            {m.analysis && <p className="text-slate-400 text-xs mt-2 leading-relaxed">{m.analysis}</p>}
+          </div>
+        )
+      })}
     </Card>
   )
 }

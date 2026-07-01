@@ -1,6 +1,6 @@
 {
   "ticker": "TSLA",
-  "total": 106,
+  "total": 109,
   "per_agent": {
     "agent_1": {
       "n": 6,
@@ -33,6 +33,14 @@
       "no_dl": 0,
       "flag_true": 9,
       "disagree": 0
+    },
+    "agent_5": {
+      "n": 3,
+      "present": 3,
+      "absent": 0,
+      "no_dl": 0,
+      "flag_true": 3,
+      "disagree": 0
     }
   },
   "results": [
@@ -44,6 +52,7 @@
       "url": "",
       "agent_flag": null,
       "same_filing": false,
+      "_dl": false,
       "downloaded": false,
       "independently_present": null,
       "agreement": null
@@ -56,6 +65,7 @@
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043432/tsla-20241023.htm",
       "agent_flag": null,
       "same_filing": false,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -115,6 +125,7 @@
       "quote": "Of this amount, we expect to recognize $ 4.71 billion in the next 12 months and the rest over the remaining performance obligation period.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025018911/tsla-20250331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -137,6 +148,7 @@
       "quote": "In 2025, we intend to begin launching our Robotaxi business, a ride-hailing network that will eventually operate fully autonomous vehicles.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025003063/tsla-20241231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -159,6 +171,7 @@
       "quote": "Of this amount, we expect to recognize $ 5.22 billion in the next 12 months and the rest over the remaining performance obligation period.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025045968/tsla-20250930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -170,6 +183,7 @@
       "quote": "Of this amount, we expect to recognize $ 5.47 billion in the next 12 months and the rest over the remaining performance obligation period.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828025035806/tsla-20250630.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -181,6 +195,7 @@
       "quote": "Of this amount, we expect to recognize $ 683 million in the next 12 months and the rest over the remaining performance obligation period.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024043486/tsla-20240930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -236,6 +251,7 @@
       "quote": "Moreover, we expect to begin accepting bitcoin as a form of payment for our products in the near future, subject to applicable laws and initially on a limited basis, which we may or may not liquidate upon receipt.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459021004599/tsla-10k_20201231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -247,6 +263,7 @@
       "quote": "We expect to further increase this capacity to 500,000 vehicles through the installation of additional equipment.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459020004475/tsla-10k_20191231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -258,6 +275,7 @@
       "quote": "We are focused on profitable growth via a differentiated and efficiently managed product portfolio that leverages our existing factories and production lines, further improving and deploying our FSD (Supervised) capabilities, including future autonomous capabilities through our purpose-built Robotaxi product, Cybercab, reducing costs, increasing vehicle production, utilized capacity and delivery capabilities, improving and developing our vehicles, battery and AI compute technologies, vertically integrating and localizing our supply chain, and expanding our global infrastructure, including our service and charging infrastructure.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -280,6 +298,7 @@
       "quote": "Revenue Recognition Revenue by source The following table disaggregates our revenue by major source (in millions): Three Months Ended March 31, 2026 2025 Automotive sales $ 15,473 $ 12,925 Automotive regulatory credits 380 595 Energy generation and storage sales 2,305 2,621 Services and other 3,745 2,638 Total revenues from sales and services 21,903 18,779 Automotive leasing 381 447 Energy generation and storage leasing 103 109 Total revenues $ 22,387 $ 19,335 Automotive Segment Automotive Sales Deferred revenue related to internet connectivity, access to our Full Self-Driving ( FSD ) (Supervised) features and their ongoing maintenance, free Supercharging programs and over-the-air software updates primarily on automotive sales amounted to $ 4.00 billion and $ 3.87 billion as of March 31, 2026 and December 31, 2025, respectively. 9 Table of Contents Deferred revenue is equivalent to the total transaction price allocated to the performance obligations that are unsatisfied, or partially unsatisfied, as of the balance sheet date.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026026673/tsla-20260331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -335,6 +354,7 @@
       "quote": "Of the total deferred revenue on automotive sales with and without resale value guarantees, we expect to recognize $ 662 million of revenue in the next 12 months.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459019038256/tsla-10q_20190930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -346,6 +366,7 @@
       "quote": "Of the total deferred revenue on automotive sales with and without resale value guarantees as of March 31, 2022, we expect to recognize $ 948 million of revenue in the next 12 months.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017022006034/tsla-20220331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -368,6 +389,7 @@
       "quote": "Management's Discussion and Analysis of Financial Condition and Results of Operations Management Opportunities, Challenges and Risks Trends in Cash Flow, Capital Expenditures and Operating Expenses in this Quarterly Report on Form 10-Q, considering the expected pace of the manufacturing ramps for our products, construction and expansion of our factories, and pipeline of projects under development, and consistent with our current strategy of using a partner to manufacture battery cells, as well as considering all other infrastructure growth, we currently expect our average annual capital expenditures in 2020 and the two succeeding fiscal years to be $2.5 billion to $3.5 billion.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459020033670/tsla-10q_20200630.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -654,6 +676,7 @@
       "quote": "We are also applying our artificial intelligence learnings from self-driving technology to the field of robotics, such as through Optimus, a robotic humanoid in development, which is controlled by the same AI system. 5 Table of Contents Energy Generation and Storage Energy Storage Products We leverage many of the component-level technologies from our vehicles in our energy storage products.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024002390/tsla-20231231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -665,6 +688,7 @@
       "quote": "In order to be successful, we will need to implement, maintain and ramp efficient and cost-effective manufacturing capabilities, processes and supply chains and achieve the design tolerances, high quality and output rates we have planned at our manufacturing facilities in California, Nevada, Texas, China and Germany.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459020047486/tsla-10q_20200930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -676,6 +700,7 @@
       "quote": "We intend to establish in the future an autonomous Tesla ride-hailing network, which we expect would also allow us to access a new customer base even as modes of transportation evolve.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017022000796/tsla-20211231.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -687,6 +712,7 @@
       "quote": "In order to be successful, we will need to implement, maintain and/or ramp efficient and cost-effective manufacturing capabilities, processes and supply chains and achieve the design tolerances, high quality and maximum output rates we have planned, including at Gigafactory Shanghai, and for Model Y, which we commenced manufacturing at the Fremont Factory in the first quarter of 2020.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459020019931/tsla-10q_20200331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -720,6 +746,7 @@
       "quote": "As the scale of our vehicle production increases, we will also need to accurately forecast, purchase, warehouse and transport components at high volumes to our manufacturing facilities and servicing locations internationally.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017021002253/tsla-20210930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -797,6 +824,7 @@
       "quote": "We estimate a guarantee liability in accordance with ASC 460, Guarantees and record it within other liabilities on our consolidated balance sheet.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828024032662/tsla-20240630.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -830,6 +858,7 @@
       "quote": "Of this amount, we expect to recognize $4.7 million in the next 12 months and the remaining over a period up to 29 years.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459019013462/tsla-10q_20190331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -841,6 +870,7 @@
       "quote": "As a manufacturer solely of zero-emission vehicles, we have earned emission credits, such as ZEV and GHG credits, on our vehicles, and we expect to continue to earn these credits in the future.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000156459018011086/tsla-10q_20180331.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -874,6 +904,7 @@
       "quote": "Of the total deferred revenue on automotive sales with and without resale value guarantees as of September 30, 2022, we expect to recognize $ 1.09 billion of revenue in the next 12 months.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000095017022019867/tsla-20220930.htm",
       "agent_flag": null,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": null
@@ -1072,6 +1103,7 @@
       "quote": "On April 22, 2026, Tesla, Inc. released its financial results for the quarter ended March 31, 2026",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026026551/tsla-20260422.htm",
       "agent_flag": true,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": true
@@ -1083,6 +1115,7 @@
       "quote": "On April 2, 2026, Tesla, Inc. published the press release",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026022956/tsla-20260402.htm",
       "agent_flag": true,
+      "_dl": true,
       "downloaded": true,
       "independently_present": true,
       "agreement": true
@@ -1204,6 +1237,42 @@
       "quote": "trade and shipping disruptions, port congestions, cyberattacks and other factors beyond our or our suppliers control could also affect these suppliers ability to deliver technologies or components to us or to remain solvent and operational.",
       "url": "https://www.sec.gov/Archives/edgar/data/1318605/000162828026003952/tsla-20251231.htm",
       "agent_flag": true,
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "sector_index",
+      "side": "fred_title",
+      "quote": "Industrial Production: Manufacturing: Durable Goods: Motor Vehicles and Parts (NAICS = 3361-3)",
+      "url": "https://fred.stlouisfed.org/series/IPG3361T3S",
+      "agent_flag": true,
+      "source_type": "fred",
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c2",
+      "side": "indicator",
+      "quote": "Global price of Nickel",
+      "url": "https://fred.stlouisfed.org/series/PNICKUSDM",
+      "agent_flag": true,
+      "source_type": "fred",
+      "downloaded": true,
+      "independently_present": true,
+      "agreement": true
+    },
+    {
+      "agent": "agent_5",
+      "fid": "c4",
+      "side": "indicator",
+      "quote": "Global price of Copper",
+      "url": "https://fred.stlouisfed.org/series/PCOPPUSDM",
+      "agent_flag": true,
+      "source_type": "fred",
       "downloaded": true,
       "independently_present": true,
       "agreement": true
