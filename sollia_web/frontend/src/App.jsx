@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import AgentGrid from './components/AgentGrid'
+import { generateBrief } from './utils/brief'
+import {
+  GlowCard, GridBackground, NumberTicker, TextReveal,
+  AnimatedList, AnimatedItem, CardEntrance, Tip,
+} from './components/effects'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -11,6 +18,15 @@ const defaultAgents = [
   { id: 'moat_auditor', name: 'Moat Auditor' },
 ]
 const AGENT_LABELS = Object.fromEntries(defaultAgents.map(a => [a.id, a.name]))
+
+const AGENT_BLURBS = {
+  corporate_discrepancy: 'Cross-checks 10-K, 10-Q, proxies and earnings calls for statements that contradict each other',
+  promise_audit: 'Tracks management promises and verifies follow-through in later filings',
+  legal_proceedings: 'Diffs legal proceedings across filings — new cases, settlements, quiet removals',
+  risk_factors: 'Compares Item 1A year over year — escalations, new risks, softened language',
+  constraint_auditor: 'Pressure-tests growth projections against physical supply (USGS/FRED)',
+  moat_auditor: 'Audits claimed competitive moats against competitor SEC filings',
+}
 
 // Milestone styling — qualitative kinds emitted by the backend (never internals)
 const KIND_EMOJI = { search: '🔍', fetch: '📑', analyze: '⚖️', align: '🧭', flag: '⚠️', done: '✅', info: '•' }
@@ -27,6 +43,7 @@ export default function App() {
   const [exportData, setExportData] = useState(null)
   const [error, setError] = useState(null)
   const [agentLogs, setAgentLogs] = useState({})
+  const [resetToken, setResetToken] = useState(0)
   const esRef = useRef(null)
 
   // Tidy up any open stream on unmount
@@ -71,6 +88,11 @@ export default function App() {
               }
               return next
             })
+            // LIVE per-agent results (Part 7d): render each card the moment
+            // its agent finishes — the analyst reads while the rest still run.
+            if (ev.new_results) {
+              setResult(prev => ({ ...(prev || { ticker: ticker.toUpperCase(), live: true }), ...ev.new_results }))
+            }
           } else if (ev.type === 'complete') {
             setResult(ev.result); setExportData(ev.export); setLoading(false); es.close()
           } else if (ev.type === 'error') {
@@ -94,10 +116,28 @@ export default function App() {
   }, [ticker, selected, loading])
 
   const hasActivity = Object.keys(agentLogs).length > 0
+  const presentAgents = result
+    ? defaultAgents.map(a => a.id).filter(id => result[id])
+    : []
+
+  function renderAgentCard(id) {
+    const data = result?.[id]
+    if (!data) return null
+    switch (id) {
+      case 'corporate_discrepancy': return <DiscrepancyCard data={data} />
+      case 'promise_audit': return <PromiseCard data={data} />
+      case 'legal_proceedings': return <LegalCard data={data} />
+      case 'risk_factors': return <RiskCard data={data} />
+      case 'constraint_auditor': return <ConstraintAuditorCard data={data} />
+      case 'moat_auditor': return <MoatAuditorCard data={data} />
+      default: return null
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-[#06080D] text-white font-sans">
-      <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-[#06080D] text-white font-sans relative">
+      <GridBackground />
+      <div className="max-w-6xl mx-auto px-6 py-8 relative z-10">
         {/* HEADER */}
         <div className="flex flex-wrap gap-4 items-end mb-8">
           <div>
@@ -119,12 +159,21 @@ export default function App() {
           <button
             onClick={runAnalysis}
             disabled={loading || !ticker.trim() || selected.length === 0}
-            className={`px-8 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all ${
+            className={`px-8 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all hover:scale-[1.02] active:scale-[0.99] ${
               loading || !ticker.trim() ? 'bg-white/5 text-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-blue-500 to-violet-500 text-white hover:shadow-lg hover:shadow-blue-500/20'
             }`}
           >
             {loading ? 'Running...' : 'Analyze'}
           </button>
+          {result && !loading && (
+            <button
+              onClick={() => setResetToken(t => t + 1)}
+              className="ml-auto px-4 py-2.5 rounded-xl text-xs text-slate-500 hover:text-slate-300 bg-white/[0.02] border border-white/5 hover:border-white/20 transition-all"
+              title="Restore the default card arrangement"
+            >
+              Reset Layout
+            </button>
+          )}
         </div>
 
         {/* AGENTS */}
@@ -132,15 +181,16 @@ export default function App() {
           <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Agents</label>
           <div className="flex flex-wrap gap-2">
             {defaultAgents.map(agent => (
-              <button
-                key={agent.id}
-                onClick={() => toggleAgent(agent.id)}
-                className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
-                  selected.includes(agent.id) ? 'bg-blue-500/15 border-blue-400 text-blue-300' : 'bg-white/[0.02] border-white/5 hover:border-white/30 text-slate-400'
-                }`}
-              >
-                {agent.name}
-              </button>
+              <Tip key={agent.id} label={AGENT_BLURBS[agent.id]}>
+                <button
+                  onClick={() => toggleAgent(agent.id)}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border hover:scale-[1.02] ${
+                    selected.includes(agent.id) ? 'bg-blue-500/15 border-blue-400 text-blue-300' : 'bg-white/[0.02] border-white/5 hover:border-white/30 text-slate-400'
+                  }`}
+                >
+                  {agent.name}
+                </button>
+              </Tip>
             ))}
           </div>
         </div>
@@ -174,11 +224,15 @@ export default function App() {
           </div>
         )}
 
-        {/* RESULTS */}
+        {/* RESULTS — cards stream in live as each agent finishes */}
         {result && (
           <div className="space-y-6">
             {/* SCORE CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <motion.div
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+              initial="hidden" animate="show"
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }}
+            >
               {result.corporate_discrepancy && (
                 <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score ?? 50} signal={signalFor(result.corporate_discrepancy.score)} />
               )}
@@ -191,110 +245,23 @@ export default function App() {
               {result.risk_factors && (
                 <ScoreBox label="Risk Factors" score={result.risk_factors.score ?? 50} signal={signalFor(result.risk_factors.score)} />
               )}
-            </div>
+            </motion.div>
 
-            {/* AGENT 1 - Corporate Discrepancy */}
-            {result.corporate_discrepancy && (
-              <Card title="Corporate Discrepancy" subtitle={`Score: ${result.corporate_discrepancy.score ?? '—'} · ${result.corporate_discrepancy.total_aligned_pairs ?? 0} aligned passages`}>
-                {(result.corporate_discrepancy.top_discrepancies || []).length === 0 && (
-                  <p className="text-slate-600 text-sm">No material cross-document discrepancies surfaced.</p>
+            {/* AGENT CARDS — draggable/resizable grid, presence-animated */}
+            <AnimatePresence>
+              <AgentGrid
+                ids={presentAgents}
+                resetToken={resetToken}
+                renderCard={(id) => (
+                  <CardEntrance key={id} className="h-full">
+                    {renderAgentCard(id)}
+                  </CardEntrance>
                 )}
-                {(result.corporate_discrepancy.top_discrepancies || []).slice(0, 5).map((d, i) => (
-                  <Row key={i} badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair_display || d.pair?.replace(/_/g, ' ')}>
-                    {d.same_filing && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400">SAME FILING — DOWNRANKED</span>}
-                    <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
-                    <Quote text={d.source_a?.sentence_text} url={d.source_a?.edgar_url || d.source_a?.htm_link} label={d.source_a?.document_type} />
-                    <Quote text={d.source_b?.sentence_text} url={d.source_b?.edgar_url || d.source_b?.htm_link} label={d.source_b?.document_type} />
-                  </Row>
-                ))}
-              </Card>
-            )}
+              />
+            </AnimatePresence>
 
-            {/* AGENT 2 - Promise Audit */}
-            {result.promise_audit && (
-              <Card title="Promise Audit" subtitle={`${result.promise_audit.total_promises_extracted || 0} promises · ${result.promise_audit.total_kept || 0} kept · ${result.promise_audit.total_broken || 0} broken`}>
-                {(result.promise_audit.top_promises || []).map((p, i) => (
-                  <Row key={i} badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
-                    <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
-                    <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
-                    {p.reasoning && <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>}
-                  </Row>
-                ))}
-              </Card>
-            )}
-
-            {/* AGENT 3 - Legal Proceedings */}
-            {result.legal_proceedings && (
-              <Card title="Legal Proceedings" subtitle={`${result.legal_proceedings.findings?.length || 0} filing types compared`}>
-                {(result.legal_proceedings.findings || []).map((f, i) => (
-                  <div key={i} className="mb-4">
-                    <p className="text-slate-400 text-xs font-semibold mb-2">
-                      {f.doc_type}{f.prior_date ? `: ${f.prior_date} → ${f.current_date}` : ''} · Score: {f.agent3_score}
-                    </p>
-                    {(!f.proceedings || f.proceedings.length === 0) ? (
-                      <p className="text-slate-600 text-xs italic">{f.summary || `No legal proceedings in ${f.doc_type}`}</p>
-                    ) : (
-                      <>
-                        {f.summary && <p className="text-slate-500 text-xs mb-2">{f.summary}</p>}
-                        {f.proceedings.slice(0, 5).map((p, j) => (
-                          <Row key={j} badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
-                            <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" />
-                            <Quote text={p.current_quote || p.current_text} url={p.edgar_url} label="Current" />
-                            {p.liability_change && <p className="text-slate-500 text-xs mt-1">Liability: {p.liability_change}</p>}
-                          </Row>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                ))}
-              </Card>
-            )}
-
-            {/* AGENT 4 - Risk Factors */}
-            {result.risk_factors && (
-              <Card title="Risk Factors" subtitle={`Item 1A delta · ${result.risk_factors.old_filing_date || '—'} → ${result.risk_factors.new_filing_date || '—'} · ${result.risk_factors.total_risks_old ?? 0}→${result.risk_factors.total_risks_new ?? 0} risks · ${result.risk_factors.changes_found || 0} changes`}>
-                {(result.risk_factors.top_changes || []).length === 0 && (
-                  <p className="text-slate-600 text-sm">{result.risk_factors.summary || 'No material changes in risk factors between the two 10-Ks.'}</p>
-                )}
-                {(result.risk_factors.top_changes || []).map((c, i) => (
-                  <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
-                    {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
-                    <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" />
-                    <Quote text={c.new_quote} url={c.new_url} label="New 10-K" />
-                    {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
-                  </Row>
-                ))}
-                {result.risk_factors.ten_q_findings && (
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <p className="text-slate-500 text-xs font-semibold mb-3">
-                      10-Q Update · {result.risk_factors.ten_q_findings.filing_date} · vs {result.risk_factors.ten_q_findings.compared_against} ({result.risk_factors.ten_q_findings.compared_date}) · {result.risk_factors.ten_q_findings.changes_found} changes
-                    </p>
-                    <div className="space-y-3">
-                      {(result.risk_factors.ten_q_findings.changes || []).length === 0 && (
-                        <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
-                      )}
-                      {(result.risk_factors.ten_q_findings.changes || []).map((c, i) => (
-                        <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
-                          {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
-                          <Quote text={c.old_quote} url={c.old_url} label={`Old ${result.risk_factors.ten_q_findings.compared_against}`} />
-                          <Quote text={c.new_quote} url={c.new_url} label="New 10-Q" />
-                          {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
-                        </Row>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* AGENT 5 - Constraint Auditor (audit, not a bull/bear score) */}
-            {result.constraint_auditor && <ConstraintAuditorCard data={result.constraint_auditor} />}
-
-            {/* AGENT 6 - Moat Auditor (audit, not a bull/bear score) */}
-            {result.moat_auditor && <MoatAuditorCard data={result.moat_auditor} />}
-
-            {/* JSON EXPORT — clean, analyst-ready schema */}
-            <JsonPanel data={exportData} ticker={result.ticker} />
+            {/* JSON EXPORT — clean, analyst-ready schema (+ meeting brief) */}
+            {exportData && <JsonPanel data={exportData} ticker={result.ticker} />}
           </div>
         )}
       </div>
@@ -338,33 +305,183 @@ function JsonPanel({ data, ticker }) {
   const [copied, setCopied] = useState(false)
   if (!data) return null
   const text = JSON.stringify(data, null, 2)
-  const download = () => {
-    const blob = new Blob([text], { type: 'application/json' })
+  const downloadBlob = (content, name, type) => {
+    const blob = new Blob([content], { type })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url; a.download = `sollia_${(ticker || 'export').toLowerCase()}.json`; a.click()
+    a.href = url; a.download = name; a.click()
     URL.revokeObjectURL(url)
   }
+  const download = () => downloadBlob(text, `sollia_${(ticker || 'export').toLowerCase()}.json`, 'application/json')
+  // Meeting brief (Part 6b): generated client-side from the export — no LLM,
+  // no server round-trip, instant.
+  const downloadBrief = () => downloadBlob(
+    generateBrief(data), `sollia_brief_${(ticker || 'export').toLowerCase()}.txt`, 'text/plain')
   const copy = () => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }
+  const btn = 'px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium hover:scale-[1.02]'
   return (
-    <Card title="Export" subtitle="Clean, analyst-ready JSON — drop into Excel or a terminal">
-      <div className="flex gap-3 mb-3">
-        <button onClick={() => setView(v => !v)} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">{view ? 'Hide' : 'View JSON'}</button>
-        <button onClick={copy} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">{copied ? 'Copied!' : 'Copy'}</button>
-        <button onClick={download} className="px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium">Download</button>
+    <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 lift-card">
+      <h3 className="text-xl font-bold mb-1">Export</h3>
+      <p className="text-slate-500 text-sm mb-4">Analyst-ready JSON + a 1-page meeting brief for your PM</p>
+      <div className="flex gap-3 mb-3 flex-wrap">
+        <Tip label="1-page executive brief: attention items, stable areas, per-agent detail">
+          <button onClick={downloadBrief} className={`${btn} border-blue-400/30 text-blue-300`}>Download Brief</button>
+        </Tip>
+        <button onClick={download} className={btn}>Download JSON</button>
+        <button onClick={copy} className={btn}>{copied ? 'Copied!' : 'Copy'}</button>
+        <button onClick={() => setView(v => !v)} className={btn}>{view ? 'Hide' : 'View JSON'}</button>
       </div>
       {view && (
         <pre className="bg-[#04060C] rounded-xl p-4 max-h-96 overflow-auto text-xs text-emerald-400/80 whitespace-pre-wrap border border-white/5 font-mono">{text}</pre>
+      )}
+    </div>
+  )
+}
+
+// ── Agent 1: Corporate Discrepancy ────────────────────────────────────────────
+function DiscrepancyCard({ data }) {
+  const findings = data.top_discrepancies || []
+  const tone = findings.some(d => d.severity === 'high') ? 'bearish' : findings.length ? 'neutral' : 'bullish'
+  return (
+    <Card title="Corporate Discrepancy" tone={tone} active={findings.length > 0}
+      blurb={AGENT_BLURBS.corporate_discrepancy}
+      subtitle={`Score: ${data.score ?? '—'} · ${data.total_aligned_pairs ?? 0} aligned passages`}>
+      {findings.length === 0 && (
+        <p className="text-slate-600 text-sm">No material cross-document discrepancies surfaced.</p>
+      )}
+      <AnimatedList className="space-y-3">
+        {findings.slice(0, 5).map((d, i) => (
+          <AnimatedItem key={i}>
+            <Row badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair_display || d.pair?.replace(/_/g, ' ')}>
+              {d.same_filing && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400">SAME FILING — DOWNRANKED</span>}
+              <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
+              <Quote text={d.source_a?.sentence_text} url={d.source_a?.edgar_url || d.source_a?.htm_link} label={d.source_a?.document_type} page={d.source_a?.page_number} />
+              <Quote text={d.source_b?.sentence_text} url={d.source_b?.edgar_url || d.source_b?.htm_link} label={d.source_b?.document_type} page={d.source_b?.page_number} />
+            </Row>
+          </AnimatedItem>
+        ))}
+      </AnimatedList>
+    </Card>
+  )
+}
+
+// ── Agent 2: Promise Audit ────────────────────────────────────────────────────
+function PromiseCard({ data }) {
+  const broken = data.total_broken || 0
+  const tone = broken > (data.total_kept || 0) ? 'bearish' : 'bullish'
+  return (
+    <Card title="Promise Audit" tone={tone} active={(data.top_promises || []).length > 0}
+      blurb={AGENT_BLURBS.promise_audit}
+      subtitle={`${data.total_promises_extracted || 0} promises · ${data.total_kept || 0} kept · ${broken} broken`}>
+      <AnimatedList className="space-y-3">
+        {(data.top_promises || []).map((p, i) => (
+          <AnimatedItem key={i}>
+            <Row badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
+              <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
+              <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
+              {p.reasoning && <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>}
+            </Row>
+          </AnimatedItem>
+        ))}
+      </AnimatedList>
+    </Card>
+  )
+}
+
+// ── Agent 3: Legal Proceedings ────────────────────────────────────────────────
+function LegalCard({ data }) {
+  const findings = data.findings || []
+  const hasChanges = findings.some(f => (f.proceedings || []).length > 0)
+  return (
+    <Card title="Legal Proceedings" tone={hasChanges ? 'neutral' : 'bullish'} active={hasChanges}
+      blurb={AGENT_BLURBS.legal_proceedings}
+      subtitle={`${findings.length} filing types compared`}>
+      {findings.map((f, i) => (
+        <div key={i} className="mb-4">
+          <p className="text-slate-400 text-xs font-semibold mb-2">
+            {f.doc_type}{f.prior_date ? `: ${f.prior_date} → ${f.current_date}` : ''} · Score: {f.agent3_score}
+          </p>
+          {(!f.proceedings || f.proceedings.length === 0) ? (
+            <p className="text-slate-600 text-xs italic">{f.summary || `No legal proceedings in ${f.doc_type}`}</p>
+          ) : (
+            <>
+              {f.summary && <p className="text-slate-500 text-xs mb-2">{f.summary}</p>}
+              <AnimatedList className="space-y-3">
+                {f.proceedings.slice(0, 5).map((p, j) => (
+                  <AnimatedItem key={j}>
+                    <Row badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
+                      <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" page={p.prior_quote_page} />
+                      <Quote text={p.current_quote || p.current_text} url={p.edgar_url} label="Current" page={p.current_quote_page} />
+                      {p.liability_change && <p className="text-slate-500 text-xs mt-1">Liability: {p.liability_change}</p>}
+                    </Row>
+                  </AnimatedItem>
+                ))}
+              </AnimatedList>
+            </>
+          )}
+        </div>
+      ))}
+    </Card>
+  )
+}
+
+// ── Agent 4: Risk Factors ─────────────────────────────────────────────────────
+function RiskCard({ data }) {
+  const changes = data.top_changes || []
+  const bearish = changes.some(c => ['ESCALATED', 'NEW'].includes(String(c.category).toUpperCase()))
+  return (
+    <Card title="Risk Factors" tone={bearish ? 'bearish' : changes.length ? 'neutral' : 'bullish'} active={changes.length > 0}
+      blurb={AGENT_BLURBS.risk_factors}
+      subtitle={`Item 1A delta · ${data.old_filing_date || '—'} → ${data.new_filing_date || '—'} · ${data.total_risks_old ?? 0}→${data.total_risks_new ?? 0} risks · ${data.changes_found || 0} changes`}>
+      {changes.length === 0 && (
+        <p className="text-slate-600 text-sm">{data.summary || 'No material changes in risk factors between the two 10-Ks.'}</p>
+      )}
+      <AnimatedList className="space-y-3">
+        {changes.map((c, i) => (
+          <AnimatedItem key={i}>
+            <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
+              {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
+              <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" page={c.old_quote_page} />
+              <Quote text={c.new_quote} url={c.new_url} label="New 10-K" page={c.new_quote_page} />
+              {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
+            </Row>
+          </AnimatedItem>
+        ))}
+      </AnimatedList>
+      {data.ten_q_findings && (
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-slate-500 text-xs font-semibold mb-3">
+            10-Q Update · {data.ten_q_findings.filing_date} · vs {data.ten_q_findings.compared_against} ({data.ten_q_findings.compared_date}) · {data.ten_q_findings.changes_found} changes
+          </p>
+          <div className="space-y-3">
+            {(data.ten_q_findings.changes || []).length === 0 && (
+              <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
+            )}
+            {(data.ten_q_findings.changes || []).map((c, i) => (
+              <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
+                {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
+                <Quote text={c.old_quote} url={c.old_url} label={`Old ${data.ten_q_findings.compared_against}`} page={c.old_quote_page} />
+                <Quote text={c.new_quote} url={c.new_url} label="New 10-Q" page={c.new_quote_page} />
+                {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
+              </Row>
+            ))}
+          </div>
+        </div>
       )}
     </Card>
   )
 }
 
 // ── Agent 5: Constraint Auditor ───────────────────────────────────────────────
-// Severity → color (PART 6c): crossover <2yr red, 2-5yr orange, 5+yr yellow,
-// no-crossover green, unknown gray. The backend computes `severity` per material.
-const SEV_BADGE = { red: 'RED', orange: 'STALE', yellow: 'YELLOW', green: 'GREEN', gray: 'UNCHANGED' }
-const SEV_DOT = { red: '#EF4444', orange: '#F97316', yellow: '#F59E0B', green: '#22C55E', gray: '#64748B' }
+// Urgency → badge (production polish Part 4c): BINDING NOW red, <2yr orange,
+// <5yr yellow, beyond-5yr green, none gray. Backend computes urgency/badge.
+const URGENCY_BADGE = {
+  immediate: 'bg-red-500/15 text-red-400 border border-red-500/40',
+  high: 'bg-orange-500/15 text-orange-400 border border-orange-500/40',
+  medium: 'bg-amber-500/15 text-amber-400 border border-amber-500/40',
+  low: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40',
+  none: 'bg-slate-500/15 text-slate-400 border border-slate-500/40',
+}
 
 function CagrLine({ label, c }) {
   if (!c || c.value == null) return (
@@ -384,7 +501,8 @@ function CagrLine({ label, c }) {
 function ConstraintAuditorCard({ data }) {
   if (data.status === 'unsupported') {
     return (
-      <Card title="Constraint Auditor" subtitle="Supply-constraint audit — 14 resource-intensive sectors">
+      <Card title="Constraint Auditor" tone="audit" blurb={AGENT_BLURBS.constraint_auditor}
+        subtitle="Supply-constraint audit — 14 resource-intensive sectors">
         <p className="text-slate-500 text-sm">{data.message}</p>
       </Card>
     )
@@ -392,10 +510,12 @@ function ConstraintAuditorCard({ data }) {
   const pc = data.projected_cagr || {}
   const constraints = data.constraints || []
   const evaluated = constraints.filter(c => c.status === 'success').length
+  const binding = constraints.some(c => c.urgency === 'immediate')
   const prov = data.data_provisioning
   return (
     <Card
-      title="Constraint Auditor"
+      title="Constraint Auditor" tone="audit" active={binding}
+      blurb={AGENT_BLURBS.constraint_auditor}
       subtitle={`${data.sector || '—'} · ${constraints.length} materials · ${evaluated} with live supply/demand · AUDIT (no bull/bear score)`}
     >
       <div className="border border-white/[0.06] rounded-xl p-4 space-y-2">
@@ -404,37 +524,43 @@ function ConstraintAuditorCard({ data }) {
         <CagrLine label="Industry" c={pc.industry} />
       </div>
 
-      {constraints.map((c, i) => {
-        const ok = c.status === 'success'
-        return (
-          <Row
-            key={i}
-            badge={SEV_BADGE[c.severity] || 'UNCHANGED'}
-            badgeText={ok ? (c.crossover_management || '—') : 'NO DATA'}
-            meta={c.material}
-          >
-            {ok ? (
-              <>
-                <p className="text-slate-400 text-xs mb-2">
-                  <span style={{ color: SEV_DOT[c.severity] }}>●</span>{' '}
-                  Demand exceeds supply — management CAGR <b>{c.crossover_management}</b>, industry CAGR <b>{c.crossover_industry}</b>
-                </p>
-                {c.supply && (
-                  <Quote text={c.supply.quote} url={c.supply.url}
-                    label={`Supply ${c.supply.value ?? ''} ${c.supply.unit ?? ''} @ ${c.supply.growth_rate_pct ?? '?'}%`} />
+      <AnimatedList className="space-y-3">
+        {constraints.map((c, i) => {
+          const ok = c.status === 'success'
+          return (
+            <AnimatedItem key={i}>
+              <div className="border border-white/[0.04] rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Tip label={c.model_note || ''}>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${URGENCY_BADGE[c.urgency] || URGENCY_BADGE.none}`}>
+                      {ok ? (c.urgency_badge || '—') : 'NO DATA'}
+                    </span>
+                  </Tip>
+                  <span className="text-sm font-semibold text-slate-200">{c.material}</span>
+                </div>
+                {ok ? (
+                  <>
+                    <p className="text-slate-400 text-xs mb-2 leading-relaxed">
+                      {c.crossover_detail || `Demand exceeds supply — management CAGR ${c.crossover_management}, industry CAGR ${c.crossover_industry}`}
+                    </p>
+                    {c.supply && (
+                      <Quote text={c.supply.quote} url={c.supply.url}
+                        label={`Supply ${c.supply.value ?? ''} ${c.supply.unit ?? ''} @ ${c.supply.growth_rate_pct ?? '?'}%`} />
+                    )}
+                    {c.demand && (
+                      <Quote text={c.demand.quote} url={c.demand.url}
+                        label={`Demand ${c.demand.value ?? ''} ${c.demand.unit ?? ''}`} />
+                    )}
+                    {c.date_note && <p className="text-slate-600 text-[11px] mt-1 italic">⚠ {c.date_note}</p>}
+                  </>
+                ) : (
+                  <p className="text-slate-500 text-xs">{c.reason || c.status}</p>
                 )}
-                {c.demand && (
-                  <Quote text={c.demand.quote} url={c.demand.url}
-                    label={`Demand ${c.demand.value ?? ''} ${c.demand.unit ?? ''}`} />
-                )}
-                {c.model_note && <p className="text-slate-600 text-[11px] mt-1 italic">{c.model_note}</p>}
-              </>
-            ) : (
-              <p className="text-slate-500 text-xs">{c.reason || c.status}</p>
-            )}
-          </Row>
-        )
-      })}
+              </div>
+            </AnimatedItem>
+          )
+        })}
+      </AnimatedList>
 
       {prov && (prov.missing_keys?.length > 0 || prov.needs_pdf_parser?.length > 0) && (
         <p className="text-slate-600 text-[10px] mt-2">
@@ -453,12 +579,13 @@ const MOAT_VERDICT = {
   'NO THREAT': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
 }
 
-function MoatQuote({ label, sub, text, url }) {
+function MoatQuote({ label, sub, text, url, page }) {
   if (!text) return null
   return (
     <div className="mt-2">
       <p className="text-slate-500 text-[10px] uppercase font-semibold tracking-wide">
         {label}{sub ? <span className="text-slate-600 normal-case"> · {sub}</span> : null}
+        {page ? <span className="text-slate-600 normal-case"> · p.{page}</span> : null}
         {url && url.startsWith('http') && (
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 ml-2 hover:underline">View ↗</a>
         )}
@@ -472,7 +599,8 @@ function MoatAuditorCard({ data }) {
   if (!data) return null
   if (data.status === 'error') {
     return (
-      <Card title="Moat Auditor" subtitle="Competitive-moat audit vs competitor SEC filings">
+      <Card title="Moat Auditor" tone="audit" blurb={AGENT_BLURBS.moat_auditor}
+        subtitle="Competitive-moat audit vs competitor SEC filings">
         <p className="text-slate-500 text-sm">{data.message || 'Moat audit could not complete.'}</p>
       </Card>
     )
@@ -483,17 +611,19 @@ function MoatAuditorCard({ data }) {
   const watches = moats.filter(m => m.verdict === 'WATCH').length
   return (
     <Card
-      title="Moat Auditor"
+      title="Moat Auditor" tone="audit" active={threats + watches > 0}
+      blurb={AGENT_BLURBS.moat_auditor}
       subtitle={`${data.sector || '—'} · ${competitors.length} competitors · ${moats.length} moats · ${threats} direct threat${threats === 1 ? '' : 's'}, ${watches} watch · AUDIT (no bull/bear score)`}
     >
       <div className="border border-white/[0.06] rounded-xl p-4">
         <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-2">Competitors analyzed</p>
         <div className="flex flex-wrap gap-2">
           {competitors.map((c, i) => (
-            <span key={i} title={c.rationale || ''}
-              className="px-2 py-0.5 rounded text-[11px] bg-white/[0.04] text-slate-300 border border-white/5">
-              {c.ticker} <span className="text-slate-600">· {String(c.source || '').startsWith('10-K') ? '10-K' : 'LLM'}</span>
-            </span>
+            <Tip key={i} label={c.rationale || ''}>
+              <span className="px-2 py-0.5 rounded text-[11px] bg-white/[0.04] text-slate-300 border border-white/5">
+                {c.ticker} <span className="text-slate-600">· {String(c.source || '').startsWith('10-K') ? '10-K' : 'LLM'}</span>
+              </span>
+            </Tip>
           ))}
           {competitors.length === 0 && <span className="text-slate-600 text-xs">None identified.</span>}
         </div>
@@ -503,23 +633,27 @@ function MoatAuditorCard({ data }) {
         <p className="text-slate-500 text-sm">No moat claims identified in company filings.</p>
       )}
 
-      {moats.map((m, i) => {
-        const cc = m.company_claim || {}
-        const ch = m.strongest_challenge
-        return (
-          <div key={i} className="border border-white/[0.04] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${MOAT_VERDICT[m.verdict] || MOAT_VERDICT['NO THREAT']}`}>{m.verdict}</span>
-              <span className="text-sm font-semibold text-slate-200">{m.moat_type}</span>
-            </div>
-            <MoatQuote label="Company Claim" sub={cc.source} text={cc.sentence} url={cc.url} />
-            {ch
-              ? <MoatQuote label="Competitor Challenge" sub={`${ch.competitor} · ${ch.source}${ch.date ? ' · ' + ch.date : ''}`} text={ch.sentence} url={ch.url} />
-              : <p className="text-slate-500 text-xs mt-2"><span className="uppercase font-semibold text-[10px]">Competitor Challenge</span> · None found.</p>}
-            {m.analysis && <p className="text-slate-400 text-xs mt-2 leading-relaxed">{m.analysis}</p>}
-          </div>
-        )
-      })}
+      <AnimatedList className="space-y-3">
+        {moats.map((m, i) => {
+          const cc = m.company_claim || {}
+          const ch = m.strongest_challenge
+          return (
+            <AnimatedItem key={i}>
+              <div className="border border-white/[0.04] rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${MOAT_VERDICT[m.verdict] || MOAT_VERDICT['NO THREAT']}`}>{m.verdict}</span>
+                  <span className="text-sm font-semibold text-slate-200">{m.moat_type}</span>
+                </div>
+                <MoatQuote label="Company Claim" sub={cc.source} text={cc.sentence} url={cc.url} page={cc.page_number} />
+                {ch
+                  ? <MoatQuote label="Competitor Challenge" sub={`${ch.competitor} · ${ch.source}${ch.date ? ' · ' + ch.date : ''}`} text={ch.sentence} url={ch.url} />
+                  : <p className="text-slate-500 text-xs mt-2"><span className="uppercase font-semibold text-[10px]">Competitor Challenge</span> · None found.</p>}
+                {m.analysis && <p className="text-slate-400 text-xs mt-2 leading-relaxed">{m.analysis}</p>}
+              </div>
+            </AnimatedItem>
+          )
+        })}
+      </AnimatedList>
     </Card>
   )
 }
@@ -537,21 +671,40 @@ function ScoreBox({ label, score, signal }) {
   const colors = { BULLISH: '#22C55E', NEUTRAL: '#F59E0B', BEARISH: '#EF4444', HOLD: '#F59E0B' }
   const color = colors[signal] || '#F59E0B'
   return (
-    <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 text-center">
-      <div className="text-5xl font-black mb-2" style={{ color }}>{Math.round(score)}%</div>
+    <motion.div
+      className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 text-center lift-card"
+      variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } } }}
+    >
+      <div className="text-5xl font-black mb-2" style={{ color }}>
+        <NumberTicker value={Math.round(score)} />
+        <span className="text-2xl font-bold text-slate-600">/100</span>
+      </div>
       <div className="text-slate-400 text-sm font-medium">{label}</div>
       <div className="text-xs mt-1" style={{ color }}>{signal}</div>
-    </div>
+    </motion.div>
   )
 }
 
-function Card({ title, subtitle, children }) {
+// Card shell used by every agent: severity glow, drag handle header, internal
+// scroll (the grid controls outer size), hover lift.
+function Card({ title, subtitle, tone = 'neutral', active = false, blurb = '', children }) {
   return (
-    <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6">
-      <h3 className="text-xl font-bold mb-1">{title}</h3>
-      {subtitle && <p className="text-slate-500 text-sm mb-4">{subtitle}</p>}
-      <div className="space-y-3">{children}</div>
-    </div>
+    <GlowCard tone={tone} active={active} className="h-full">
+      <div className="bg-[#0A0B14] border border-white/5 rounded-2xl h-full flex flex-col overflow-hidden relative">
+        <div className="drag-handle px-6 pt-5 pb-3 select-none">
+          <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
+            <TextReveal>{title}</TextReveal>
+            {blurb && (
+              <Tip label={blurb}>
+                <span className="text-slate-600 text-xs border border-white/10 rounded-full w-4 h-4 inline-flex items-center justify-center cursor-help">?</span>
+              </Tip>
+            )}
+          </h3>
+          {subtitle && <p className="text-slate-500 text-sm">{subtitle}</p>}
+        </div>
+        <div className="px-6 pb-5 space-y-3 overflow-y-auto flex-1">{children}</div>
+      </div>
+    </GlowCard>
   )
 }
 
@@ -575,13 +728,14 @@ function Row({ badge, badgeText, meta, children }) {
   )
 }
 
-function Quote({ text, url, label }) {
+function Quote({ text, url, label, page }) {
   if (!text) return null
   const words = text.split(/\s+/)
   const shown = words.slice(0, 10).join(' ') + (words.length > 10 ? '…' : '')
+  const sourceLabel = [label || 'Source', page ? `p.${page}` : ''].filter(Boolean).join(', ')
   return (
     <div className="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
-      <span className="text-slate-600 text-[10px] uppercase font-semibold">{label || 'Source'}</span>
+      <span className="text-slate-600 text-[10px] uppercase font-semibold">{sourceLabel}</span>
       <span className="italic">"{shown}"</span>
       {url && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-[10px] hover:underline">View ↗</a>

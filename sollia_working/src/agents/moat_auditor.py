@@ -170,24 +170,15 @@ def _clean_sentences(text: str) -> List[str]:
 
 
 def _extract_json(text: Optional[str]):
-    """Best-effort JSON extraction from an LLM response (strips ```json fences,
-    finds the outermost [..] or {..}). Returns the parsed object or None."""
+    """JSON extraction from an LLM response via the shared tolerant extractor
+    (fences, preamble, trailing commas, single quotes, comments). Keeps this
+    module's None-on-failure contract."""
     if not text:
         return None
-    t = text.strip()
-    if t.startswith("```"):
-        t = re.sub(r"^```[a-zA-Z]*\n?", "", t)
-        t = re.sub(r"\n?```$", "", t).strip()
-    for opener, closer in (("[", "]"), ("{", "}")):
-        i, j = t.find(opener), t.rfind(closer)
-        if i != -1 and j > i:
-            try:
-                return json.loads(t[i:j + 1])
-            except Exception:
-                continue
     try:
-        return json.loads(t)
-    except Exception:
+        from src.utils.json_extractor import extract_json
+        return extract_json(text)
+    except ValueError:
         return None
 
 
@@ -226,7 +217,7 @@ def _fetch_filing_html(prov, ticker: str, filing: Dict[str, Any]) -> str:
     acc = filing.get("accession_number", "")
     if cache_text is not None and acc:
         cached = get_cached_text(ticker, acc, content_type="moat_raw")
-        if cached is not None:
+        if cached:  # empty string = a cached FAILED fetch; treat as a miss
             return cached
     cik = filing.get("cik", "")
     acc_nd = filing.get("accession_nodash", acc.replace("-", ""))
@@ -242,7 +233,7 @@ def _fetch_filing_html(prov, ticker: str, filing: Dict[str, Any]) -> str:
             html = prov.fetch_html(cik, acc_nd, doc, ticker) or ""
         except Exception:
             html = ""
-    if cache_text is not None and acc:
+    if cache_text is not None and acc and html:  # never cache a failed fetch
         cache_text(ticker, acc, html, content_type="moat_raw")
     return html
 
@@ -936,18 +927,23 @@ def _company_transcripts(prov, ticker: str) -> List[Dict[str, str]]:
     if need:
         try:
             cik = prov.get_cik(ticker)
+            filings = prov.get_all_filings(ticker)
             by_date: Dict[str, list] = {}
-            for f in prov.get_all_filings(ticker):
+            for f in filings:
                 if f.get("form") == "8-K" and f.get("filing_date") in need:
                     by_date.setdefault(f["filing_date"], []).append(f)
-            for d, txt in need.items():
-                url = None
-                for f in by_date.get(d, []):
-                    url = _resolve_transcript_url(cik, f.get("accession_number", ""), txt)
-                    if url:
-                        break
-                date_url[d] = url or ""
-            _write_cache(cache_path, date_url)
+            # Only resolve (and negative-cache) when the filings list actually
+            # loaded — an SEC throttle used to return [] here, which wrote ""
+            # for EVERY date and permanently hid the earnings releases.
+            if filings:
+                for d, txt in need.items():
+                    url = None
+                    for f in by_date.get(d, []):
+                        url = _resolve_transcript_url(cik, f.get("accession_number", ""), txt)
+                        if url:
+                            break
+                    date_url[d] = url or ""
+                _write_cache(cache_path, date_url)
         except Exception:
             pass
     out = []
@@ -979,7 +975,9 @@ def _competitor_documents(prov, comp: Dict[str, str]) -> List[Dict[str, str]]:
     ticker = comp["ticker"]
     cache_path = os.path.join(MOAT_CACHE_DIR, "compdocs_%s.json" % ticker)
     cached = _read_cache(cache_path)
-    if cached and isinstance(cached.get("docs"), list):
+    # An empty cached docs list is a MISS: it is what an SEC throttle leaves
+    # behind, not evidence the competitor has no documents.
+    if cached and isinstance(cached.get("docs"), list) and cached["docs"]:
         return cached["docs"]
     docs: List[Dict[str, str]] = []
     try:
@@ -1004,7 +1002,8 @@ def _competitor_documents(prov, comp: Dict[str, str]) -> List[Dict[str, str]]:
         docs.append({"text": tr["text"], "doc_type": "Earnings Call",
                      "date": tr["date"], "url": tr["url"],
                      "quarter": tr.get("quarter", "")})
-    _write_cache(cache_path, {"ticker": ticker, "docs": docs, "built_at": _now_iso()})
+    if docs:  # never cache an empty result (throttled fetch), so it retries
+        _write_cache(cache_path, {"ticker": ticker, "docs": docs, "built_at": _now_iso()})
     return docs
 
 
@@ -1208,13 +1207,26 @@ class MoatAuditor:
             tenks = []
         if not tenks:
             return self._error(ticker, company, log, t0, "No 10-K filing found for ticker.")
-        tenk = tenks[0]
-        html = _fetch_filing_html(prov, ticker, tenk)
-        clean_10k = _strip_html(html)
+        # Plain 10-Ks before amendments: Part III 10-K/As (Tesla files one every
+        # April) contain no Item 1/1A/7, which zeroed out all moat claims. Walk
+        # candidates until item extraction yields substance.
+        ordered = [f for f in tenks if f.get("form") == "10-K"] + \
+                  [f for f in tenks if f.get("form") != "10-K"]
+        tenk, clean_10k, item1, item1a = None, "", "", ""
+        for cand in ordered[:3]:
+            html = _fetch_filing_html(prov, ticker, cand)
+            clean = _strip_html(html)
+            if not clean:
+                continue
+            i1 = extract_item1_business(clean)
+            i1a = extract_item1a_risk(clean)
+            if i1 or i1a:
+                tenk, clean_10k, item1, item1a = cand, clean, i1, i1a
+                break
+            if tenk is None:  # parseable but item-less: keep as last resort
+                tenk, clean_10k = cand, clean
         if not clean_10k:
             return self._error(ticker, company, log, t0, "Could not fetch/parse the 10-K.")
-        item1 = extract_item1_business(clean_10k)
-        item1a = extract_item1a_risk(clean_10k)
         filing_meta = {"doc_type": "10-K %s" % _fy(tenk.get("period_of_report") or tenk.get("filing_date")),
                        "date": tenk.get("filing_date", ""), "url": tenk.get("htm_url", "")}
 
@@ -1268,8 +1280,14 @@ class MoatAuditor:
         # Every quote is deterministically EXTRACTED from a real document (the LLM
         # only selects an index), so it is verbatim by provenance. For a 10-K
         # section claim we additionally confirm presence in the parsed 10-K.
+        claim_page = None
         if "Item" in claim.get("section", ""):
             claim_verified = bool(_quote_in_text(claim["sentence"], clean_10k))
+            try:  # printed page number, when the 10-K's pagination survives cleaning
+                from src.utils.page_numbers import page_of_quote
+                claim_page = page_of_quote(clean_10k, claim["sentence"])
+            except Exception:
+                claim_page = None
         else:
             claim_verified = bool(claim.get("sentence", "").strip())
         block = {
@@ -1279,6 +1297,7 @@ class MoatAuditor:
                 "date": claim["date"], "url": claim["url"],
                 "quote_verified": claim_verified,
                 "selection_rationale": claim.get("rationale", ""),
+                **({"page_number": claim_page} if claim_page else {}),
             },
             "strongest_challenge": None,
             "verdict": verdict,

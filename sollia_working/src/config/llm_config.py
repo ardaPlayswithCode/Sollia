@@ -89,12 +89,17 @@ LLM_PROVIDERS: List[Dict[str, Any]] = [
      "tier": "primary", "adaptive_reasoning": True, "billed": True,
      "timeout": 180},
     # ── #2 PRIMARY (ACTIVE) — Groq llama-3.3-70b. Free, fast (~300ms), deterministic;
-    #    the proven workhorse that served every prior pipeline run.
+    #    the proven workhorse that served every prior pipeline run. key_envs
+    #    (Part 3b): optional extra Groq accounts — each key is its OWN rate-limit
+    #    bucket, so N keys ≈ N× Groq throughput. Keys rotate per call and a 429
+    #    advances to the next key before falling down the chain.
     {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
-     "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY", "tier": "primary"},
+     "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY", "tier": "primary",
+     "key_envs": ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]},
     # ── #3 FALLBACK — Groq llama-3.1-8b. Fastest; same account as Groq-70B.
     {"name": "Groq-8B", "url": "https://api.groq.com/openai/v1/chat/completions",
-     "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY", "tier": "fallback"},
+     "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY", "tier": "fallback",
+     "key_envs": ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]},
     # ── #4 FALLBACK — Gemini 2.5 Flash. INDEPENDENT Google account = real resilience
     #    when Groq's single account rate-limits. OpenAI-compatible endpoint, ~1.3s.
     {"name": "Gemini-2.5-flash",
@@ -211,6 +216,120 @@ def select_tier_for_prompt(prompt: str, default_tier: int = 0) -> int:
     return default_tier
 
 
+# ---------------------------------------------------------------------------
+# DYNAMIC ROUTER (production polish Part 1c) — empirically calibrated.
+# ---------------------------------------------------------------------------
+# MODEL_PROFILES holds the MEASURED behavior of the chain tiers against the 3
+# REAL recorded pipeline prompts (tools/routing_benchmark.py, 2026-07-03):
+#   A = Agent 4 risk comparison (2,832w, strict JSON array)
+#   B = Agent 1 discrepancy classify (1,178w, strict JSON + sentence indices)
+#   C = Agent 2 Stage-1 promise extraction (685w, category allowlist)
+# clean = raw response parses as JSON; recoverable = extract_json() parses it;
+# valid = task-specific schema/index/category checks pass.
+# The router's decisions DERIVE from these numbers — see select_best_tier.
+MODEL_PROFILES: Dict[int, Dict[str, Any]] = {
+    0: {  # Fable 5 (paid, via OpenRouter; reasoning mandatory on this endpoint)
+        "clean_json_rate": {"A": 0.0, "B": 1.0, "C": 0.0},
+        "recoverable_rate": {"A": 0.33, "B": 1.0, "C": 1.0},
+        "valid_rate": {"A": 0.0, "B": 1.0, "C": 1.0},
+        "avg_latency_ms": {"A": 41477, "B": 7946, "C": 16946},
+        "deterministic": {"A": False, "B": True, "C": False},
+        "cost_per_call_usd": "~0.20 on a 4.5k-word call ($10/$50 per 1M)",
+        "max_context": 200_000,
+        "best_for": ["short/medium strict-JSON judgment calls (severity audit)",
+                      ">90k-word overflow beyond Groq's 128k context"],
+        "notes": "On the LONG strict-JSON shape (test A) it returned one fenced "
+                 "response, one EMPTY (reasoning starved content) and one "
+                 "truncated — unusable for Agent 4 despite the original plan. "
+                 "Perfect and byte-deterministic on classify-with-indices (B).",
+    },
+    1: {  # Groq llama-3.3-70b (free) — THE workhorse
+        "clean_json_rate": {"A": 1.0, "B": 1.0, "C": 0.0},
+        "recoverable_rate": {"A": 1.0, "B": 1.0, "C": 1.0},
+        "valid_rate": {"A": 1.0, "B": 1.0, "C": 1.0},
+        "avg_latency_ms": {"A": 3887, "B": 964, "C": 1469},
+        "deterministic": {"A": False, "B": False, "C": False},
+        "max_context": 128_000, "tpm_free_tier": 12_000,
+        "best_for": ["strict-JSON comparison (Agent 4: 3/3 clean+valid at ~4s "
+                      "— vs Fable 5's 0/3 at 41s)", "classify with indices",
+                      "medium/long extraction"],
+        "notes": "12k tokens/min free TPM = ONE jumbo call per minute — the "
+                 "TSLA 'Could not parse' failures were 429 fallthrough to "
+                 "weaker tiers, not 70B quality. The LLM semaphore + key "
+                 "cycling keep it inside its TPM window.",
+    },
+    2: {  # Groq llama-3.1-8b (free, fastest)
+        "clean_json_rate": {"A": 1.0, "B": 0.0, "C": 0.0},
+        "recoverable_rate": {"A": 1.0, "B": 0.0, "C": 1.0},
+        "valid_rate": {"A": 1.0, "B": 0.0, "C": 1.0},
+        "avg_latency_ms": {"A": 2407, "B": 1469, "C": 1270},
+        "max_context": 128_000, "tpm_free_tier": 6_000,
+        "best_for": ["trivial/high-volume classification (Stage 1, Agent 5)"],
+        "notes": "Answers sentence-index tasks with PROSE (0/3 on B) — never "
+                 "route classify there. Fine on category extraction (C 3/3).",
+    },
+    3: {  # Gemini 2.5 Flash (free, independent account) — fallback
+        "recoverable_rate": {"A": 0.0},
+        "avg_latency_ms": {"A": 11040},
+        "notes": "Independent 429-refuge, not a primary: its 2 live test-A "
+                 "runs truncated mid-array (unrecoverable), and the free "
+                 "daily quota was consumed by pipeline fallbacks during "
+                 "the 2026-07-03 window.",
+    },
+    # 4-7: OpenRouter :free backups. Accounts under $10 balance get 50
+    # requests/DAY across ALL :free models — they are last-resort refuges by
+    # construction. Quality (Gemma pair 100/100) was established in the
+    # 2026-06-25 benchmark (FINAL_LLM_PRIORITY_LIST.md).
+}
+
+
+def select_best_tier(prompt_word_count: int,
+                     requires_strict_json: bool = False,
+                     requires_long_context: bool = False,
+                     max_cost_cents: float = 40.0) -> int:
+    """Route to the BEST tier for the task, derived from MODEL_PROFILES.
+
+    Decision logic (ordered by priority; empirical justification inline):
+
+    1. requires_strict_json AND prompt > 4000 words -> Groq-70B (tier 1).
+       The original plan sent these to Fable 5, but measured behavior on the
+       REAL Agent-4 prompt was 0/3 clean JSON (one empty response — the
+       reasoning budget starved the completion — one truncated) at 41s/call.
+       Groq-70B + the shared tolerant extractor is the reliable pairing; its
+       128k context fits any strict-JSON prompt this pipeline builds.
+    2. requires_long_context -> Groq-70B up to ~90k words (fits 128k with
+       output margin); ONLY beyond that is Fable 5's 200k context genuinely
+       needed (cost-gated; the per-run cap still applies).
+    3. prompt > 1500 words -> Groq-70B: fast, free, measured 100/100 quality.
+    4. otherwise -> Groq-8B: fastest; valid 1.0 on the Stage-1 shape.
+
+    Fable 5's measured sweet spot — short/medium strict judgment calls (test
+    B: clean 1.0, valid 1.0, byte-deterministic) — is reached via pin_tier
+    (Agent 1's severity audit), a deliberate opt-in, not a size rule.
+    Tiers 3-7 stay BACKUP-ONLY — the chain falls through on 429/failure.
+    """
+    if requires_long_context and prompt_word_count > 90_000:
+        if _projected_fable5_cents(prompt_word_count) <= max_cost_cents * 10:
+            return PROVIDER_IDX["FABLE"]  # beyond Groq's 128k window
+        return PROVIDER_IDX["GROQ_70B"]
+    if requires_strict_json or requires_long_context:
+        # Strict tasks NEVER go below Groq-70B: Groq-8B measured 0/3 on the
+        # sentence-index classify shape (MODEL_PROFILES[2], test B).
+        return PROVIDER_IDX["GROQ_70B"]
+    if prompt_word_count > 1500:
+        return PROVIDER_IDX["GROQ_70B"]
+    return PROVIDER_IDX["GROQ_8B"]
+
+
+def _projected_fable5_cents(prompt_word_count: int) -> float:
+    """Projected Fable 5 cost for one call, in cents: $10/1M input tokens +
+    $50/1M output tokens (reasoning bills as output; use its size budget as the
+    output proxy — actual completions are shorter than the reasoning budget)."""
+    in_tokens = prompt_word_count * 1.35
+    out_tokens = max(fable5_effort_level(prompt_word_count), FABLE5_MIN_REASONING) + 800
+    return (in_tokens * 0.001 + out_tokens * 0.005)
+
+
 # Part 1c — Fable 5 reasoning budget proportional to task complexity. Reasoning
 # tokens are billed as OUTPUT tokens ($50/1M), so a flat budget overpays on
 # short prompts. The returned budget is sent as reasoning:{max_tokens:N} and
@@ -292,6 +411,12 @@ HISTORY_ENABLED = os.environ.get("SOLLIA_LLM_HISTORY", "1") not in ("0", "false"
 # ---------------------------------------------------------------------------
 # Thread-safe shared state
 # ---------------------------------------------------------------------------
+# Part 3a: max concurrent LIVE LLM calls across all agents (cache hits bypass).
+# 6 parallel agents sharing one Groq account used to stampede the per-model TPM
+# and burn wall time on 429 retries; 3-at-a-time takes turns instead.
+LLM_MAX_CONCURRENCY = int(os.environ.get("SOLLIA_LLM_MAX_CONCURRENCY", "3"))
+_LLM_SEMAPHORE = threading.Semaphore(LLM_MAX_CONCURRENCY)
+
 _rate_lock = threading.Lock()       # guards _last_request_time + _cooldown_until
 _index_lock = threading.Lock()      # guards index.jsonl appends
 _last_request_time = 0.0
@@ -731,7 +856,9 @@ def _post_with_wallclock(url: str, headers: Dict[str, str], payload: Dict[str, A
 def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
              provider_idx: int = 0, agent: Optional[str] = None,
              stage: Optional[str] = None, ticker: Optional[str] = None,
-             pin_tier: bool = False) -> Tuple[str, Dict]:
+             pin_tier: bool = False, requires_strict_json: bool = False,
+             requires_long_context: bool = False,
+             bypass_cache: bool = False) -> Tuple[str, Dict]:
     """Call the LLM provider chain with hardened retry + full history recording.
 
     Backwards compatible: returns (response_text, meta). New optional kwargs
@@ -742,6 +869,16 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
     provider_idx — for LOW-VOLUME judgment calls that deliberately use the paid
     tier on a short prompt (e.g. Agent 1's high-severity audit: ~1 call/run).
     The per-run cost cap still applies; pinning cannot bypass it.
+
+    requires_strict_json / requires_long_context declare the TASK's needs (set
+    by agent code, never by document content): they let the dynamic router
+    promote a long call to Fable 5 per select_best_tier. Flag-less calls keep
+    the demote-only behavior, so ordinary prompts can never bill the paid tier.
+
+    bypass_cache=True skips the byte-cache READ (the fresh response still
+    overwrites the entry). Agents use it for a single parse-failure retry: a
+    garbage response cached during a rate-limit storm would otherwise be
+    served forever (the TSLA "unparseable result" loop).
     """
     r_agent, r_stage, r_ticker = _resolve_ctx(agent, stage, ticker)
     call_id = "%s_%s_%s_%s" % (
@@ -753,8 +890,9 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
     cache_path = os.path.join(LLM_CACHE_DIR, f"{cache_key}.json")
 
     # ---- byte-identical cache (skipped under NO_CACHE, unless the cache-bust
-    #      rate limit suppressed the flag for this run — Part 3b) ----
-    if (not NO_CACHE or _no_cache_suppressed) and os.path.exists(cache_path):
+    #      rate limit suppressed the flag for this run — Part 3b; also skipped
+    #      for a caller-driven parse-failure retry, which REWRITES the entry) ----
+    if (not bypass_cache) and (not NO_CACHE or _no_cache_suppressed) and os.path.exists(cache_path):
         try:
             with open(cache_path, "r") as f:
                 cached = json.load(f)
@@ -770,26 +908,83 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
     # returned already and are exempt).
     _budget_precheck()
 
-    # ADAPTIVE ROUTING (Part 1b): the caller's provider_idx (AGENT_START_TIER)
-    # is a suggestion; the prompt's measured complexity can demote the call to a
-    # cheaper tier. Never promotes toward the paid tier. pin_tier callers opt
-    # out (low-volume judgment calls); the cost cap below still binds them.
-    effective_idx = provider_idx if pin_tier else select_tier_for_prompt(prompt, provider_idx)
+    # DYNAMIC ROUTING (Part 1c): the caller's provider_idx (AGENT_START_TIER)
+    # is a suggestion. Calls that declare a task requirement (strict JSON /
+    # long context — set by agent CODE, not by document content) are routed by
+    # select_best_tier and may be PROMOTED to the paid tier; everything else
+    # keeps the demote-only rule so ordinary prompts can never bill Fable 5.
+    # pin_tier callers opt out entirely; the cost cap below still binds them.
     prompt_wc = len(prompt.split())
+    if pin_tier:
+        effective_idx = provider_idx
+    elif requires_strict_json or requires_long_context:
+        effective_idx = select_best_tier(prompt_wc, requires_strict_json,
+                                         requires_long_context)
+    else:
+        effective_idx = select_tier_for_prompt(prompt, provider_idx)
 
     prev_errors: List[str] = []
-    consecutive_chain_429 = 0
-    total_attempts = 0
     paid_skipped_by_cap = False
 
+    # LLM CONCURRENCY SEMAPHORE (Part 3a): the pipeline runs 6 agents in
+    # parallel and they share the free tiers' per-model rate limits. Serializing
+    # live calls down to LLM_MAX_CONCURRENCY turns "everyone 429s and retries"
+    # into "calls take turns" — same or better wall time, no wasted retries.
+    # Cache hits return above WITHOUT touching the semaphore.
+    _LLM_SEMAPHORE.acquire()
+    try:
+        return _call_llm_chain(prompt, max_tokens, temperature, effective_idx,
+                               prompt_wc, cache_path, call_id,
+                               r_agent, r_stage, r_ticker,
+                               prev_errors, paid_skipped_by_cap)
+    finally:
+        _LLM_SEMAPHORE.release()
+
+
+def _provider_keys(provider: Dict[str, Any]) -> List[str]:
+    """All configured API keys for a provider (Part 3b key cycling): key_envs
+    when present, else the single key_env. Order-stable, missing keys dropped."""
+    envs = provider.get("key_envs") or [provider["key_env"]]
+    keys = []
+    for e in envs:
+        v = os.environ.get(e, "")
+        if v and v not in keys:
+            keys.append(v)
+    return keys
+
+
+_key_rotation_lock = threading.Lock()
+_key_rotation_counters: Dict[str, int] = {}
+
+
+def _rotated(keys: List[str], provider_name: str) -> List[str]:
+    """Round-robin the key list per provider so concurrent calls spread across
+    rate-limit buckets instead of all hitting the first key."""
+    if len(keys) <= 1:
+        return keys
+    with _key_rotation_lock:
+        n = _key_rotation_counters.get(provider_name, 0)
+        _key_rotation_counters[provider_name] = n + 1
+    off = n % len(keys)
+    return keys[off:] + keys[:off]
+
+
+def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
+                    cache_path, call_id, r_agent, r_stage, r_ticker,
+                    prev_errors, paid_skipped_by_cap) -> Tuple[str, Dict]:
+    """The provider-chain loop of call_llm (runs holding the LLM semaphore)."""
+    consecutive_chain_429 = 0
+    total_attempts = 0
+    total_attempts_holder = [0]
+    chain_pass = 0
     for chain_pass in range(MAX_CHAIN_RETRIES):
         pass_had_429 = False
         pass_retry_after: Optional[float] = None
 
         for idx in range(effective_idx, len(LLM_PROVIDERS)):
             provider = LLM_PROVIDERS[idx]
-            api_key = os.environ.get(provider["key_env"], "")
-            if not api_key:
+            api_keys = _rotated(_provider_keys(provider), provider["name"])
+            if not api_keys:
                 continue
             # HARD COST CAP (Part 1d): once the run's billed spend crosses
             # MAX_COST_PER_RUN_USD, paid tiers are off the table — fall through
@@ -801,10 +996,6 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
                 paid_skipped_by_cap = True
                 continue
 
-            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-            if "openrouter.ai" in provider["url"]:
-                headers["HTTP-Referer"] = "https://sollia.app"
-                headers["X-Title"] = "Sollia"
             payload = {"model": provider["model"],
                        "messages": [{"role": "user", "content": prompt}],
                        "temperature": temperature, "max_tokens": max_tokens}
@@ -820,15 +1011,32 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
                 payload["reasoning"] = {"effort": provider["reasoning_effort"]}
                 payload["max_tokens"] = max_tokens + int(provider.get("max_tokens_pad", 0))
 
-            _rate_gate()
-            total_attempts += 1
-            t0 = time.time()
-            try:
-                resp = _post_with_wallclock(provider["url"], headers, payload,
-                                            int(provider.get("timeout", REQUEST_TIMEOUT)))
-            except Exception as exc:  # network/timeout/hang -> try next provider
-                prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
+            resp = None
+            # Key cycling (Part 3b): a 429 on one key tries the provider's NEXT
+            # key (separate rate bucket) before falling down the chain.
+            for k_i, api_key in enumerate(api_keys):
+                headers = {"Content-Type": "application/json",
+                           "Authorization": f"Bearer {api_key}"}
+                if "openrouter.ai" in provider["url"]:
+                    headers["HTTP-Referer"] = "https://sollia.app"
+                    headers["X-Title"] = "Sollia"
+                _rate_gate()
+                total_attempts_holder[0] += 1
+                t0 = time.time()
+                try:
+                    resp = _post_with_wallclock(provider["url"], headers, payload,
+                                                int(provider.get("timeout", REQUEST_TIMEOUT)))
+                except Exception as exc:  # network/timeout/hang -> try next provider
+                    prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
+                    resp = None
+                    break
+                if resp.status_code == 429 and k_i < len(api_keys) - 1:
+                    prev_errors.append(f"{provider['name']} key#{k_i + 1}: 429 — rotating key")
+                    continue
+                break
+            if resp is None:
                 continue
+            total_attempts = total_attempts_holder[0]
 
             if resp.status_code == 200:
                 data = resp.json()

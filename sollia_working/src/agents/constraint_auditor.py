@@ -286,8 +286,8 @@ def compute_crossovers(supply0: float, supply_growth: float, demand0: float,
     # Already constrained today (demand >= supply) — true regardless of any growth
     # rate (PART 7c #5). Report it even when no CAGR is available.
     if demand0 >= supply0:
-        out["crossover_management"] = "ALREADY CONSTRAINED"
-        out["crossover_industry"] = "ALREADY CONSTRAINED"
+        out["crossover_management"] = "ALREADY_CONSTRAINED"
+        out["crossover_industry"] = "ALREADY_CONSTRAINED"
         out["model_note"] = ("Apparent consumption (%.0f) already meets or exceeds production "
                              "(%.0f) as of %s — the constraint binds today." %
                              (demand0, supply0, _fmt_month(supply_date)))
@@ -328,7 +328,7 @@ def _quarter_or_label(month_offset: Optional[int], start: date) -> str:
     if month_offset is None:
         return "no crossover within 20-year window"
     if month_offset == 0:
-        return "ALREADY CONSTRAINED"
+        return "ALREADY_CONSTRAINED"
     return month_to_quarter(start, month_offset)
 
 
@@ -833,22 +833,73 @@ def _classify_sector(ticker: str, company: str,
 # Severity (PART 6c) + output assembly (PART 5)
 # ===========================================================================
 def _severity(crossover_label: Optional[str], start_year: int) -> str:
-    """red <2yr, orange 2-5yr, yellow 5+yr, green no crossover/unknown (PART 6c)."""
+    """Badge color by urgency (production-polish Part 4c): red = binding now,
+    orange <2yr, yellow <5yr, green beyond 5yr, gray = no crossover/unknown."""
+    urgency = _urgency(crossover_label, start_year)
+    return {"immediate": "red", "high": "orange", "medium": "yellow",
+            "low": "green", "none": "gray"}[urgency]
+
+
+def _urgency(crossover_label: Optional[str], start_year: int) -> str:
+    """Analyst urgency for a crossover: immediate (binding today), high (<2yr),
+    medium (<5yr), low (beyond 5yr), none (no crossover/unknown)."""
     if not crossover_label:
-        return "gray"
-    if crossover_label == "ALREADY CONSTRAINED":
-        return "red"
-    if "no crossover" in crossover_label:
-        return "green"
+        return "none"
+    if crossover_label == "ALREADY_CONSTRAINED":
+        return "immediate"
     m = re.search(r"Q(\d)\s+(\d{4})", crossover_label)
     if not m:
-        return "gray"
+        return "none"
     yrs = int(m.group(2)) + (int(m.group(1)) - 1) * 0.25 - start_year
     if yrs < 2:
-        return "red"
+        return "high"
     if yrs < 5:
-        return "orange"
-    return "yellow"
+        return "medium"
+    return "low"
+
+
+def _urgency_badge(crossover_label: Optional[str], urgency: str) -> str:
+    """Short badge text the UI renders next to the material name."""
+    if urgency == "immediate":
+        return "BINDING NOW"
+    if urgency == "none":
+        return "No constraint"
+    if urgency == "low":
+        m = re.search(r"Q\d\s+(\d{4})", crossover_label or "")
+        return "Beyond %s" % m.group(1) if m else "Beyond horizon"
+    return crossover_label or ""  # "Q3 2027" style
+
+
+def _crossover_detail(c: Dict[str, Any]) -> str:
+    """One analyst-ready sentence saying WHAT the crossover means, with the real
+    numbers — replaces the bare 'ALREADY CONSTRAINED' phrasing that read like a
+    model failure instead of a binding constraint found today."""
+    s, d = c.get("supply") or {}, c.get("demand") or {}
+    unit = s.get("unit") or d.get("unit") or ""
+    sv, dv = s.get("value"), d.get("value")
+    asof = d.get("date") or s.get("date") or ""
+    label = c.get("crossover_management")
+    if label == "ALREADY_CONSTRAINED":
+        return ("US apparent consumption (%s %s) already meets or exceeds domestic "
+                "production (%s %s) as of %s. The constraint is binding today — any "
+                "sector growth requires increased imports or new domestic capacity."
+                % (_fmt_num(dv), unit, _fmt_num(sv), unit, asof or "the latest USGS data"))
+    if label and label.startswith("Q"):
+        return ("US demand (%s %s) is projected to exceed domestic production (%s %s) "
+                "in %s at the modeled growth rates. Watch import dependence as the "
+                "crossover approaches." % (_fmt_num(dv), unit, _fmt_num(sv), unit, label))
+    if label and "no crossover" in label:
+        return ("Domestic production (%s %s) stays ahead of demand (%s %s) at the "
+                "modeled growth rates — no supply constraint within the 20-year window."
+                % (_fmt_num(sv), unit, _fmt_num(dv), unit))
+    return ""
+
+
+def _fmt_num(v) -> str:
+    try:
+        return "{:,.0f}".format(float(v))
+    except (TypeError, ValueError):
+        return str(v)
 
 
 def _constraint_sort_key(c: Dict[str, Any]) -> Tuple[int, float]:
@@ -858,7 +909,7 @@ def _constraint_sort_key(c: Dict[str, Any]) -> Tuple[int, float]:
     if not label:
         # materials WITH data but no crossover model sort above true unavailables
         return (3, 0.0) if c.get("status") in ("partial_data", "insufficient_data") else (4, 0.0)
-    if label == "ALREADY CONSTRAINED":
+    if label == "ALREADY_CONSTRAINED":
         return (0, 0.0)
     m = re.search(r"Q(\d)\s+(\d{4})", label)
     if m:
@@ -928,6 +979,11 @@ class ConstraintAuditor:
         start_year = datetime.now().year
         for c in constraints:
             c["severity"] = _severity(c.get("crossover_management"), start_year)
+            c["urgency"] = _urgency(c.get("crossover_management"), start_year)
+            c["urgency_badge"] = _urgency_badge(c.get("crossover_management"), c["urgency"])
+            detail = _crossover_detail(c)
+            if detail:
+                c["crossover_detail"] = detail
         log.append({"step": "MATERIALS",
                     "detail": "Analyzed %d materials: %d with full supply/demand, "
                               "%d with partial data" % (len(materials), n_eval, n_partial)})
@@ -1055,9 +1111,18 @@ def render_human_readable(result: Dict[str, Any]) -> str:
                 lines.append("    Quote: \"%s\" [%s]" % (wp.get("quote", ""), wp.get("url", "")))
             _render_indicator(lines, c.get("indicator"))
             continue
-        lines.append("BINDING CONSTRAINT: %s" % c.get("material", "?"))
-        lines.append("  Management CAGR: demand exceeds supply in %s" % c.get("crossover_management"))
-        lines.append("  Industry CAGR:   demand exceeds supply in %s" % c.get("crossover_industry"))
+        lines.append("BINDING CONSTRAINT: %s%s" % (
+            c.get("material", "?"),
+            "  [%s]" % c["urgency_badge"] if c.get("urgency_badge") else ""))
+        if c.get("crossover_detail"):
+            prefix = "⚠️  " if c.get("urgency") == "immediate" else "  "
+            lines.append("%s%s" % (prefix, c["crossover_detail"]))
+            src = (c.get("demand") or {}).get("source") or (c.get("supply") or {}).get("source")
+            if src:
+                lines.append("     Source: %s" % src)
+        if c.get("crossover_management") != "ALREADY_CONSTRAINED":
+            lines.append("  Management CAGR: demand exceeds supply in %s" % c.get("crossover_management"))
+            lines.append("  Industry CAGR:   demand exceeds supply in %s" % c.get("crossover_industry"))
         s = c.get("supply", {})
         d = c.get("demand", {})
         lines.append("  Supply: %s %s growing at %s%%" % (

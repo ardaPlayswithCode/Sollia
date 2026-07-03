@@ -647,8 +647,15 @@ def chunk_paragraph(text: str, max_chars: int = 800, min_chars: int = 300) -> Li
 
 
 def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: str = '', primary_doc: str = '') -> List[dict]:
+    # REAL printed page numbers (Part 5): map each chunk to the filing's own
+    # pagination. The old value here was a synthetic char_count//3000 estimate —
+    # fake precision an analyst would eventually catch. page_number is now the
+    # printed page, or None when the filing's pagination didn't survive cleaning.
+    from src.utils.page_numbers import build_page_map, page_for_offset
+    page_map = build_page_map(text)
+    cursor = 0  # moving find() start so repeated chunk text maps in order
     sections = split_sections(text)
-    chunks, char_count = [], 0
+    chunks = []
     gi = 0  # running index → guarantees a UNIQUE chunk_id (section_name[:30] collides)
     for section in sections:
         paras = split_paragraphs(section["text"])
@@ -656,7 +663,15 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
             sub_chunks = chunk_paragraph(para)
             for si, sub in enumerate(sub_chunks):
                 sents = split_sentences(sub)
-                char_count += len(sub)
+                page = None
+                if page_map:
+                    probe = sub[:80]
+                    off = text.find(probe, cursor)
+                    if off == -1:
+                        off = text.find(probe)
+                    if off != -1:
+                        cursor = off
+                        page = page_for_offset(page_map, off)
                 chunks.append({
                     "chunk_id": f"{doc_type}_{section['section_name'][:30]}_{pi}_{si}_{gi}",
                     "text": sub,
@@ -665,7 +680,7 @@ def build_chunks(text: str, doc_type: str, ticker: str, year: int, accession: st
                         "ticker": ticker, "year": year,
                         "source_doc_type": doc_type,
                         "section": section["section_name"],
-                        "page_number": max(1, char_count // 3000),
+                        "page_number": page,
                         "paragraph_index": pi,
                         "sentence_count": len(sents),
                         "accession_number": accession,
@@ -1198,25 +1213,18 @@ CRITICAL: reasoning must be a complete, specific sentence (never the literal wor
     return prompt
 
 def _parse_discrepancy_array(text):
-    """Parse LLM response text into a list of discrepancy dicts.
-    Strips markdown code fences and extracts the JSON array. Returns [] on failure."""
-    import json as _json
+    """Parse LLM response text into a list of discrepancy dicts via the shared
+    tolerant extractor (fences, preamble, trailing commas, single quotes,
+    comments). Returns [] on failure."""
     if not text or not isinstance(text, str):
         return []
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
     try:
-        data = _json.loads(cleaned)
-    except Exception:
-        m = re.search(r'\[.*\]', cleaned, re.DOTALL)
-        if not m:
-            return []
-        try:
-            data = _json.loads(m.group(0))
-        except Exception:
-            return []
+        from src.utils.json_extractor import extract_json
+        data = extract_json(text)
+    except ValueError:
+        return []
+    if isinstance(data, dict):
+        data = [data]
     return data if isinstance(data, list) else []
 
 
@@ -1224,11 +1232,14 @@ def _call_llm(prompt, provider_idx=None, max_tokens=400):
     """Call LLM using shared config — delegates to llm_config.call_llm.
 
     PART 4c: default start tier is Groq-70B (this is the quality-sensitive
-    classify step); callers may still pass an explicit provider_idx."""
+    classify step); callers may still pass an explicit provider_idx.
+    requires_strict_json: classify output is a JSON array with exact sentence
+    indices — jumbo batches (>4k words) promote to Fable 5 via the router."""
     if provider_idx is None:
         provider_idx = start_tier("corporate_discrepancy")
     try:
-        return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx)
+        return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx,
+                        requires_strict_json=True)
     except Exception:
         return "", {"cached": False, "provider": "failed"}
 
@@ -1645,7 +1656,7 @@ def build_citations(documents):
                     "document_type": _display_doc_type(doc_type, year),
                     "document_type_raw": doc_type,
                     "section": meta.get("section", ""),
-                    "page_number": meta.get("page_number", 1),
+                    "page_number": meta.get("page_number"),  # printed page or None — never fabricated
                     "paragraph_index": meta.get("paragraph_index", 0),
                     "sentence_index": idx,
                     "sentence_text": sents[idx] if idx < len(sents) else "",
@@ -1719,12 +1730,10 @@ def _audit_high_severity(findings: List[dict]) -> None:
         text, _meta = call_llm(prompt, max_tokens=300, temperature=0.0,
                                provider_idx=0, pin_tier=True,
                                agent="corporate_discrepancy", stage="severity_audit")
-        cleaned = text.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
-            cleaned = re.sub(r"\n?```$", "", cleaned).strip()
-        import json as _json
-        verdicts = _json.loads(cleaned[cleaned.find("["): cleaned.rfind("]") + 1])
+        from src.utils.json_extractor import extract_json
+        verdicts = extract_json(text)
+        if isinstance(verdicts, dict):
+            verdicts = [verdicts]
         drop_ids = set()
         for v in verdicts:
             i = v.get("id")

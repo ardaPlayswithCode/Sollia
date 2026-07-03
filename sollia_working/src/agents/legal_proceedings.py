@@ -638,28 +638,16 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
 
                         response, _ = call_llm(prompt, max_tokens=2000,
                                                provider_idx=start_tier("legal_proceedings"),
-                                               agent="legal_proceedings", ticker=ticker)
+                                               agent="legal_proceedings", ticker=ticker,
+                                               requires_strict_json=True)
                         try:
-                            cleaned = response.strip()
-                            # Remove markdown
-                            if cleaned.startswith('```json'):
-                                cleaned = cleaned[7:]
-                            if cleaned.startswith('```'):
-                                cleaned = cleaned[3:]
-                            if cleaned.endswith('```'):
-                                cleaned = cleaned[:-3]
-                            cleaned = cleaned.strip()
-
-                            try:
-                                data = json.loads(cleaned)
-                            except json.JSONDecodeError:
-                                # The LLM occasionally emits a stray backslash inside a
-                                # quoted legal citation (e.g. "Invalid \escape"), which
-                                # is not a valid JSON escape. Double any lone backslash
-                                # that is not part of a legal escape and retry once
-                                # before falling through to the unparseable handler.
-                                sanitized = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', cleaned)
-                                data = json.loads(sanitized)
+                            # Shared tolerant extractor: fences, preamble, trailing
+                            # commas, single quotes, comments, AND the stray-backslash
+                            # legal-citation case (repair lives in json_extractor now).
+                            from src.utils.json_extractor import extract_json
+                            data = extract_json(response)
+                            if not isinstance(data, dict):
+                                raise ValueError("expected a JSON object")
                             # Extract proceedings list (for 10-K/10-Q) or events (for 8-K)
                             proceedings_list = data.get('proceedings', data.get('events', []))
                             # Merge duplicate findings that describe the same case/event.
@@ -682,11 +670,20 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             # Confirm each LLM-quoted excerpt is actually present in the
                             # source filing text, so the export can flag trustworthy
                             # citations. Pure string match — no model call, no cache write.
+                            from src.utils.page_numbers import build_page_map, page_of_quote
+                            _pm_curr = build_page_map(curr_text)
+                            _pm_prev = build_page_map(prev_text)
                             for _proc in proceedings_list:
                                 _proc["current_quote_verified"] = _quote_in_text(
                                     _proc.get("current_quote"), curr_text)
                                 _proc["prior_quote_verified"] = _quote_in_text(
                                     _proc.get("prior_quote"), prev_text)
+                                _pg = page_of_quote(curr_text, _proc.get("current_quote") or "", _pm_curr)
+                                if _pg:
+                                    _proc["current_quote_page"] = _pg
+                                _pg = page_of_quote(prev_text, _proc.get("prior_quote") or "", _pm_prev)
+                                if _pg:
+                                    _proc["prior_quote_page"] = _pg
                             # Add score
                             score = self._calculate_score(proceedings_list)
                             # Store in findings with score

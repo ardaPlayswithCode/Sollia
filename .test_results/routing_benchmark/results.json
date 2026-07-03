@@ -1,0 +1,348 @@
+{
+ "started": "2026-07-03T20:00:00.551371+00:00",
+ "models": {
+  "1": {
+   "name": "Groq-70B",
+   "model": "llama-3.3-70b-versatile",
+   "tier": 1,
+   "tests": {
+    "A_agent4_risk": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 1.0,
+      "instruction_following": 1.0,
+      "recoverable_rate": 1.0,
+      "valid_rate": 1.0,
+      "avg_latency_ms": 3887,
+      "p95_latency_ms": 3777,
+      "deterministic": false,
+      "rate_limited_429s": 0,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 3776.977777481079,
+       "chars": 6928,
+       "head": "[\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"U.S. Trade Policy Alterations\",\n    \"rank\": 1,\n    \"old_quote\": \"\",\n    \"new_quote\": \"U.S. trade policy alterations in 2025, including heightened import"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 4118.809938430786,
+       "chars": 9229,
+       "head": "[\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"U.S. Trade Policy Alterations\",\n    \"rank\": 1,\n    \"old_quote\": \"\",\n    \"new_quote\": \"U.S. trade policy alterations in 2025, including heightened import"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 3765.147924423218,
+       "chars": 6847,
+       "head": "[\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"U.S. Trade Policy Alterations\",\n    \"rank\": 1,\n    \"old_quote\": \"\",\n    \"new_quote\": \"U.S. trade policy alterations in 2025, including heightened import"
+      }
+     ]
+    },
+    "B_agent1_classify": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 1.0,
+      "instruction_following": 1.0,
+      "recoverable_rate": 1.0,
+      "valid_rate": 1.0,
+      "avg_latency_ms": 964,
+      "p95_latency_ms": 1039,
+      "deterministic": false,
+      "rate_limited_429s": 0,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1043.9951419830322,
+       "chars": 558,
+       "head": "[{\"pair\":\"10-K_vs_10-Q\",\"is_discrepancy\":true,\"discrepancy_type\":\"numerical_contradiction\",\"severity\":\"high\",\"weight\":100,\"reasoning\":\"The 10-K report states that the total assets for the company, exc"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 808.4278106689453,
+       "chars": 558,
+       "head": "[{\"pair\":\"10-K_vs_10-Q\",\"is_discrepancy\":true,\"discrepancy_type\":\"numerical_contradiction\",\"severity\":\"high\",\"weight\":100,\"reasoning\":\"The 10-K report states that the total assets for the company, exc"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1039.4210815429688,
+       "chars": 626,
+       "head": "[{\"pair\":\"10-K_vs_10-Q\",\"is_discrepancy\":true,\"discrepancy_type\":\"numerical_contradiction\",\"severity\":\"high\",\"weight\":100,\"reasoning\":\"The 10-K report states that the total assets for the company, exc"
+      }
+     ]
+    },
+    "C_agent2_stage1": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 0.0,
+      "instruction_following": 0.0,
+      "recoverable_rate": 1.0,
+      "valid_rate": 1.0,
+      "avg_latency_ms": 1469,
+      "p95_latency_ms": 1473,
+      "deterministic": false,
+      "rate_limited_429s": 0,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1455.3279876708984,
+       "chars": 2421,
+       "head": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year an"
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1473.099946975708,
+       "chars": 2495,
+       "head": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year an"
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1477.086067199707,
+       "chars": 2505,
+       "head": "```json\n[\n  {\n    \"is_promise\": true,\n    \"text\": \"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year an"
+      }
+     ]
+    }
+   }
+  },
+  "2": {
+   "name": "Groq-8B",
+   "model": "llama-3.1-8b-instant",
+   "tier": 2,
+   "tests": {
+    "A_agent4_risk": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 1.0,
+      "instruction_following": 1.0,
+      "recoverable_rate": 1.0,
+      "valid_rate": 1.0,
+      "avg_latency_ms": 2407,
+      "p95_latency_ms": 2343,
+      "deterministic": true,
+      "rate_limited_429s": 1,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 2312.8881454467773,
+       "chars": 7194,
+       "head": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Supply Chain Disruption\",\n    \"rank\": 1,\n    \"old_quote\": \"Unexpected changes in business conditions, materials pricing, including inflation of ra"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 2565.4661655426025,
+       "chars": 7194,
+       "head": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Supply Chain Disruption\",\n    \"rank\": 1,\n    \"old_quote\": \"Unexpected changes in business conditions, materials pricing, including inflation of ra"
+      },
+      {
+       "clean_json": true,
+       "instruction_following": true,
+       "recoverable": true,
+       "valid": true,
+       "ms": 2343.194007873535,
+       "chars": 7194,
+       "head": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Supply Chain Disruption\",\n    \"rank\": 1,\n    \"old_quote\": \"Unexpected changes in business conditions, materials pricing, including inflation of ra"
+      }
+     ]
+    },
+    "B_agent1_classify": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 0.0,
+      "instruction_following": 0.0,
+      "recoverable_rate": 0.0,
+      "valid_rate": 0.0,
+      "avg_latency_ms": 1469,
+      "p95_latency_ms": 1535,
+      "deterministic": true,
+      "rate_limited_429s": 4,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": false,
+       "valid": false,
+       "ms": 1534.574031829834,
+       "chars": 2805,
+       "head": "After analyzing the provided passages, I have identified discrepancies between the 10-K and 10-Q documents. Since both documents refer to the same time period (December 31, 2023, and March 31, 2024), "
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": false,
+       "valid": false,
+       "ms": 1318.1898593902588,
+       "chars": 2805,
+       "head": "After analyzing the provided passages, I have identified discrepancies between the 10-K and 10-Q documents. Since both documents refer to the same time period (December 31, 2023, and March 31, 2024), "
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": false,
+       "valid": false,
+       "ms": 1554.152250289917,
+       "chars": 2805,
+       "head": "After analyzing the provided passages, I have identified discrepancies between the 10-K and 10-Q documents. Since both documents refer to the same time period (December 31, 2023, and March 31, 2024), "
+      }
+     ]
+    },
+    "C_agent2_stage1": {
+     "summary": {
+      "n": 3,
+      "clean_json_rate": 0.0,
+      "instruction_following": 0.0,
+      "recoverable_rate": 1.0,
+      "valid_rate": 1.0,
+      "avg_latency_ms": 1270,
+      "p95_latency_ms": 1123,
+      "deterministic": false,
+      "rate_limited_429s": 4,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 971.1868762969971,
+       "chars": 2844,
+       "head": "```json\n[\n  {\"is_promise\":true, \"text\":\"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year and provide a"
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1714.210033416748,
+       "chars": 2814,
+       "head": "```json\n[\n  {\"is_promise\":true, \"text\":\"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year and provide a"
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": true,
+       "valid": true,
+       "ms": 1123.4211921691895,
+       "chars": 2814,
+       "head": "```json\n[\n  {\"is_promise\":true, \"text\":\"We have introduced a new product and architecture cadence of our Data Center solutions where we seek to complete new computing solutions each year and provide a"
+      }
+     ]
+    }
+   }
+  },
+  "3": {
+   "name": "Gemini-2.5-flash",
+   "model": "gemini-2.5-flash",
+   "tier": 3,
+   "tests": {
+    "A_agent4_risk": {
+     "summary": {
+      "n": 2,
+      "clean_json_rate": 0.0,
+      "instruction_following": 0.0,
+      "recoverable_rate": 0.0,
+      "valid_rate": 0.0,
+      "avg_latency_ms": 11040,
+      "p95_latency_ms": 10812,
+      "deterministic": null,
+      "rate_limited_429s": 7,
+      "hard_errors": 0
+     },
+     "runs": [
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": false,
+       "valid": false,
+       "ms": 10812.124967575073,
+       "chars": 402,
+       "head": "```json\n[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Delays in Product Development and Production\",\n    \"rank\": 1,\n    \"old_quote\": \"We may experience delays in launching and ramping the prod"
+      },
+      {
+       "clean_json": false,
+       "instruction_following": false,
+       "recoverable": false,
+       "valid": false,
+       "ms": 11267.528772354126,
+       "chars": 436,
+       "head": "```json\n[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Future Business Dependence and AI Capabilities\",\n    \"rank\": 1,\n    \"old_quote\": \"In particular, our future business depends in large part"
+      }
+     ]
+    },
+    "B_agent1_classify": {
+     "summary": {
+      "n": 0,
+      "clean_json_rate": null,
+      "instruction_following": null,
+      "recoverable_rate": null,
+      "valid_rate": null,
+      "avg_latency_ms": null,
+      "p95_latency_ms": null,
+      "deterministic": null,
+      "rate_limited_429s": 9,
+      "hard_errors": 0
+     },
+     "runs": []
+    },
+    "C_agent2_stage1": {
+     "summary": {
+      "n": 0,
+      "clean_json_rate": null,
+      "instruction_following": null,
+      "recoverable_rate": null,
+      "valid_rate": null,
+      "avg_latency_ms": null,
+      "p95_latency_ms": null,
+      "deterministic": null,
+      "rate_limited_429s": 9,
+      "hard_errors": 0
+     },
+     "runs": []
+    }
+   }
+  }
+ }
+}

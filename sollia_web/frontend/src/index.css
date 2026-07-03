@@ -109,3 +109,65 @@ input:focus {
   outline: none;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.3), 0 0 40px rgba(59,130,246,0.1);
 }
+
+/* ── Production polish Part 7 ─────────────────────────────────────────────── */
+
+/* Glow pulse on agent cards with findings (GlowingEffect equivalent).
+   Slow breathe — opacity only, GPU-cheap. */
+@keyframes sollia-glow {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.6; }
+}
+.sollia-glow-pulse { animation: sollia-glow 3.5s ease-in-out infinite; }
+
+/* Dot-grid drift (GridBackground): background-position pans one 30px cell
+   every 6s — imperceptibly slow, adds depth without motion noise. */
+@keyframes sollia-grid {
+  from { background-position: 0 0; }
+  to { background-position: 30px 30px; }
+}
+.sollia-grid-drift { animation: sollia-grid 6s linear infinite; }
+
+/* Card hover lift: 4px rise + soft shadow, 200ms ease-out (transform only). */
+.lift-card {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  will-change: transform;
+}
+.lift-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* react-grid-layout dark-theme dressing */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  border-radius: 16px;
+  opacity: 1 !important;
+}
+.react-grid-item > .react-resizable-handle {
+  opacity: 0.25;
+  transition: opacity 0.15s ease;
+}
+.react-grid-item:hover > .react-resizable-handle { opacity: 0.8; }
+.react-grid-item > .react-resizable-handle::after {
+  border-right: 2px solid rgba(148, 163, 184, 0.7) !important;
+  border-bottom: 2px solid rgba(148, 163, 184, 0.7) !important;
+}
+.react-grid-item.react-draggable-dragging {
+  z-index: 30;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+.drag-handle { cursor: grab; }
+.react-draggable-dragging .drag-handle { cursor: grabbing; }
+
+/* Respect prefers-reduced-motion globally: kill every animation/transition,
+   including aurora, glow, grid drift, RGL springs. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

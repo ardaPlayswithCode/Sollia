@@ -13,6 +13,8 @@ _CACHE_ROOT = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), '..', 
 _FILINGS_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'filings')
 _TEXTS_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'texts')
 _LLM_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'llm')
+_COMPANY_TICKERS_CACHE = _os.path.join(_CACHE_ROOT, 'company_tickers.json')
+_FILINGS_TTL_SECONDS = 24 * 3600  # refresh the shared filings list at most daily
 for _d in (_CACHE_ROOT, _FILINGS_CACHE_DIR, _TEXTS_CACHE_DIR, _LLM_CACHE_DIR):
     _os.makedirs(_d, exist_ok=True)
 
@@ -131,20 +133,35 @@ class SECEdgarProvider:
         key = ticker.strip().upper().replace(".", "-")  # " aapl " -> AAPL; BRK.A -> BRK-A (SEC form)
         if key in self._cik_cache:
             return self._cik_cache[key]
+        # Disk cache first: a transient SEC 429 must never make a known ticker
+        # "not resolve to an SEC filer" (that broke Agent 6 on TSLA).
+        cik = self._cik_from_map(key, _load_json(_COMPANY_TICKERS_CACHE))
+        if cik:
+            return cik
         try:
             resp = requests.get(
                 "https://www.sec.gov/files/company_tickers.json",
                 headers=_HEADERS, timeout=15,
             )
             resp.raise_for_status()
-            for item in resp.json().values():
-                if str(item.get("ticker", "")).upper() == key:
-                    cik = str(item["cik_str"]).zfill(10)
-                    self._cik_cache[key] = cik
-                    self._name_cache[key] = item.get("title", "")
-                    return cik
+            data = resp.json()
+            _save_json(_COMPANY_TICKERS_CACHE, data)
+            cik = self._cik_from_map(key, data)
+            if cik:
+                return cik
         except Exception as exc:
             logger.error("CIK lookup failed for %s: %s", ticker, exc)
+        return None
+
+    def _cik_from_map(self, key: str, data) -> Optional[str]:
+        if not isinstance(data, dict):
+            return None
+        for item in data.values():
+            if isinstance(item, dict) and str(item.get("ticker", "")).upper() == key:
+                cik = str(item["cik_str"]).zfill(10)
+                self._cik_cache[key] = cik
+                self._name_cache[key] = item.get("title", "")
+                return cik
         return None
 
     def get_company_name(self, ticker: str) -> str:
@@ -172,11 +189,40 @@ class SECEdgarProvider:
         return [f for f in self.get_all_filings(ticker) if f.get('form', '') in ('10-Q', '10-Q/A')]
 
     def get_all_filings(self, ticker: str) -> List[dict]:
-        """Get ALL 10-K and 10-Q filings (no year filter)."""
+        """Get ALL 10-K and 10-Q filings (no year filter).
+
+        Cache-first against the SHARED .cache/filings/{TICKER}_filings.json
+        (raw SEC submissions schema — the same file Agents 1 & 3 read/write).
+        Fresh cache (<24h) skips the network entirely; a stale cache is still
+        used if SEC is throttling us, so a transient 429 can never turn into
+        "No filings available" (that broke Agent 2 on TSLA)."""
         cik = self.get_cik(ticker)
         if not cik:
             return []
-        all_filings: List[dict] = []
+        path = _os.path.join(_FILINGS_CACHE_DIR, f'{ticker.strip().upper().replace(".", "-")}_filings.json')
+        cached = _load_json(path)
+        if not (isinstance(cached, dict) and cached.get("filings", {}).get("recent")):
+            cached = None  # wrong schema (e.g. old keyed-by-accession writes) — refetch
+        if cached is not None:
+            try:
+                fresh = (time.time() - _os.path.getmtime(path)) < _FILINGS_TTL_SECONDS
+            except OSError:
+                fresh = False
+            if fresh:
+                return self._filings_from_submissions(cik, cached)
+
+        data = self._fetch_submissions(cik, ticker)
+        if data is not None:
+            _save_json(path, data)  # raw submissions schema, per the shared contract
+            return self._filings_from_submissions(cik, data)
+        if cached is not None:
+            logger.warning("SEC unreachable for %s — serving stale filings cache", ticker)
+            return self._filings_from_submissions(cik, cached)
+        return []
+
+    def _fetch_submissions(self, cik: str, ticker: str) -> Optional[dict]:
+        """Live-fetch CIK{cik}.json and merge paginated history into `recent`
+        (heavy filers overflow the 1000-entry recent block)."""
         try:
             url = f"{SEC_BASE}/submissions/CIK{cik}.json"
             resp = requests.get(url, headers=_DATA_HEADERS, timeout=15)
@@ -184,8 +230,25 @@ class SECEdgarProvider:
             data = resp.json()
         except Exception as exc:
             logger.error("Submissions fetch failed for %s: %s", ticker, exc)
-            return []
-        all_filings.extend(self._parse_filing_block(cik, data.get("filings", {}).get("recent", {})))
+            return None
+        recent = data.get("filings", {}).get("recent", {})
+        for file_info in data.get("filings", {}).get("files", []):
+            try:
+                time.sleep(0.12)
+                r = requests.get(f"{SEC_BASE}/submissions/{file_info['name']}",
+                                 headers=_DATA_HEADERS, timeout=30)
+                if r.status_code == 200:
+                    old = r.json()
+                    for k in ("form", "accessionNumber", "filingDate", "reportDate",
+                              "items", "primaryDocument"):
+                        if k in old and k in recent:
+                            recent[k].extend(old.get(k, []))
+            except Exception:
+                pass
+        return data
+
+    def _filings_from_submissions(self, cik: str, data: dict) -> List[dict]:
+        all_filings = self._parse_filing_block(cik, data.get("filings", {}).get("recent", {}))
         all_filings.sort(key=lambda x: x.get("filing_date", ""), reverse=True)
         return all_filings
 

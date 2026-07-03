@@ -85,6 +85,7 @@ def run_selected_agents(
     year: int = None,  # DEPRECATED (Part 2, 2026-07-01): Agent 1 uses a rolling
                        # 5-year window; other agents already self-select periods.
     emit=None,
+    on_result=None,  # optional callback(agent_id, result) fired as each agent finishes
 ):
     """Run selected agents CONCURRENTLY and return (results, weights, logs).
 
@@ -125,14 +126,31 @@ def run_selected_agents(
     }
     to_run = {aid: fn for aid, fn in runners.items() if aid in selected and aid in AGENTS}
 
+    # Part 3c: submit FAST agents first. All agents still run concurrently, but
+    # the LLM semaphore (llm_config, 3 concurrent live calls) means submission
+    # order decides who gets the first turns — the analyst sees Legal (~3s),
+    # Constraint (~5s), Risk Factors (~10s) and Moat results while the two
+    # heavyweights (Promise Audit, Discrepancy) are still working.
+    _FAST_FIRST = ["legal_proceedings", "constraint_auditor", "risk_factors",
+                   "moat_auditor", "promise_audit", "corporate_discrepancy"]
+    ordered_ids = [a for a in _FAST_FIRST if a in to_run] + \
+                  [a for a in to_run if a not in _FAST_FIRST]
+
     raw: Dict[str, dict] = {}
     if to_run:
         with ThreadPoolExecutor(max_workers=len(to_run)) as ex:
-            futures = {ex.submit(fn): aid for aid, fn in to_run.items()}
+            futures = {ex.submit(to_run[aid]): aid for aid in ordered_ids}
             for fut in as_completed(futures):
                 aid = futures[fut]
                 try:
                     raw[aid] = fut.result()
+                    # Live per-agent result (Part 3c/7d): the UI renders this
+                    # card immediately instead of waiting for the whole run.
+                    if on_result:
+                        try:
+                            on_result(aid, raw[aid])
+                        except Exception:
+                            pass
                 except Exception as e:
                     raw[aid] = {"error": str(e)}
                     if emit:

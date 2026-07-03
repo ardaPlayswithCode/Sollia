@@ -125,6 +125,22 @@ def get(run_id: str) -> Optional[dict]:
         return copy.deepcopy(run) if run else None
 
 
+def set_agent_result(run_id: str, agent_id: str, result: dict) -> None:
+    """Store one agent's finished result so the stream can deliver it LIVE —
+    the analyst reads Legal's findings while the heavyweights still run
+    (production polish Part 3c/7d). Thread-safe; embeddings stripped."""
+    with _LOCK:
+        run = _RUNS.get(run_id)
+        if not run:
+            return
+        run["seq"] += 1
+        run.setdefault("agent_results", {})[agent_id] = {
+            "seq": run["seq"], "result": _strip_internal(result)}
+        agent = run["agents"].get(agent_id)
+        if agent and agent["status"] == "running":
+            agent["status"] = "complete"
+
+
 def snapshot_since(run_id: str, since_seq: int) -> Optional[dict]:
     """Snapshot containing only log lines with seq > since_seq (for streaming)."""
     with _LOCK:
@@ -140,8 +156,17 @@ def snapshot_since(run_id: str, since_seq: int) -> Optional[dict]:
                     max_seq = l["seq"]
             agents_out[aid] = {"id": aid, "name": a["name"], "status": a["status"],
                                "new_logs": new_logs}
+        # Per-agent results that landed since the last poll (live cards).
+        new_results = {}
+        for aid, blk in (run.get("agent_results") or {}).items():
+            if blk["seq"] > since_seq:
+                new_results[aid] = blk["result"]
+                if blk["seq"] > max_seq:
+                    max_seq = blk["seq"]
         out = {"status": run["status"], "error": run["error"],
                "agents": agents_out, "max_seq": max_seq}
+        if new_results:
+            out["new_results"] = new_results
         if run["status"] in ("complete", "error"):
             out["result"] = run.get("result")
             out["export"] = run.get("export")
@@ -282,6 +307,7 @@ def _findings_corporate(result: dict):
                     # sentence_text is pulled verbatim from the parsed filing chunk,
                     # so a non-empty excerpt is confirmed present in the document.
                     "verified": bool(excerpt.strip()),
+                    **({"page_number": s["page_number"]} if s.get("page_number") else {}),
                 })
         severity = _sev_label(d.get("severity"))
         dtype = d.get("discrepancy_type", "discrepancy")
@@ -350,6 +376,7 @@ def _findings_legal(result: dict):
                     "excerpt": p.get("prior_quote", ""),
                     "url": p.get("prior_edgar_url", ""),
                     "verified": bool(p.get("prior_quote_verified")),
+                    **({"page_number": p["prior_quote_page"]} if p.get("prior_quote_page") else {}),
                 })
             if p.get("current_quote"):
                 cits.append({
@@ -358,6 +385,7 @@ def _findings_legal(result: dict):
                     "excerpt": p.get("current_quote", ""),
                     "url": p.get("edgar_url", ""),
                     "verified": bool(p.get("current_quote_verified")),
+                    **({"page_number": p["current_quote_page"]} if p.get("current_quote_page") else {}),
                 })
             status = p.get("status") or p.get("change_type") or "update"
             severity = _sev_label(p.get("priority"))
@@ -410,6 +438,7 @@ def _risk_finding(c: dict, source: str, old_doc: str, new_doc: str) -> dict:
             "excerpt": c.get("old_quote", ""),
             "url": c.get("old_url", ""),
             "verified": bool(c.get("old_quote_verified")),
+            **({"page_number": c["old_quote_page"]} if c.get("old_quote_page") else {}),
         })
     if c.get("new_quote"):
         cits.append({
@@ -418,6 +447,7 @@ def _risk_finding(c: dict, source: str, old_doc: str, new_doc: str) -> dict:
             "excerpt": c.get("new_quote", ""),
             "url": c.get("new_url", ""),
             "verified": bool(c.get("new_quote_verified")),
+            **({"page_number": c["new_quote_page"]} if c.get("new_quote_page") else {}),
         })
     category = str(c.get("category", "")).upper()
     severity = _RISK_SEVERITY.get(category, "medium")
@@ -473,8 +503,12 @@ def _findings_constraint(result: dict):
                              "verified": bool(blk.get("quote_verified", True))})
         status = c.get("status")
         if status == "success":
-            summary = "%s — demand crosses supply: management %s, industry %s" % (
-                c.get("material", "?"), c.get("crossover_management"), c.get("crossover_industry"))
+            # Analyst framing (production-polish Part 4): lead with what the
+            # crossover MEANS, not the bare model label.
+            summary = "%s — %s" % (c.get("material", "?"),
+                                   c.get("crossover_detail")
+                                   or "demand crosses supply: management %s, industry %s" % (
+                                       c.get("crossover_management"), c.get("crossover_industry")))
         else:
             summary = "%s — %s: %s" % (
                 c.get("material", "?"), status.replace("_", " "), c.get("reason", ""))
@@ -485,6 +519,9 @@ def _findings_constraint(result: dict):
             "summary": summary,
             "crossover_management": c.get("crossover_management"),
             "crossover_industry": c.get("crossover_industry"),
+            "crossover_detail": c.get("crossover_detail", ""),
+            "urgency": c.get("urgency", "none"),
+            "urgency_badge": c.get("urgency_badge", ""),
             "model_note": c.get("model_note", ""),
             "citations": cits,
         })
@@ -523,6 +560,7 @@ def _findings_moat(result: dict):
                 "excerpt": cc.get("sentence", ""),
                 "url": cc.get("url", ""),
                 "verified": bool(cc.get("quote_verified")),
+                **({"page_number": cc["page_number"]} if cc.get("page_number") else {}),
             })
         ch = m.get("strongest_challenge")
         if ch and ch.get("sentence"):
@@ -646,8 +684,12 @@ def run_pipeline(run_id: str, ticker: str, selected, year=None):
     def _emit(agent_id, message, kind="info"):
         emit(run_id, agent_id, message, kind)
 
+    def _on_result(aid, res):
+        set_agent_result(run_id, aid, res)
+
     try:
-        results, weights, _logs = run_selected_agents(ticker, selected, emit=_emit)
+        results, weights, _logs = run_selected_agents(ticker, selected, emit=_emit,
+                                                      on_result=_on_result)
 
         if not results:
             merged = {"score": 50, "signal": "HOLD", "signal_color": "#F59E0B",

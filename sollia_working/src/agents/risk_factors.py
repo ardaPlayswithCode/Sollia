@@ -642,8 +642,20 @@ class RiskFactorAgent:
 
         _emit("Comparing risk factors risk-by-risk...", "analyze")
         try:
+            # requires_strict_json routes this to Groq-70B (empirically 3/3
+            # clean+valid on this exact prompt shape; see MODEL_PROFILES).
             response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
-                                      provider_idx=start_tier("risk_factors"))
+                                      provider_idx=start_tier("risk_factors"),
+                                      requires_strict_json=True)
+            if self._parse_changes(response) is None:
+                # A garbage response cached during a rate-limit storm would be
+                # served forever — retry once past the cache; the fresh reply
+                # overwrites the poisoned entry.
+                _emit("Comparison response unparseable — retrying fresh...", "flag")
+                response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                          provider_idx=start_tier("risk_factors"),
+                                          requires_strict_json=True,
+                                          bypass_cache=True)
         except Exception as e:
             _emit("LLM comparison failed: %s" % str(e)[:120], "flag")
             result["summary"] = "Risk factor comparison failed (LLM error)."
@@ -733,6 +745,9 @@ class RiskFactorAgent:
         changes.sort(key=lambda c: c.get("rank", 999) if isinstance(c.get("rank"), int) else 999)
         # Output EVERY significant change found (ranked), not just the top 10.
 
+        from src.utils.page_numbers import build_page_map, page_of_quote
+        old_pm = build_page_map(old_rf)
+        new_pm = build_page_map(new_rf)
         top_changes = []
         for i, c in enumerate(changes, start=1):
             category = str(c.get("category", "")).upper().strip()
@@ -746,7 +761,7 @@ class RiskFactorAgent:
             # Mark quotes the model cut off at max_tokens (on both the verified
             # and unverified paths) so a sentence that just stops reads as
             # truncated, not broken.
-            top_changes.append({
+            entry = {
                 "rank": i,
                 "category": category,
                 "risk_title": (c.get("risk_title") or "").strip(),
@@ -758,7 +773,16 @@ class RiskFactorAgent:
                 "old_quote_verified": bool(old_ok),
                 "new_quote_verified": bool(new_ok),
                 "verified": bool(verified),
-            })
+            }
+            # Printed page numbers (Part 5) — attached only when the filing's
+            # pagination survived cleaning AND the quote was located.
+            pg = page_of_quote(old_rf, old_q, old_pm) if old_q else None
+            if pg:
+                entry["old_quote_page"] = pg
+            pg = page_of_quote(new_rf, new_q, new_pm) if new_q else None
+            if pg:
+                entry["new_quote_page"] = pg
+            top_changes.append(entry)
         return top_changes
 
     @staticmethod
@@ -823,7 +847,14 @@ class RiskFactorAgent:
         emit("Comparing 10-Q risk factors against %s..." % old_doc_type, "analyze")
         try:
             response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
-                                      provider_idx=start_tier("risk_factors"))
+                                      provider_idx=start_tier("risk_factors"),
+                                      requires_strict_json=True)
+            if self._parse_changes(response) is None:
+                emit("10-Q comparison unparseable — retrying fresh...", "flag")
+                response, meta = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                          provider_idx=start_tier("risk_factors"),
+                                          requires_strict_json=True,
+                                          bypass_cache=True)
         except Exception as e:
             emit("10-Q comparison failed: %s" % str(e)[:120], "flag")
             return
@@ -1051,30 +1082,18 @@ class RiskFactorAgent:
         failure."""
         if not response:
             return []
-        cleaned = response.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[7:]
-        elif cleaned.startswith("```"):
-            cleaned = cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-        data = None
+        # Shared tolerant extractor first (fences, preamble, trailing commas,
+        # single quotes, comments) — see src/utils/json_extractor.
         try:
-            data = json.loads(cleaned)
-        except Exception:
-            # Salvage the first complete JSON array embedded in the response.
-            m = re.search(r"\[.*\]", cleaned, re.DOTALL)
-            if m:
-                try:
-                    data = json.loads(m.group(0))
-                except Exception:
-                    data = None
+            from src.utils.json_extractor import extract_json
+            data = extract_json(response)
+        except ValueError:
+            data = None
         if data is None:
             # Output was likely truncated mid-array (hit max_tokens) — recover
             # every complete flat object so we keep the findings that did fit.
             parsed = []
-            for obj in re.findall(r"\{[^{}]*\}", cleaned, re.DOTALL):
+            for obj in re.findall(r"\{[^{}]*\}", response, re.DOTALL):
                 try:
                     parsed.append(json.loads(obj))
                 except Exception:

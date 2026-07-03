@@ -20,6 +20,7 @@ import threading
 from datetime import date, datetime, timedelta
 from src.config.llm_config import call_llm as _call_llm_config, start_tier as _start_tier
 from src.utils.scoring import score_promise_audit
+from src.utils.json_extractor import extract_json
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -450,7 +451,8 @@ def _set_llm_cache(prompt_hash: str, prompt: str, response: str, model: str):
         pass
 
 
-def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0) -> Tuple[str, str]:
+def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0,
+              requires_long_context: bool = False) -> Tuple[str, str]:
     """Call LLM using universal config. Returns (response_text, model_used).
 
     provider_idx (PART 4c) selects the chain START tier so Stage 1's high-volume
@@ -466,7 +468,8 @@ def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0) -> Tup
 
     try:
         text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0,
-                                      provider_idx=provider_idx)
+                                      provider_idx=provider_idx,
+                                      requires_long_context=requires_long_context)
         model = meta.get("model", "unknown")
         if text:
             _set_llm_cache(prompt_hash, prompt, text, model)
@@ -528,54 +531,39 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
     """Parse and validate the Stage 1 LLM response."""
     if not response:
         return []
-    
-    # Strip markdown code fences and any text before/after JSON
-    cleaned = response.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-    
-    # Aggressively extract JSON array — find first [ to last ]
-    match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-    if match:
-        cleaned = match.group(0)
-    
-    # Try to parse JSON
+
+    # Universal tolerant extractor (fences, preamble, trailing commas, single
+    # quotes, comments) — shared by every agent. See src/utils/json_extractor.
     try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        # Retry: extract first [ to last ]
-        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+        data = extract_json(response)
+        if isinstance(data, dict):
+            data = [data]
+    except ValueError:
         data = None
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                data = None
-        if data is None:
-            logger.warning("Failed to parse Stage 1 response JSON — using deterministic fallback")
-            # Deterministic fallback (2026-07-01 Part 2 fix): only sentences with an
-            # explicit FUTURE_KEYWORD survive — the old fallback marked EVERY batch
-            # sentence is_promise=true, which converted historical revenue
-            # statements into "promises" whenever a JSON parse failed. The items
-            # flow through the normal validation below, so they get the same
-            # verbatim check + source metadata as LLM-extracted promises.
-            data = []
-            for s in batch:
-                text = s.get("text", s.get("sentence", ""))
-                if not text or not has_future_keyword(text):
-                    continue
-                words = [w.strip('.,;:!?()[]{}') for w in text.lower().split() if len(w) > 3]
-                search_terms = list(set(words[:8])) if words else [text[:30]]
-                data.append({
-                    "is_promise": True,
-                    "text": text,
-                    "category": "other",
-                    "severity": 5,
-                    "deadline": None,
-                    "measurable_outcome": "",
-                    "search_terms": search_terms
-                })
+    if data is None:
+        logger.warning("Failed to parse Stage 1 response JSON — using deterministic fallback")
+        # Deterministic fallback (2026-07-01 Part 2 fix): only sentences with an
+        # explicit FUTURE_KEYWORD survive — the old fallback marked EVERY batch
+        # sentence is_promise=true, which converted historical revenue
+        # statements into "promises" whenever a JSON parse failed. The items
+        # flow through the normal validation below, so they get the same
+        # verbatim check + source metadata as LLM-extracted promises.
+        data = []
+        for s in batch:
+            text = s.get("text", s.get("sentence", ""))
+            if not text or not has_future_keyword(text):
+                continue
+            words = [w.strip('.,;:!?()[]{}') for w in text.lower().split() if len(w) > 3]
+            search_terms = list(set(words[:8])) if words else [text[:30]]
+            data.append({
+                "is_promise": True,
+                "text": text,
+                "category": "other",
+                "severity": 5,
+                "deadline": None,
+                "measurable_outcome": "",
+                "search_terms": search_terms
+            })
     
     if not isinstance(data, list):
         return []
@@ -791,8 +779,11 @@ class PromiseAuditAgent:
                 )[:STAGE2_EVIDENCE_CAP]
             prompt = build_stage2_prompt(batch_promises, batch_evidence)
             try:
+                # requires_long_context: jumbo evidence-matching batches (>8k
+                # words) route to Fable 5's 200K context via the dynamic router.
                 resp, model = _call_llm(prompt, max_tokens=4000,
-                                        provider_idx=_start_tier("promise_audit:stage2"))
+                                        provider_idx=_start_tier("promise_audit:stage2"),
+                                        requires_long_context=True)
             except Exception as e:
                 # An LLM failure must NOT crash the agent — defer to the deterministic
                 # net below so every promise still gets an honest verdict.
@@ -1546,24 +1537,13 @@ def parse_stage2_response(
     if not response:
         return []
     
-    cleaned = response.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-    
     try:
-        data = json.loads(cleaned)
-    except json.JSONDecodeError:
-        match = re.search(r'\[.*\]', cleaned, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                logger.warning("Failed to parse Stage 2 response")
-                return []
-        else:
-            return []
-    
+        data = extract_json(response)
+    except ValueError:
+        logger.warning("Failed to parse Stage 2 response")
+        return []
+    if isinstance(data, dict):
+        data = [data]
     if not isinstance(data, list):
         return []
     

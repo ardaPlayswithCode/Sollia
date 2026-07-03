@@ -243,7 +243,11 @@ async def stream_analysis(run_id: str):
                 yield "data: %s\n\n" % json.dumps({"type": "error", "message": "Unknown run id"})
                 return
             since = snap["max_seq"]
-            yield "data: %s\n\n" % json.dumps({"type": "progress", "agents": snap["agents"]})
+            _progress = {"type": "progress", "agents": snap["agents"]}
+            if snap.get("new_results"):
+                # per-agent results stream LIVE as each agent finishes (Part 7d)
+                _progress["new_results"] = snap["new_results"]
+            yield "data: %s\n\n" % json.dumps(_progress)
             if snap["status"] == "complete":
                 yield "data: %s\n\n" % json.dumps({
                     "type": "complete", "result": snap.get("result"), "export": snap.get("export")})
