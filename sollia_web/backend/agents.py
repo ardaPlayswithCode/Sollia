@@ -82,7 +82,8 @@ def get_agents_meta() -> List[dict]:
 def run_selected_agents(
     ticker: str,
     selected: List[str],
-    year: int = 2023,
+    year: int = None,  # DEPRECATED (Part 2, 2026-07-01): Agent 1 uses a rolling
+                       # 5-year window; other agents already self-select periods.
     emit=None,
 ):
     """Run selected agents CONCURRENTLY and return (results, weights, logs).
@@ -92,6 +93,16 @@ def run_selected_agents(
     waiting for it — wall-clock time drops to roughly max(agent) instead of the sum.
     emit(agent_id, message, kind) is an optional live-progress callback (WS5)."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.config.llm_config import reset_run_budget
+    from src.utils.fetch_budget import install as install_fetch_budget, reset_fetch_budget
+    from src.utils.cache_janitor import enforce_cache_limit
+    reset_run_budget()          # fresh per-run LLM budget + cost cap + breaker (Part 8d/1d)
+    install_fetch_budget()      # SEC fetch counter + EDGAR-down breaker (idempotent)
+    reset_fetch_budget()        # fresh per-run SEC fetch budget (Part 8d)
+    _jan = enforce_cache_limit()  # disk-exhaustion guard: 10GB LRU cap (Part 6c)
+    if _jan.get("evicted_files"):
+        print("[cache_janitor] evicted %d files (%.1f MB) to stay under the cache cap"
+              % (_jan["evicted_files"], _jan["evicted_bytes"] / 1e6), flush=True)
 
     def _progress_for(agent_id):
         if emit is None:
@@ -100,7 +111,7 @@ def run_selected_agents(
 
     runners = {
         "corporate_discrepancy": lambda: AGENTS["corporate_discrepancy"].runner(
-            ticker, year, progress=_progress_for("corporate_discrepancy")),
+            ticker, progress=_progress_for("corporate_discrepancy")),
         "promise_audit": lambda: AGENTS["promise_audit"].runner.run(
             ticker, progress=_progress_for("promise_audit")),
         "legal_proceedings": lambda: AGENTS["legal_proceedings"].runner(

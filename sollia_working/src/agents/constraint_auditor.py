@@ -173,6 +173,16 @@ def get_market_data(source_type: str, key: str,
 def _cache_still_fresh(source_type: str, cached: Dict[str, Any]) -> bool:
     now = datetime.now(timezone.utc)
     pub = cached.get("publication_date")
+    if source_type == "usgs":
+        # A payload written by an older parser is stale by definition — parser
+        # upgrades (e.g. the 2026-07-01 withheld/none/subrow fix) must re-extract,
+        # otherwise the old nulls persist forever.
+        try:
+            from src.data.usgs_parser import PARSER_VERSION
+            if cached.get("parser_version") != PARSER_VERSION:
+                return False
+        except Exception:
+            pass
     if source_type == "usgs" and pub:
         try:
             pub_year = int(str(pub)[:4])
@@ -495,23 +505,40 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
     """Resolve supply + demand for one material and compute its crossovers.
 
     The supply/demand fetch routes through get_market_data() to the registry source
-    named on the material (USGS / USA Trade / EIA / etc.). Those live fetchers need
-    a PDF table parser and/or API keys not present in this environment, so each
-    returns None here and the material degrades to status='data_unavailable' with a
-    precise reason (PART 7.6d) — never a fabricated number. The crossover math runs
-    the instant real supply/demand numbers are available."""
+    named on the material (USGS / USA Trade / EIA / etc.). Missing metrics degrade
+    PER-METRIC (2026-07-01 Part 1 fix):
+      * both present            -> status='success', full crossover math
+      * demand only (or supply
+        only)                   -> status='partial_data' — the available side is
+                                   shown with its citation; no crossover is modeled
+      * neither                 -> status='data_unavailable'
+    Every degraded material carries a PRECISE reason (withheld vs none vs not
+    published vs needs-API-key vs fetch failure) and, when USGS publishes it, the
+    WORLD production figure as context. Never a fabricated number."""
     name = material["name"]
-    supply = _fetch_supply(material)
-    demand = _fetch_demand(material)
+    route = material.get("supply_source", "usgs")
+    commodity = material.get("usgs_commodity")
+    ext = _get_usgs_extract(commodity) if commodity else None
+    supply = (ext or {}).get("supply") if route == "usgs" else _fetch_supply(material)
+    demand = (ext or {}).get("demand")
+    world = (ext or {}).get("world_production")
     # FRED price/index signal — attached whether or not USGS tonnage is available,
     # since a price trend is itself constraint context (a cited indicator, not a
     # crossover input: FRED indices/prices don't share units with tonnage).
     indicator = _get_fred(material.get("fred_series")) if material.get("fred_series") else None
 
     if not supply or not demand:
-        reason = _unavailable_reason(material, supply, demand)
-        out = {"material": name, "status": "data_unavailable", "reason": reason,
+        reason = _degradation_reason(material, ext, supply, demand, world)
+        out = {"material": name,
+               "status": "partial_data" if (supply or demand) else "data_unavailable",
+               "reason": reason,
                "crossover_management": None, "crossover_industry": None}
+        if supply:
+            out["supply"] = supply
+        if demand:
+            out["demand"] = demand
+        if world:
+            out["world_production"] = world
         if indicator:
             out["indicator"] = _indicator_block(indicator)
         return out
@@ -525,8 +552,13 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
         management_cagr=(mgmt or {}).get("decimal"),
     )
     if cross["insufficient_data"]:
+        # The DATA is present (cited below) — only the growth-rate model input is
+        # missing, so say that and still show the numbers we extracted.
         out = {"material": name, "status": "insufficient_data", "reason": cross["model_note"],
-               "crossover_management": None, "crossover_industry": None}
+               "crossover_management": None, "crossover_industry": None,
+               "supply": supply, "demand": demand}
+        if world:
+            out["world_production"] = world
         if indicator:
             out["indicator"] = _indicator_block(indicator)
         return out
@@ -536,6 +568,8 @@ def _analyze_material(material: Dict[str, Any], mgmt: Optional[Dict[str, Any]],
         "crossover_industry": cross["crossover_industry"],
         "supply": supply, "demand": demand, "model_note": cross["model_note"],
     }
+    if world:
+        out["world_production"] = world  # cited world context beside the US figures
     if indicator:
         ib = _indicator_block(indicator)
         # PART 7.6e: flag when the FRED reading and the USGS supply data are from
@@ -582,21 +616,27 @@ def _date_mismatch_note(d1: Optional[str], d2: Optional[str],
 def _get_usgs_extract(commodity: str) -> Optional[Dict[str, Any]]:
     """Cached full MCS extract (supply + demand together, one PDF fetch) for a USGS
     commodity. The second of the supply/demand pair is a cache hit, so the PDF is
-    fetched/parsed once per commodity per year (PART 7d #6)."""
-    if not commodity or usgs_extract is None:
+    fetched/parsed once per commodity per year (PART 7d #6).
+
+    CACHE-FIRST even when the parser import is unavailable: a valid cached extract
+    must still be served if pdfplumber is missing in this environment (the old
+    pre-check returned None before ever consulting the cache — 2026-07-01 fix)."""
+    if not commodity:
         return None
     yr = datetime.now().year
     return get_market_data("usgs", "%s_%d" % (_slug(commodity), yr),
-                           lambda: usgs_extract(commodity, yr))
+                           lambda: usgs_extract(commodity, yr) if usgs_extract else None)
 
 
 def _get_fred(series_id: str) -> Optional[Dict[str, Any]]:
     """Cached FRED indicator fetch (PART 7.5b; 30-day staleness via get_market_data).
     Returns a cited index/price datum, or None if FRED is unavailable (no key /
-    invalid series / network) — the caller simply omits the indicator."""
-    if not series_id or fetch_fred is None:
+    invalid series / network) — the caller simply omits the indicator. Cache-first
+    even if the fred_client import failed (same fix as _get_usgs_extract)."""
+    if not series_id:
         return None
-    return get_market_data("fred", _slug(series_id), lambda: fetch_fred(series_id))
+    return get_market_data("fred", _slug(series_id),
+                           lambda: fetch_fred(series_id) if fetch_fred else None)
 
 
 def _fetch_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -619,16 +659,6 @@ def _fetch_supply(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _fetch_demand(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Apparent-consumption (demand). For USGS materials this comes from the same
-    annual MCS PDF (apparent consumption row). None for materials USGS doesn't track."""
-    commodity = material.get("usgs_commodity")
-    if commodity:
-        ext = _get_usgs_extract(commodity)
-        return ext.get("demand") if ext else None
-    return None
-
-
 # -- non-USGS live fetchers: structured + cited, but require API keys (None here) --
 def _fetch_usa_trade(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """USA Trade Online / Census intltrade net-imports proxy. Requires CENSUS_API_KEY
@@ -641,23 +671,75 @@ def _fetch_eia(material: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _unavailable_reason(material: Dict[str, Any], supply, demand) -> str:
+def _fmt_qty(blk: Optional[Dict[str, Any]]) -> str:
+    """'19,000 kilograms, gallium content (2025)' from a supply/demand/world block."""
+    if not blk:
+        return ""
+    val = blk.get("value")
+    unit = blk.get("unit") or ""
+    yr = blk.get("data_year") or blk.get("year")
+    txt = ("{:,.0f}".format(val) if isinstance(val, (int, float)) else str(val))
+    if unit:
+        txt += " " + unit
+    if yr:
+        txt += " (%s)" % yr
+    return txt
+
+
+_DIAG_TEXT = {
+    "withheld": "USGS withholds the US figure (\"W\" — company-proprietary data)",
+    "na": "USGS reports the US figure as not available (NA) for recent years",
+    "not_found": "the MCS sheet's salient statistics carry no such row",
+    "not_published": "USGS does not publish this metric",
+}
+
+
+def _degradation_reason(material: Dict[str, Any], ext: Optional[Dict[str, Any]],
+                        supply, demand, world) -> str:
+    """Material-specific degradation detail (Part 1c, 2026-07-01): say exactly WHY
+    each missing metric is missing, show the side we DO have, and cite world
+    production when USGS publishes it despite withholding the US figure."""
+    name = material["name"]
     route = material.get("supply_source", "usgs")
-    needs = {
-        "usgs": "USGS withheld the value (\"W\") or the MCS PDF was unavailable",
-        "usa_trade": "USA Trade/Census fetch needs CENSUS_API_KEY (or bulk CSV parser)",
-        "eia": "EIA fetch needs EIA_API_KEY",
-        "usitc": "USITC DataWeb fetch needs a session token",
-        "doe": "DOE HALEU report needs a PDF parser",
-        "fda": "FDA DMF capacity needs the DMF listing parser",
-    }.get(route, "live source not yet wired")
-    missing = []
+
+    # Non-USGS supply routes: the gate is a missing API key, not USGS policy.
+    if route == "usa_trade":
+        hs = material.get("hs_code", "?")
+        base = ("Supply data requires CENSUS_API_KEY for USA Trade Online HS %s imports. "
+                "Until provisioned, %s." % (
+                    hs, "only demand-side data is available"
+                    if demand else "no supply or demand data is available for %s" % name))
+        return base
+    if route == "eia":
+        return ("Supply data requires EIA_API_KEY for the EIA series %s. Until "
+                "provisioned, this material cannot be evaluated." % material.get("eia_series", "?"))
+
+    # USGS route.
+    if ext is None:
+        return ("Unable to retrieve supply or demand data for %s: the USGS MCS sheet "
+                "could not be fetched or parsed. This material cannot be evaluated "
+                "until the data source is available." % name)
+
+    diags = ext.get("diagnostics", {})
+    if diags.get("production") == "not_published":
+        detail = diags.get("detail") or _DIAG_TEXT["not_published"]
+        return "%s. See the MCS sheet: %s" % (detail[0].upper() + detail[1:], ext.get("url", ""))
+
+    parts: List[str] = []
     if not supply:
-        missing.append("supply")
+        parts.append("US production: %s" % _DIAG_TEXT.get(diags.get("production"),
+                                                          "no value could be extracted"))
     if not demand:
-        missing.append("apparent consumption")
-    return "Source unavailable for %s: %s (%s)." % (
-        material["name"], needs, "+".join(missing) + " not retrieved")
+        parts.append("US apparent consumption: %s" % _DIAG_TEXT.get(diags.get("consumption"),
+                                                                    "no value could be extracted"))
+    if demand and not supply:
+        parts.append("US apparent consumption is available: %s" % _fmt_qty(demand))
+    if supply and not demand:
+        parts.append("US production is available: %s" % _fmt_qty(supply))
+    if world:
+        parts.append("World production: %s" % _fmt_qty(world))
+    parts.append("Source: %s" % ext.get("url", ""))
+    return "%s — %s." % (name, "; ".join(parts))
 
 
 def _slug(s: str) -> str:
@@ -770,10 +852,12 @@ def _severity(crossover_label: Optional[str], start_year: int) -> str:
 
 
 def _constraint_sort_key(c: Dict[str, Any]) -> Tuple[int, float]:
-    """Earliest management crossover first; data_unavailable last (PART 7c #6)."""
+    """Earliest management crossover first; then partial data; unavailable last
+    (PART 7c #6)."""
     label = c.get("crossover_management")
     if not label:
-        return (3, 0.0)
+        # materials WITH data but no crossover model sort above true unavailables
+        return (3, 0.0) if c.get("status") in ("partial_data", "insufficient_data") else (4, 0.0)
     if label == "ALREADY CONSTRAINED":
         return (0, 0.0)
     m = re.search(r"Q(\d)\s+(\d{4})", label)
@@ -839,15 +923,17 @@ class ConstraintAuditor:
         for material in materials:
             constraints.append(_analyze_material(material, mgmt, industry))
         n_eval = sum(1 for c in constraints if c.get("status") == "success")
+        n_partial = sum(1 for c in constraints if c.get("status") == "partial_data")
         constraints.sort(key=_constraint_sort_key)
         start_year = datetime.now().year
         for c in constraints:
             c["severity"] = _severity(c.get("crossover_management"), start_year)
         log.append({"step": "MATERIALS",
-                    "detail": "Analyzed %d materials, %d with live supply/demand data"
-                              % (len(materials), n_eval)})
+                    "detail": "Analyzed %d materials: %d with full supply/demand, "
+                              "%d with partial data" % (len(materials), n_eval, n_partial)})
         log.append({"step": "OUTPUT", "detail": "Constraint audit complete"})
-        emit("Constraint audit complete (%d/%d materials evaluated)." % (n_eval, len(materials)), "done")
+        emit("Constraint audit complete (%d/%d materials fully evaluated, %d partial)."
+             % (n_eval, len(materials), n_partial), "done")
 
         caps = missing_capabilities()
         result = {
@@ -958,6 +1044,15 @@ def render_human_readable(result: Dict[str, Any]) -> str:
             lines.append("MATERIAL: %s — %s" % (c.get("material", "?"), c.get("status", "")))
             if c.get("reason"):
                 lines.append("  %s" % c["reason"])
+            for side, label in (("supply", "US production"), ("demand", "US apparent consumption")):
+                blk = c.get(side)
+                if blk:
+                    lines.append("  %s: %s" % (label, _fmt_qty(blk)))
+                    lines.append("    Quote: \"%s\" [%s]" % (blk.get("quote", ""), blk.get("url", "")))
+            wp = c.get("world_production")
+            if wp:
+                lines.append("  World production: %s" % _fmt_qty(wp))
+                lines.append("    Quote: \"%s\" [%s]" % (wp.get("quote", ""), wp.get("url", "")))
             _render_indicator(lines, c.get("indicator"))
             continue
         lines.append("BINDING CONSTRAINT: %s" % c.get("material", "?"))
@@ -972,6 +1067,10 @@ def render_human_readable(result: Dict[str, Any]) -> str:
         lines.append("  Demand: %s %s" % (d.get("value"), d.get("unit", "")))
         lines.append("    Source: %s, %s" % (d.get("source", "?"), d.get("date", "?")))
         lines.append("    Quote: \"%s\" [%s]" % (d.get("quote", ""), d.get("url", "")))
+        wp = c.get("world_production")
+        if wp:
+            lines.append("  World production (context): %s" % _fmt_qty(wp))
+            lines.append("    Quote: \"%s\" [%s]" % (wp.get("quote", ""), wp.get("url", "")))
         if c.get("model_note"):
             lines.append("  Note: %s" % c["model_note"])
         if c.get("date_note"):

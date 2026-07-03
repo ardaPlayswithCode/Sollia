@@ -47,7 +47,9 @@ def _now_iso() -> str:
 
 # ── registry ────────────────────────────────────────────────────────────────
 
-def new_run(ticker: str, agents, year: int) -> str:
+def new_run(ticker: str, agents, year=None) -> str:
+    # `year` is DEPRECATED (Part 2, 2026-07-01): Agent 1 analyzes a rolling
+    # 5-year window; the field is kept in the store for old UI clients.
     run_id = uuid.uuid4().hex[:12]
     with _LOCK:
         if len(_RUNS) >= _MAX_RUNS:
@@ -56,7 +58,7 @@ def new_run(ticker: str, agents, year: int) -> str:
         _RUNS[run_id] = {
             "run_id": run_id,
             "ticker": ticker,
-            "year": year,
+            "year": year,  # deprecated — informational only
             "status": "running",  # running | complete | error
             "created": time.time(),
             "agents": {aid: {"id": aid, "name": AGENT_NAMES.get(aid, aid),
@@ -302,7 +304,7 @@ def _findings_promise(result: dict):
             # sentence (verbatim or fuzzy-replaced), so the excerpt is document-backed.
             cits.append({
                 "role": "promise",
-                "document": p.get("promise_source") or "Promise",
+                "document": p.get("promise_source") or "SEC filing",
                 "excerpt": p.get("text", ""),
                 "url": p.get("promise_url", ""),
                 "verified": bool((p.get("text") or "").strip()),
@@ -459,7 +461,10 @@ def _findings_constraint(result: dict):
     out = []
     for c in result.get("constraints", []) or []:
         cits = []
-        for which, role in (("supply", "supply"), ("demand", "demand")):
+        # supply/demand + world-production context (world is cited when USGS
+        # publishes it even where the US figure is withheld — Part 1 fix).
+        for which, role in (("supply", "supply"), ("demand", "demand"),
+                            ("world_production", "world")):
             blk = c.get(which) or {}
             if blk.get("quote"):
                 cits.append({"role": role,
@@ -471,7 +476,8 @@ def _findings_constraint(result: dict):
             summary = "%s — demand crosses supply: management %s, industry %s" % (
                 c.get("material", "?"), c.get("crossover_management"), c.get("crossover_industry"))
         else:
-            summary = "%s — %s: %s" % (c.get("material", "?"), status, c.get("reason", ""))
+            summary = "%s — %s: %s" % (
+                c.get("material", "?"), status.replace("_", " "), c.get("reason", ""))
         out.append({
             "type": "constraint",
             "severity": _CONSTRAINT_SEVERITY.get(c.get("severity", "gray"), "info"),
@@ -567,7 +573,7 @@ def _agent_score(aid: str, result: dict):
     return round(float(raw), 1)
 
 
-def build_clean_export(ticker: str, year: int, merged: dict, results: dict) -> dict:
+def build_clean_export(ticker: str, year, merged: dict, results: dict) -> dict:
     agents = {}
     for aid, result in results.items():
         if not result:
@@ -580,9 +586,16 @@ def build_clean_export(ticker: str, year: int, merged: dict, results: dict) -> d
             "signal": _agent_signal(aid, score),
             "top_findings": builder(result) if builder else [],
         }
+    # Part 2 (2026-07-01): the export reports the ANALYSIS WINDOW rather than a
+    # user-chosen year. Window years come from Agent 1's result when it ran.
+    window = None
+    cd = results.get("corporate_discrepancy") or {}
+    if isinstance(cd, dict) and cd.get("window"):
+        window = {"years": cd["window"].get("years"),
+                  "includes_partial_year": cd["window"].get("includes_partial_year")}
     return {
         "ticker": ticker,
-        "year": year,
+        "analysis_window": window or "last 5 fiscal years + current partial year",
         "timestamp": _now_iso(),
         "signal": merged.get("signal", "HOLD"),
         "score": merged.get("score", 50),
@@ -624,7 +637,7 @@ def _build_rich_result(ticker: str, merged: dict, results: dict) -> dict:
 
 # ── pipeline ──────────────────────────────────────────────────────────────────
 
-def run_pipeline(run_id: str, ticker: str, selected, year: int):
+def run_pipeline(run_id: str, ticker: str, selected, year=None):
     """Run the full pipeline for a run: parallel agents -> synthesis -> rich result
     (UI) + clean export (download). Updates the run store live; never raises."""
     from backend.agents import run_selected_agents
@@ -634,7 +647,7 @@ def run_pipeline(run_id: str, ticker: str, selected, year: int):
         emit(run_id, agent_id, message, kind)
 
     try:
-        results, weights, _logs = run_selected_agents(ticker, selected, year, emit=_emit)
+        results, weights, _logs = run_selected_agents(ticker, selected, emit=_emit)
 
         if not results:
             merged = {"score": 50, "signal": "HOLD", "signal_color": "#F59E0B",
@@ -658,7 +671,7 @@ def run_pipeline(run_id: str, ticker: str, selected, year: int):
             lp["agent3_score"] = lp.get("agent3_score", 50)
 
         rich = _build_rich_result(ticker, merged, results)
-        export = build_clean_export(ticker, year, merged, results)
+        export = build_clean_export(ticker, None, merged, results)
         finalize(run_id, rich, export)
         return rich, export
     except Exception as e:
@@ -667,7 +680,7 @@ def run_pipeline(run_id: str, ticker: str, selected, year: int):
                 "signal_color": "#EF4444", "summary": err, "agents_run": [],
                 "corporate_discrepancy": None, "promise_audit": None,
                 "legal_proceedings": None}
-        export = {"ticker": ticker, "year": year, "timestamp": _now_iso(),
+        export = {"ticker": ticker, "timestamp": _now_iso(),
                   "signal": "ERROR", "score": 50, "agents": {}, "error": err}
         fail(run_id, err, rich, export)
         return rich, export

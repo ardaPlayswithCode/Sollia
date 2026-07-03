@@ -21,7 +21,6 @@ const KIND_COLOR = {
 
 export default function App() {
   const [ticker, setTicker] = useState('F')
-  const [year, setYear] = useState(2025)
   const [selected, setSelected] = useState(['corporate_discrepancy', 'promise_audit', 'legal_proceedings', 'risk_factors', 'constraint_auditor', 'moat_auditor'])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -50,7 +49,7 @@ export default function App() {
     fetch(`${API_BASE}/api/analyze/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected, year }),
+      body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected }),
     })
       .then(r => { if (!r.ok) throw new Error('Server error: ' + r.status); return r.json() })
       .then(({ run_id }) => {
@@ -92,9 +91,8 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [ticker, selected, loading, year])
+  }, [ticker, selected, loading])
 
-  const showYear = selected.includes('corporate_discrepancy')
   const hasActivity = Object.keys(agentLogs).length > 0
 
   return (
@@ -104,23 +102,18 @@ export default function App() {
         <div className="flex flex-wrap gap-4 items-end mb-8">
           <div>
             <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">
-              Ticker{showYear ? ' · Year' : ''}
+              Ticker
             </label>
             <div className="flex gap-3">
               <input
                 type="text" value={ticker}
-                onChange={e => setTicker(e.target.value.toUpperCase().slice(0, 5))}
-                placeholder="NVDA" maxLength={5}
-                className="bg-[#0A0B14] border border-white/10 rounded-xl px-5 py-3.5 text-white text-2xl font-black tracking-[0.2em] placeholder-slate-700 focus:outline-none focus:border-blue-400/50 w-36 text-center"
+                onChange={e => setTicker(e.target.value.toUpperCase().slice(0, 10))}
+                placeholder="NVDA" maxLength={10}
+                className="bg-[#0A0B14] border border-white/10 rounded-xl px-5 py-3.5 text-white text-2xl font-black tracking-[0.2em] placeholder-slate-700 focus:outline-none focus:border-blue-400/50 w-44 text-center"
               />
-              {showYear && (
-                <input
-                  type="number" value={year}
-                  onChange={e => setYear(parseInt(e.target.value) || 2025)}
-                  min={2016} max={2026}
-                  className="bg-[#0A0B14] border border-white/10 rounded-xl px-4 py-3.5 text-white text-xl font-bold placeholder-slate-700 focus:outline-none focus:border-purple-400/50 w-24 text-center"
-                />
-              )}
+            </div>
+            <div className="text-[11px] text-slate-500 mt-2">
+              Analyzing last 5 fiscal years + current partial year
             </div>
           </div>
           <button
@@ -585,7 +578,7 @@ function Row({ badge, badgeText, meta, children }) {
 function Quote({ text, url, label }) {
   if (!text) return null
   const words = text.split(/\s+/)
-  const shown = words.slice(0, 8).join(' ') + (words.length > 8 ? '…' : '')
+  const shown = words.slice(0, 10).join(' ') + (words.length > 10 ? '…' : '')
   return (
     <div className="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
       <span className="text-slate-600 text-[10px] uppercase font-semibold">{label || 'Source'}</span>

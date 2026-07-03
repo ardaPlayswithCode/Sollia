@@ -7,6 +7,7 @@ import os
 
 from src.config.llm_config import LLM_PROVIDERS, RATE_LIMIT, call_llm, get_primary_model, start_tier
 from src.utils.scoring import score_corporate_discrepancy
+from src.utils.prompt_safety import neutralize_injections
 
 # Cache integration — check before downloading
 from src.providers.filings.sec_edgar import get_cached_text, cache_text, get_cached_filings, cache_filings
@@ -67,6 +68,10 @@ def _strip_html(html: str) -> str:
     text = re.sub(r'^us-gaap:\S+\s*$', '', text, flags=re.MULTILINE)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = re.sub(r" +", " ", text)
+    # Defang prompt-injection directives in this UNTRUSTED filing text before it
+    # can reach any prompt or be surfaced as a quote (Part 3a, 2026-07-02).
+    # Shared by Agents 1/3/6 which all clean HTML through here.
+    text = neutralize_injections(text)
     return text.strip()
 
 
@@ -200,7 +205,8 @@ class SECFilingFetcher:
         return ""
 
     def align_fiscal_year(self, ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
-        # Enable cache reads in _get_all_filings()/_fetch_htm() for this run.
+        """Back-compat single-year alignment (strict). New code should use
+        build_rolling_window(); this remains for direct callers/tests."""
         self._current_ticker = ticker
         cik = get_cik(ticker)
         if not cik:
@@ -210,27 +216,154 @@ class SECFilingFetcher:
         if not ten_ks:
             return None, f"No 10-K found for {ticker} in {year}"
         ten_k = max(ten_ks, key=lambda f: f.get("period_of_report", ""))
+        return self._assemble_year_set(ticker, cik, filings, ten_k, relaxed=False)
+
+    def _assemble_year_set(self, ticker: str, cik: str, filings: List[dict], ten_k: dict,
+                           relaxed: bool = False, used_transcript_dates: Optional[set] = None,
+                           ) -> Tuple[Optional[dict], Optional[str]]:
+        """Assemble the document set anchored on ONE 10-K: its 10-Qs (period
+        within the trailing year), nearest DEF 14A after fiscal end, latest
+        material 8-K before it, and PROXIMITY-assigned earnings transcripts.
+        strict mode (relaxed=False) requires the full set — that is the
+        definition of a COMPLETE fiscal year for the rolling window; relaxed
+        mode returns whatever exists (used for older window years and the
+        current partial year)."""
         F = date.fromisoformat(ten_k["period_of_report"])
+        year = int(ten_k["period_of_report"][:4])
         F_minus_1y = F.replace(year=F.year - 1)
         ten_qs = [f for f in filings if f["form"] == "10-Q" and f.get("period_of_report", "") and F_minus_1y < date.fromisoformat(f.get("period_of_report", "")) <= F]
         def14as = [f for f in filings if "14A" in f["form"] and f["filing_date"] and date.fromisoformat(f["filing_date"]) > F]
         def14a = min(def14as, key=lambda f: abs((date.fromisoformat(f["filing_date"]) - F).days)) if def14as else None
         eight_ks = [f for f in filings if f["form"] == "8-K" and f["filing_date"] and date.fromisoformat(f["filing_date"]) <= F and any(code in (f.get("items") or "") for code in ["2.02", "1.01", "5.02"])]
         eight_k = max(eight_ks, key=lambda f: f["filing_date"]) if eight_ks else None
-        transcripts = self._fetch_transcripts(ticker, cik, ten_qs, F, filings)
+        transcripts = self._fetch_transcripts(
+            ticker, cik, ten_qs, F, filings,
+            date_from=F_minus_1y, used_dates=used_transcript_dates)
         missing = []
         if not ten_qs: missing.append("10-Q")
         if not transcripts or len(transcripts) < 4: missing.append("EARNINGS_CALL")
         if not def14a: missing.append("DEF14A")
         if not eight_k: missing.append("8-K")
-        if missing:
+        if missing and not relaxed:
             return None, f"Insufficient filings for {ticker} in {year}. Missing: {', '.join(missing)}."
-        return {"ticker": ticker, "year": year, "cik": cik, "fiscal_end": F.isoformat(), "ten_k": ten_k, "ten_qs": ten_qs, "def14a": def14a, "eight_k": eight_k, "transcripts": transcripts}, None
+        return {"ticker": ticker, "year": year, "cik": cik, "fiscal_end": F.isoformat(),
+                "ten_k": ten_k, "ten_qs": ten_qs, "def14a": def14a, "eight_k": eight_k,
+                "transcripts": transcripts, "complete": not missing}, None
 
-    def _fetch_transcripts(self, ticker: str, cik: str, ten_qs: List[dict], F: date, filings: List[dict]) -> List[dict]:
+    def _assemble_partial_year(self, ticker: str, cik: str, filings: List[dict], ten_k: dict,
+                               used_transcript_dates: Optional[set] = None,
+                               ) -> Optional[dict]:
+        """Assemble the CURRENT PARTIAL fiscal year: the latest 10-K plus every
+        10-Q/transcript dated after its fiscal end. Returns None when nothing
+        has been filed since the 10-K (the window then ends at the anchor)."""
+        F = date.fromisoformat(ten_k["period_of_report"])
+        ten_qs = [f for f in filings if f["form"] == "10-Q" and f.get("period_of_report", "")
+                  and date.fromisoformat(f["period_of_report"]) > F]
+        # include_after_f=False: the first call after the 10-K's fiscal end is the
+        # PRIOR year's Q4/full-year call — it belongs to the anchor year (its
+        # after_F pick), not the partial year. The partial year only claims calls
+        # proximity-matched to its own filed 10-Qs.
+        transcripts = self._fetch_transcripts(
+            ticker, cik, ten_qs, F, filings, date_from=F,
+            used_dates=used_transcript_dates, include_after_f=False)
+        if not ten_qs and not transcripts:
+            return None
+        def14as = [f for f in filings if "14A" in f["form"] and f["filing_date"] and date.fromisoformat(f["filing_date"]) > F]
+        def14a = min(def14as, key=lambda f: date.fromisoformat(f["filing_date"]) - F) if def14as else None
+        eight_ks = [f for f in filings if f["form"] == "8-K" and f["filing_date"] and date.fromisoformat(f["filing_date"]) > F and any(code in (f.get("items") or "") for code in ["2.02", "1.01", "5.02"])]
+        eight_k = max(eight_ks, key=lambda f: f["filing_date"]) if eight_ks else None
+        return {"ticker": ticker, "year": F.year + 1, "cik": cik, "fiscal_end": F.isoformat(),
+                "ten_k": ten_k, "ten_qs": ten_qs, "def14a": def14a, "eight_k": eight_k,
+                "transcripts": transcripts, "complete": False, "partial": True}
+
+    def build_rolling_window(self, ticker: str, max_years: int = 5,
+                             ) -> Tuple[Optional[List[dict]], Optional[str]]:
+        """PART 2 (2026-07-01): the rolling analysis window replacing the year
+        selector. Returns year-sets NEWEST FIRST:
+
+          [current partial year (if any filings since the last 10-K),
+           most recent COMPLETE fiscal year (the anchor — strict set required),
+           ... up to `max_years`-1 further complete years, relaxed]
+
+        Foreign private issuers (20-F/40-F, no 10-K) get a clear unsupported
+        message instead of a confusing 'No 10-K found'."""
+        self._current_ticker = ticker
+        cik = get_cik(ticker)
+        if not cik:
+            return None, f"CIK not found for {ticker}"
+        filings = self._get_all_filings(cik)
+        ten_ks = sorted((f for f in filings if f["form"] == "10-K" and f.get("period_of_report")),
+                        key=lambda f: f["period_of_report"], reverse=True)
+        if not ten_ks:
+            foreign = [f["form"] for f in filings if f["form"] in ("20-F", "40-F", "6-K")]
+            if foreign:
+                return None, (f"{ticker} is a foreign private issuer (files "
+                              f"{'/'.join(sorted(set(foreign) - {'6-K'}) or ['6-K'])}, not 10-K). "
+                              "Foreign filers are not yet supported.")
+            return None, f"No 10-K filings found for {ticker}"
+
+        used_transcripts: set = set()
+        window: List[dict] = []
+        errors: List[str] = []
+
+        # Current partial year first (recency order) — claims the newest transcripts.
+        partial = self._assemble_partial_year(ticker, cik, filings, ten_ks[0],
+                                              used_transcript_dates=used_transcripts)
+        if partial:
+            window.append(partial)
+
+        # Walk 10-Ks newest-first, keeping complete years until the window is full.
+        # The FIRST complete year is the anchor; older years are assembled relaxed
+        # (a missing DEF 14A five years ago should not shrink the window).
+        anchor_found = False
+        for tk in ten_ks:
+            if sum(1 for w in window if not w.get("partial")) >= max_years:
+                break
+            year_set, err = self._assemble_year_set(
+                ticker, cik, filings, tk, relaxed=anchor_found,
+                used_transcript_dates=used_transcripts)
+            if year_set is None:
+                errors.append(err or "unknown")
+                continue
+            if not anchor_found and not year_set["complete"]:
+                continue  # keep looking for the anchor (most recent COMPLETE year)
+            anchor_found = True
+            window.append(year_set)
+
+        if not anchor_found:
+            # No strictly-complete year exists (thin filers). Degrade: take the
+            # most recent 10-K relaxed so the agent still produces an analysis.
+            year_set, err = self._assemble_year_set(
+                ticker, cik, filings, ten_ks[0], relaxed=True,
+                used_transcript_dates=used_transcripts)
+            if year_set is None:
+                return None, (errors[0] if errors else (err or f"Could not assemble filings for {ticker}"))
+            window.append(year_set)
+        return window, None
+
+    def _fetch_transcripts(self, ticker: str, cik: str, ten_qs: List[dict], F: date,
+                           filings: List[dict], date_from: Optional[date] = None,
+                           used_dates: Optional[set] = None,
+                           include_after_f: bool = True,
+                           date_to: Optional[date] = None) -> List[dict]:
+        """Earnings-call transcripts from 8-K item 2.02 exhibits, assigned to
+        quarters by DATE PROXIMITY. `date_from`/`date_to` bound the candidate
+        scan (a 30-year filer would otherwise fetch hundreds of historical
+        8-Ks); `used_dates` is shared across rolling-window years so a
+        transcript is never assigned to two adjacent fiscal years. Without
+        include_after_f the scan still extends past F (candidates for the
+        partial year's own quarters) but the prior year's Q4 call is left for
+        that year's after_F pick."""
         all_transcripts = []
+        if date_to is None:
+            date_to = F + timedelta(days=120) if include_after_f else date.today()
         for f in filings:
             if f["form"] != "8-K" or "2.02" not in (f.get("items") or "") or not f["filing_date"]:
+                continue
+            f_date = date.fromisoformat(f["filing_date"])
+            if date_from and f_date < date_from:
+                continue
+            if f_date > date_to:
                 continue
             acc = f["accession_number"]
             doc = f["primary_document"]
@@ -244,18 +377,26 @@ class SECFilingFetcher:
             if content and len(content) > 500:
                 all_transcripts.append({"date": f["filing_date"], "content": content, "source": "SEC-8K"})
         assigned = []
-        used_dates = set()
+        used = used_dates if used_dates is not None else set()
         for q in ten_qs:
             q_date = date.fromisoformat(q["period_of_report"])
-            available = [t for t in all_transcripts if t["date"] not in used_dates]
+            available = [t for t in all_transcripts if t["date"] not in used]
+            if not include_after_f:
+                # Partial-year mode: a call reporting a quarter is always FILED
+                # AFTER that quarter closes — never claim an earlier call (it
+                # would be the prior year's Q4 call, owed to that year).
+                available = [t for t in available if date.fromisoformat(t["date"]) > q_date]
             if not available:
-                break
+                continue
             best = min(available, key=lambda t: abs((date.fromisoformat(t["date"]) - q_date).days))
             assigned.append(best)
-            used_dates.add(best["date"])
-        after_F = [t for t in all_transcripts if t["date"] not in used_dates and date.fromisoformat(t["date"]) > F]
-        if after_F:
-            assigned.append(min(after_F, key=lambda t: (date.fromisoformat(t["date"]) - F).days))
+            used.add(best["date"])
+        if include_after_f:
+            after_F = [t for t in all_transcripts if t["date"] not in used and date.fromisoformat(t["date"]) > F]
+            if after_F:
+                best = min(after_F, key=lambda t: (date.fromisoformat(t["date"]) - F).days)
+                assigned.append(best)
+                used.add(best["date"])
         return assigned
 
     def _fetch_ex99(self, cik: str, acc: str) -> str:
@@ -595,13 +736,14 @@ def chunk_all(documents: dict) -> dict:
     return documents
 
 
-def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
-    """Fetch and align all 5 documents, then download full text for each."""
-    result, error = fetch_all_documents(ticker, year)
-    if error:
-        return None, error
-    
-    fetcher = SECFilingFetcher()
+def fetch_texts_for_set(result: dict, fetcher: Optional[SECFilingFetcher] = None,
+                        ) -> Tuple[Optional[dict], Optional[str]]:
+    """Download full text for an already-aligned document set. Tolerates a
+    missing DEF 14A / 8-K (relaxed rolling-window years): those keys are set to
+    empty strings so downstream clean/chunk layers simply produce no chunks."""
+    ticker = result["ticker"]
+    if fetcher is None:
+        fetcher = SECFilingFetcher()
     fetcher._current_ticker = ticker  # enable cache reads in _fetch_htm()/_get_all_filings()
     cik = result["cik"]
 
@@ -609,10 +751,10 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
     ten_k = result["ten_k"]
     html = fetcher._fetch_htm(cik, ten_k["accession_number"], ten_k["primary_document"])
     result["ten_k_text"] = _strip_html(html) if html else ""
-    # Also try to extract MD&A immediately
-    if result["ten_k_text"]:
-        result["ten_k_clean"] = clean_10k(result["ten_k_text"])
-    
+    if not result["ten_k_text"]:
+        return None, f"Could not download the 10-K text for {ticker} {result.get('year')}"
+    result["ten_k_clean"] = clean_10k(result["ten_k_text"])
+
     # 10-Q texts
     result["ten_q_texts"] = []
     result["ten_q_clean"] = []
@@ -621,35 +763,51 @@ def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[st
         text = _strip_html(html) if html else ""
         result["ten_q_texts"].append(text)
         result["ten_q_clean"].append(clean_10q(text) if text else "")
-    
+
     # DEF 14A text — prefer DEF 14A over PX14A6G if multiple in window
-    def14a = result["def14a"]
-    # The alignment already picked the best by date. If it's a PX14A6G, try to find a real DEF 14A nearby
-    if "PX14A6G" in def14a.get("form", ""):
+    def14a = result.get("def14a")
+    if def14a and "PX14A6G" in def14a.get("form", ""):
         # Search for a real DEF 14A within 90 days
         all_def14as = [f for f in fetcher._get_all_filings(cik) if "14A" in f["form"] and f["filing_date"]]
         F_date = date.fromisoformat(result["fiscal_end"])
-        better = [f for f in all_def14as if "DEF 14A" in f["form"] and "PX" not in f["form"] 
+        better = [f for f in all_def14as if "DEF 14A" in f["form"] and "PX" not in f["form"]
                   and abs((date.fromisoformat(f["filing_date"]) - F_date).days) < 90]
         if better:
             def14a = min(better, key=lambda f: abs((date.fromisoformat(f["filing_date"]) - F_date).days))
             result["def14a"] = def14a
-    html = fetcher._fetch_htm(cik, def14a["accession_number"], def14a["primary_document"])
-    result["def14a_text"] = _strip_html(html) if html else ""
+    if def14a:
+        html = fetcher._fetch_htm(cik, def14a["accession_number"], def14a["primary_document"])
+        result["def14a_text"] = _strip_html(html) if html else ""
+    else:
+        result["def14a_text"] = ""
+        result["def14a"] = {}
     if result["def14a_text"]:
         result["def14a_clean"] = clean_def14a(result["def14a_text"])
-    
+
     # 8-K text
-    eight_k = result["eight_k"]
-    html = fetcher._fetch_htm(cik, eight_k["accession_number"], eight_k["primary_document"])
-    result["eight_k_text"] = _strip_html(html) if html else ""
+    eight_k = result.get("eight_k")
+    if eight_k:
+        html = fetcher._fetch_htm(cik, eight_k["accession_number"], eight_k["primary_document"])
+        result["eight_k_text"] = _strip_html(html) if html else ""
+    else:
+        result["eight_k_text"] = ""
+        result["eight_k"] = {}
     if result["eight_k_text"]:
         result["eight_k_clean"] = clean_8k(result["eight_k_text"])
-    
+
     # Transcripts already have content from fetch
     result["transcript_texts"] = [t["content"] for t in result["transcripts"]]
-    
+
     return result, None
+
+
+def fetch_all_texts(ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
+    """Back-compat: fetch and align a SINGLE fiscal year, then download texts.
+    The rolling-window pipeline calls fetch_texts_for_set() per window year."""
+    result, error = fetch_all_documents(ticker, year)
+    if error:
+        return None, error
+    return fetch_texts_for_set(result)
 
 
 def fetch_all_documents(ticker: str, year: int) -> Tuple[Optional[dict], Optional[str]]:
@@ -907,6 +1065,28 @@ def align_all_pairs(documents):
 
 # LLM_PROVIDERS imported from config.llm_config (see top of file)
 
+# Deterministic cross-period guards (Part 2, 2026-07-01) — see the validation
+# loop for rationale. Month names cover both "January 25, 2026" and
+# "Jan 25, 2026" forms.
+_AS_OF_DATE_RE = re.compile(
+    r"\bas of\s+((?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+    r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    r"\.?\s+\d{1,2},?\s+\d{4})", re.IGNORECASE)
+_SUBANNUAL_RE = re.compile(
+    r"\b(?:(?:first|second|third|fourth)\s+quarter|quarter(?:ly)?\b|"
+    r"(?:three|six|nine)\s+months|first\s+half|second\s+half|"
+    r"Q[1-4]\b|1[36]\s+weeks|26\s+weeks|39\s+weeks)", re.IGNORECASE)
+
+
+def _is_table_fragment(s: str) -> bool:
+    """True when a 'sentence' is dominated by figures — a table row that leaked
+    through extraction, not a prose claim."""
+    tokens = (s or "").split()
+    if len(tokens) < 8:
+        return False
+    numeric = sum(1 for t in tokens if re.fullmatch(r"[\$%()\d.,\-—]+", t))
+    return numeric / len(tokens) > 0.45
+
 def _build_discrepancy_prompt(batch):
     """Build the LLM prompt for a topic batch."""
     topic = batch.get("topic", "Financial Analysis")
@@ -938,12 +1118,28 @@ Each document type has a DIFFERENT reporting period. Numbers from different cade
 - 10-K says "$100B annual revenue" vs 10-Q says "$25B Q1 revenue" → NOT a discrepancy (annual vs quarterly)
 - 10-K says "18% annual growth" vs earnings call says "22% Q3 growth" → NOT a discrepancy (different windows)
 - 10-Q says "$5B operating income this quarter" vs 10-K says "$20B operating income this year" → NOT a discrepancy
+- "year over year" in a 10-K means FULL YEAR vs prior year; "year over year" in a
+  10-Q means THE QUARTER vs the same quarter last year. Opposite directions across
+  those two windows (e.g. segment income fell for the full year but rose in the
+  latest quarter) are NOT a contradiction.
 
 **ONLY FLAG WHEN BOTH DOCUMENTS REFER TO THE SAME TIME PERIOD:**
 - Both explicitly say "full year" / "fiscal year" / "annual"
 - Both explicitly say the same quarter (e.g., "Q3 2024")
 - Both refer to the same specific date or event
 - The comparison is clearly apples-to-apples based on surrounding context
+
+**POINT-IN-TIME SNAPSHOTS — DO NOT FLAG DIFFERENT "AS OF" DATES:**
+Balances measured at a moment (remaining buyback authorization, cash on hand,
+headcount, backlog, share count) change between dates by definition.
+- "authorized to repurchase up to $58.5 billion as of January 25" vs "up to
+  $38.5 billion as of April 26" → NOT a discrepancy (buybacks happened between
+  the two dates). Two different "as of" dates are NEVER a contradiction.
+
+**ANNUAL TOTAL vs PERIOD COMPONENT — DO NOT FLAG:**
+- "paid cash dividends of $974 million in fiscal year 2026" vs "paid $244
+  million during the second quarter" → NOT a discrepancy (the quarter is a
+  component of the year).
 
 **When in doubt about the time period, DO NOT flag. Err on the side of caution.**
 
@@ -962,6 +1158,25 @@ Many passages open with identical generic phrasing ("Subject to...", "We may..."
 opener is NOT a discrepancy. Look PAST identical boilerplate openers and compare
 only the substantive claims, figures, and facts that follow. If the only thing two
 passages share is generic phrasing, return no discrepancy for that pair.
+
+## TERMINOLOGY IS NOT A DISCREPANCY
+Terminology clarifications (using different words to describe the same concept)
+are NOT discrepancies. Only flag when the underlying facts or figures differ.
+Examples that must NOT be flagged:
+- "share purchases" vs "share repurchases" (same action)
+- "non-marketable securities" vs "privately-held securities" (same asset class)
+- an abbreviation vs its spelled-out form ("AIBs" vs "add-in board manufacturers")
+- two passages quoting the IDENTICAL text (identical excerpts are never a discrepancy)
+
+## OMISSIONS: DISCLOSURE EVOLUTION IS NOT A DISCREPANCY
+Filings evolve. A LATER filing ADDING a new product, risk, customer category, or
+detail that an earlier filing lacked is normal disclosure evolution — NOT an
+omission_discrepancy. 10-Q risk-factor and MD&A sections are INCREMENTAL updates
+to the 10-K by SEC rule, so a topic present in the 10-K but summarized or absent
+in a 10-Q is NOT an omission either. Flag omission_discrepancy ONLY when:
+- a LATER filing silently DROPS a material fact an EARLIER filing disclosed, and
+  the drop changes what a careful reader would conclude; or
+- two documents covering the SAME period disclose materially different facts.
 
 ## Discrepancy Types
 "numerical_contradiction" — Same metric with different values (weight: 100)
@@ -1016,6 +1231,31 @@ def _call_llm(prompt, provider_idx=None, max_tokens=400):
         return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx)
     except Exception:
         return "", {"cached": False, "provider": "failed"}
+
+# Known financial synonym/abbreviation pairs (Part 3b, 2026-07-01). Each group's
+# members are interchangeable wording for the SAME concept; a "discrepancy" whose
+# two excerpts differ only by one of these is a terminology clarification, not a
+# contradiction. Phrases are matched on normalized (lowercase, single-space) text.
+FINANCIAL_SYNONYMS = [
+    ("share repurchases", ["share purchases", "share repurchases", "repurchases of shares",
+                           "purchases of shares"]),
+    ("non-marketable", ["non-marketable", "nonmarketable", "privately-held", "privately held"]),
+    ("add-in board manufacturers", ["aibs", "add-in board manufacturers",
+                                    "add-in board partners", "add-in board makers"]),
+]
+
+
+def _canonicalize_excerpt(s):
+    """Normalize an excerpt for identical/synonym comparison: lowercase, collapse
+    whitespace, strip punctuation, then map every known synonym variant to its
+    canonical phrase so synonym-only differences compare equal."""
+    t = re.sub(r"\s+", " ", (s or "")).strip().lower()
+    for canonical, variants in FINANCIAL_SYNONYMS:
+        for v in sorted(variants, key=len, reverse=True):
+            t = t.replace(v, canonical)
+    t = re.sub(r"[^a-z0-9 ]", "", t)
+    return re.sub(r"\s+", " ", t).strip()
+
 
 def _validate_llm_response(response, batch):
     """Validate LLM response: minimal checks, trust LLM sentence indices.
@@ -1130,6 +1370,62 @@ def _validate_llm_response(response, batch):
                 return bool(re.fullmatch(r"\d{1,4}", re.sub(r"[^0-9a-z]", "", _norm(q))))
             if _bare_number(qa) or _bare_number(qb):
                 continue
+
+        # ── Identical-excerpt + synonym filters (Part 3b, 2026-07-01) ──────────
+        # 1) If the two quoted excerpts are character-identical after whitespace/
+        #    punctuation normalization, this is a citation artifact, not a
+        #    discrepancy ("certificates of deposit" appearing verbatim in both).
+        # 2) If they differ ONLY by a known financial synonym/abbreviation pair
+        #    ("share purchases" vs "share repurchases", "AIBs" vs "add-in board
+        #    manufacturers"), it is a terminology clarification — skip.
+        # 3) Same canonical WORD SET (reordering only) → no factual difference.
+        if qa and qb:
+            ca, cb = _canonicalize_excerpt(qa), _canonicalize_excerpt(qb)
+            if ca == cb or set(ca.split()) == set(cb.split()):
+                continue
+            # If the located source sentences themselves are the identical text,
+            # the "conflict" lives inside one shared sentence — impossible.
+            try:
+                sa = _norm(sents_a[idx_a]) if sents_a else ""
+                sb = _norm(sents_b[idx_b]) if sents_b else ""
+                if sa and sa == sb:
+                    continue
+            except (IndexError, TypeError):
+                pass
+
+        # ── Cross-period false-positive guards (Part 2 rolling window,
+        #    2026-07-01). The rolling window pairs a 10-K with 10-Qs from other
+        #    quarters far more often than the single-year design did, and free-
+        #    tier classifiers leak period-mismatch flags the prompt warns about.
+        #    These guards are DETERMINISTIC (model-independent):
+        #    1) "as of <date A>" vs "as of <date B>" — a point-in-time snapshot
+        #       (buyback authorization remaining, cash balance, headcount)
+        #       naturally changes between dates; two different as-of dates are
+        #       never a contradiction.
+        #    2) numerical_contradiction where exactly ONE side is sub-annual
+        #       (quarter/half/nine-months) — annual totals vs period components
+        #       are incomparable windows ($974M FY dividends vs $244M Q2).
+        #    3) table fragments — sentences that are mostly figures are table
+        #       rows, not claims; comparing two of them is noise.
+        def _sent_or_quote(sents, idx, q):
+            try:
+                s = sents[idx] if sents else ""
+            except (IndexError, TypeError):
+                s = ""
+            return s or (q or "")
+
+        text_a = _sent_or_quote(sents_a, idx_a, qa)
+        text_b = _sent_or_quote(sents_b, idx_b, qb)
+        m_a, m_b = _AS_OF_DATE_RE.search(text_a), _AS_OF_DATE_RE.search(text_b)
+        if m_a and m_b and _norm(m_a.group(1)) != _norm(m_b.group(1)):
+            continue
+        if entry.get("discrepancy_type") == "numerical_contradiction":
+            sub_a = bool(_SUBANNUAL_RE.search(text_a))
+            sub_b = bool(_SUBANNUAL_RE.search(text_b))
+            if sub_a != sub_b:
+                continue
+        if _is_table_fragment(text_a) or _is_table_fragment(text_b):
+            continue
 
         entry["sentence_index_a"] = idx_a
         entry["sentence_index_b"] = idx_b
@@ -1382,8 +1678,123 @@ def build_citations(documents):
 # LAYER 7: Output + Main run() function
 # ============================================================================
 
-def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
-    """Run the full Corporate Discrepancy agent pipeline.
+# PART 2 (2026-07-01): rolling analysis window size. The window is the last N
+# COMPLETE fiscal years plus the current partial year; there is no year
+# selector any more. Overridable for ops/testing.
+AGENT1_WINDOW_YEARS = int(os.environ.get("SOLLIA_AGENT1_WINDOW_YEARS", "5"))
+
+
+def _audit_high_severity(findings: List[dict]) -> None:
+    """Second-pass severity audit (2026-07-01 cost/quality balance): the volume
+    classify runs on free tiers, which measurably over-assign "high" (e.g.
+    terminology drift rated high). This ONE short paid-tier call reviews only
+    the high-severity candidates and confirms/demotes each — judgment where it
+    matters, at ~$0.02/run instead of ~$1.80 for full paid classification.
+    Mutates findings in place; any failure leaves severities unchanged."""
+    highs = [d for d in findings if str(d.get("severity", "")).lower() == "high"][:12]
+    if not highs:
+        return
+    lines = []
+    for i, d in enumerate(highs):
+        qa = ((d.get("source_a") or {}).get("sentence_text") or d.get("quoted_phrase_a") or "")[:220]
+        qb = ((d.get("source_b") or {}).get("sentence_text") or d.get("quoted_phrase_b") or "")[:220]
+        lines.append('%d. [%s vs %s] reasoning: %s\n   A: "%s"\n   B: "%s"' % (
+            i, (d.get("source_a") or {}).get("document_type", "?"),
+            (d.get("source_b") or {}).get("document_type", "?"),
+            str(d.get("reasoning", ""))[:200], qa, qb))
+    prompt = (
+        "You are the senior reviewer auditing HIGH-severity flags raised by a junior "
+        "analyst comparing SEC filings of the same company.\n\n"
+        "Severity rules:\n"
+        '- "high" ONLY for conflicting financial figures, guidance, or material events '
+        "that cannot both be true for the same period.\n"
+        '- Terminology changes, disclosure evolution (a later filing renaming or adding '
+        'a category), exhibit-numbering or citation artifacts, and tonal shifts are '
+        '"low" or "not_a_discrepancy".\n'
+        '- Differences that need interpretation but describe a real factual tension are "medium".\n\n'
+        "Candidates:\n" + "\n".join(lines) +
+        '\n\nReturn ONLY a JSON array, one entry per candidate, no other text:\n'
+        '[{"id":0,"severity":"high|medium|low|not_a_discrepancy"}]')
+    try:
+        text, _meta = call_llm(prompt, max_tokens=300, temperature=0.0,
+                               provider_idx=0, pin_tier=True,
+                               agent="corporate_discrepancy", stage="severity_audit")
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+            cleaned = re.sub(r"\n?```$", "", cleaned).strip()
+        import json as _json
+        verdicts = _json.loads(cleaned[cleaned.find("["): cleaned.rfind("]") + 1])
+        drop_ids = set()
+        for v in verdicts:
+            i = v.get("id")
+            sev = str(v.get("severity", "")).lower()
+            if not isinstance(i, int) or not (0 <= i < len(highs)):
+                continue
+            if sev == "not_a_discrepancy":
+                drop_ids.add(id(highs[i]))
+            elif sev in ("high", "medium", "low"):
+                highs[i]["severity"] = sev
+                highs[i]["severity_audited"] = True
+        if drop_ids:
+            findings[:] = [d for d in findings if id(d) not in drop_ids]
+    except Exception:
+        pass  # audit is best-effort; unreviewed severities stand
+
+
+def _prepare_embedder(documents: dict):
+    """Return (embed_fn, error). Mirrors the FinBERT-unavailable degradation:
+    a warm run proceeds from the embedding cache; only abort when a chunk
+    actually needs a fresh embedding."""
+    embed_fn = get_embedder()
+    if embed_fn is not None:
+        return embed_fn, None
+    _all_chunks = (documents.get("chunks_10k", []) + documents.get("chunks_10q", []) +
+                   documents.get("chunks_def14a", []) + documents.get("chunks_8k", []) +
+                   documents.get("chunks_transcript", []))
+    _uncached = [c for c in _all_chunks
+                 if c.get("embedding") is None and _get_cached_embedding(c["text"]) is None]
+    if _uncached:
+        return None, ("FinBERT not available (transformers + torch). %d of %d chunks "
+                      "are uncached and cannot be embedded. Install with: "
+                      "pip install transformers torch" % (len(_uncached), len(_all_chunks)))
+
+    def _stub(_text):
+        raise RuntimeError("embed_fn called despite full cache coverage")
+    return _stub, None
+
+
+def _analyze_year_set(documents: dict, add_log, _emit) -> Tuple[Optional[dict], Optional[str]]:
+    """Run layers 0.5-6 (clean -> cite) on ONE aligned+fetched year set."""
+    yr = documents.get("year")
+    documents = clean_all(documents)
+    documents = chunk_all(documents)
+    n_chunks = sum(len(documents.get(k, [])) for k in (
+        "chunks_10k", "chunks_10q", "chunks_def14a", "chunks_8k", "chunks_transcript"))
+    add_log("CHUNK", "FY%s: %d chunks" % (yr, n_chunks))
+
+    embed_fn, emb_err = _prepare_embedder(documents)
+    if emb_err:
+        return None, emb_err
+    documents = embed_all_chunks(documents, embed_fn)
+    documents = align_all_pairs(documents)
+    n_pairs = len(documents.get("aligned_pairs", []))
+    add_log("ALIGN", "FY%s: %d aligned pairs" % (yr, n_pairs))
+
+    documents = classify_discrepancies(documents)
+    add_log("CLASSIFY", "FY%s: LLM found %d discrepancies" % (yr, len(documents.get("discrepancies", []))))
+    documents = rank_discrepancies(documents)
+    documents = build_citations(documents)
+    return documents, None
+
+
+def run_discrepancy_agent(ticker: str, year: Optional[int] = None, progress=None) -> dict:
+    """Run the full Corporate Discrepancy agent over the ROLLING 5-YEAR WINDOW.
+
+    PART 2 (2026-07-01): the `year` parameter is DEPRECATED and ignored — the
+    agent now automatically analyzes the last AGENT1_WINDOW_YEARS complete
+    fiscal years plus the current partial year, aligning documents by date
+    proximity within each fiscal year and sorting findings most-recent-first.
 
     progress: optional callback(message:str, kind:str) for live, human-readable
     milestone updates (WS5). Never exposes internal pipeline mechanics."""
@@ -1401,102 +1812,103 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
             except Exception:
                 pass
 
-    add_log("START", "Agent 1 initiated for %s %d" % (ticker, year))
-    _emit("Pulling FY%d filings for %s..." % (year, ticker), "search")
+    if year is not None:
+        add_log("NOTE", "year=%s ignored — Agent 1 now uses the rolling %d-year window"
+                % (year, AGENT1_WINDOW_YEARS))
+    add_log("START", "Agent 1 initiated for %s (rolling %d-year window)" % (ticker, AGENT1_WINDOW_YEARS))
+    _emit("Building the rolling filing window for %s (last %d fiscal years + current)..."
+          % (ticker, AGENT1_WINDOW_YEARS), "search")
 
-    # Layer 0: Fetch
-    documents, error = fetch_all_texts(ticker, year)
+    # Layer 0: rolling window (newest first: [partial?, anchor, older...])
+    fetcher = SECFilingFetcher()
+    window, error = fetcher.build_rolling_window(ticker, max_years=AGENT1_WINDOW_YEARS)
     if error:
-        _emit("Could not assemble a complete filing set: %s" % error, "flag")
+        _emit("Could not assemble the filing window: %s" % error, "flag")
         return {"ticker": ticker, "year": year, "error": error, "agent_log": log}
-    _emit("Found 10-K, %d 10-Qs, 8-K, DEF 14A, %d earnings transcripts" % (
-        len(documents.get("ten_qs", [])), len(documents.get("transcripts", []))), "fetch")
-    add_log("FETCH", "Fetched all 5 document types")
-    
-    # Layer 0.5: Clean
-    documents = clean_all(documents)
-    add_log("CLEAN", "Cleaned all documents")
-    
-    # Layer 1: Chunk
-    documents = chunk_all(documents)
-    add_log("CHUNK", "Chunked into %d total chunks" % sum([
-        len(documents.get("chunks_10k", [])), len(documents.get("chunks_10q", [])),
-        len(documents.get("chunks_def14a", [])), len(documents.get("chunks_8k", [])),
-        len(documents.get("chunks_transcript", []))
-    ]))
-    
-    # Layer 2: Embed
-    embed_fn = get_embedder()
-    if embed_fn is None:
-        # FinBERT (transformers + torch) is unavailable. A warm run can still proceed
-        # entirely from the embedding cache; only abort if a chunk actually needs a
-        # fresh embedding. This lets cached re-runs work on machines without torch.
-        _all_chunks = (documents.get("chunks_10k", []) + documents.get("chunks_10q", []) +
-                       documents.get("chunks_def14a", []) + documents.get("chunks_8k", []) +
-                       documents.get("chunks_transcript", []))
-        _uncached = [c for c in _all_chunks
-                     if c.get("embedding") is None and _get_cached_embedding(c["text"]) is None]
-        if _uncached:
-            return {"ticker": ticker, "year": year,
-                    "error": "FinBERT not available (transformers + torch). %d of %d chunks "
-                             "are uncached and cannot be embedded. Install with: "
-                             "pip install transformers torch" % (len(_uncached), len(_all_chunks)),
-                    "agent_log": log}
-        # Every chunk is in the cache — supply a stub that must never be invoked.
-        def embed_fn(_text):
-            raise RuntimeError("embed_fn called despite full cache coverage")
-    _emit("Reading and aligning passages across the filing set...", "align")
-    documents = embed_all_chunks(documents, embed_fn)
-    add_log("EMBED", "Embedded all chunks with FinBERT")
+    _yrs = ["FY%s%s" % (w["year"], " (partial)" if w.get("partial") else "") for w in window]
+    add_log("WINDOW", "Window: %s" % ", ".join(_yrs))
+    _emit("Analyzing %s" % ", ".join(_yrs), "fetch")
 
-    # Layer 3: Align
-    documents = align_all_pairs(documents)
-    n_pairs = len(documents.get("aligned_pairs", []))
-    add_log("ALIGN", "Found %d aligned pairs" % n_pairs)
-    _emit("Matched %d related passages to cross-examine" % n_pairs, "info")
+    merged_top: List[dict] = []
+    total_pairs = 0
+    total_found = 0
+    analyzed_years: List[dict] = []
+    first_error: Optional[str] = None
+    complete_seen = 0  # recency weighting: partial+anchor = 1.0, halving per older year
 
-    # Layer 4: LLM Classify
-    _emit("Cross-referencing claims across the 10-K, 10-Qs, and earnings calls...", "analyze")
-    documents = classify_discrepancies(documents)
-    add_log("CLASSIFY", "LLM found %d discrepancies" % len(documents.get("discrepancies", [])))
+    for gi, year_set in enumerate(window):
+        yr = year_set["year"]
+        label = "FY%s%s" % (yr, " (current, partial)" if year_set.get("partial") else "")
+        _emit("[%d/%d] Pulling and cross-examining %s filings..." % (gi + 1, len(window), label),
+              "search")
+        documents, err = fetch_texts_for_set(year_set, fetcher=fetcher)
+        if err is None:
+            documents, err = _analyze_year_set(documents, add_log, _emit)
+        if err:
+            add_log("SKIP", "%s skipped: %s" % (label, err))
+            _emit("%s skipped: %s" % (label, err), "flag")
+            first_error = first_error or err
+            continue
+        if year_set.get("partial"):
+            recency_weight = 1.0
+        else:
+            recency_weight = 0.5 ** complete_seen
+            complete_seen += 1
+        year_top = documents.get("top_discrepancies", [])
+        for d in year_top:
+            d["fiscal_year"] = yr
+            d["fiscal_period"] = label
+            d["recency_weight"] = recency_weight  # read by score_corporate_discrepancy
+            d["_recency"] = len(window) - gi  # window is newest-first
+        merged_top.extend(year_top)
+        total_pairs += len(documents.get("aligned_pairs", []))
+        total_found += len(documents.get("discrepancies", []))
+        analyzed_years.append({"fiscal_year": yr, "partial": bool(year_set.get("partial")),
+                               "discrepancies": len(year_top),
+                               "aligned_pairs": len(documents.get("aligned_pairs", []))})
+        _emit("%s: %d discrepancies across %d aligned passages"
+              % (label, len(year_top), len(documents.get("aligned_pairs", []))), "info")
 
-    # Layer 5: Rank
-    documents = rank_discrepancies(documents)
-    n_top = len(documents.get("top_discrepancies", []))
-    add_log("RANK", "Selected top %d discrepancies" % n_top)
-    _emit("Flagged %d potential discrepancies for review" % n_top, "flag")
-    
-    # Layer 6: Citations
-    documents = build_citations(documents)
-    # Add ticker/year/cik for URL construction
-    documents["ticker"] = ticker
-    documents["year"] = year
-    documents["cik"] = documents.get("cik", "")
-    add_log("CITE", "Built exact sentence citations")
-    
+    if not analyzed_years:
+        error = first_error or "No fiscal year in the window could be analyzed"
+        _emit("Could not analyze any fiscal year: %s" % error, "flag")
+        return {"ticker": ticker, "year": year, "error": error, "agent_log": log}
+
+    # Severity audit: one short paid-tier judgment call reviews the "high"
+    # candidates (free-tier classify over-assigns high) — see _audit_high_severity.
+    _audit_high_severity(merged_top)
+
+    # Sort findings by RECENCY (most recent fiscal period first), then severity
+    # rank within the period. Re-rank globally.
+    merged_top.sort(key=lambda d: (-d.get("_recency", 0), -d.get("final_score", 0)))
+    for i, d in enumerate(merged_top):
+        d["rank"] = i + 1
+        d.pop("_recency", None)
+
+    anchor_year = next((a["fiscal_year"] for a in analyzed_years if not a["partial"]),
+                       analyzed_years[0]["fiscal_year"])
     elapsed = time.time() - t0
-    add_log("OUTPUT", "Complete in %.1fs" % elapsed)
-    _emit("Corporate discrepancy scan complete (%.0fs)" % elapsed, "done")
+    add_log("OUTPUT", "Complete in %.1fs — %d findings across %d fiscal periods"
+            % (elapsed, len(merged_top), len(analyzed_years)))
+    _emit("Corporate discrepancy scan complete: %d findings across %d fiscal periods (%.0fs)"
+          % (len(merged_top), len(analyzed_years), elapsed), "done")
 
-    # PART 2 scoring redesign. The OLD formula used ONLY the single worst
-    # discrepancy (100 - top.final_score), so a filing with 1 high-severity
-    # contradiction and one with 8 both scored 10 — no magnitude. The new
-    # score_corporate_discrepancy() starts from a clean baseline (90 when there
-    # are zero discrepancies — internally consistent) and subtracts rank-decayed
-    # penalties over ALL discrepancies, so more/severe contradictions read lower
-    # while a long tail of minor tensions does not floor it. See
-    # src/utils/scoring.py for the formula and rationale.
-    _score, _signal, _rationale = score_corporate_discrepancy(
-        documents.get("top_discrepancies"))
+    # Scoring: same severity-gated formula, now over the merged window findings.
+    _score, _signal, _rationale = score_corporate_discrepancy(merged_top)
 
     _result = {
-        "ticker": ticker, "year": year,
+        "ticker": ticker, "year": anchor_year,
         "agent": "Corporate Discrepancy",
         "run_timestamp": datetime.datetime.utcnow().isoformat(),
         "documents_analyzed": ["10-K", "10-Q", "8-K", "DEF14A", "EARNINGS_CALL"],
-        "total_aligned_pairs": len(documents.get("aligned_pairs", [])),
-        "total_discrepancies_found": len(documents.get("discrepancies", [])),
-        "top_discrepancies": documents.get("top_discrepancies", []),
+        "window": {"years": [a["fiscal_year"] for a in analyzed_years],
+                   "includes_partial_year": any(a["partial"] for a in analyzed_years),
+                   "per_year": analyzed_years,
+                   "note": "Analyzing last %d fiscal years + current partial year"
+                           % AGENT1_WINDOW_YEARS},
+        "total_aligned_pairs": total_pairs,
+        "total_discrepancies_found": total_found,
+        "top_discrepancies": merged_top,
         "score": _score,
         "signal": _signal,
         "score_rationale": _rationale,
@@ -1508,7 +1920,7 @@ def run_discrepancy_agent(ticker: str, year: int, progress=None) -> dict:
     # content-addressed .cache/embeddings store the manifest references.
     try:
         from src.utils.run_archive import save_run
-        save_run("corporate_discrepancy", ticker, year, _result, duration_ms=elapsed * 1000)
+        save_run("corporate_discrepancy", ticker, anchor_year, _result, duration_ms=elapsed * 1000)
     except Exception:
         pass
     return _result

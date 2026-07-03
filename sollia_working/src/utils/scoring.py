@@ -69,11 +69,25 @@ def classify_signal(score: float) -> str:
 # the score (magnitude awareness) without letting a long tail of minor tensions
 # floor it on noise.
 A1_BASELINE = 90.0
-A1_SINGLE_MAX = 45.0   # penalty of a hypothetical single final_score=100 discrepancy
+A1_SINGLE_MAX = 45.0   # penalty of a hypothetical single final_score=100 HIGH discrepancy
 A1_RANK_DECAY = 0.70   # contribution of the i-th worst discrepancy = DECAY**i
+# Severity gates the penalty (2026-07-01 recalibration). final_score blends
+# type-objectivity/doc-tier/confidence, but it let a MEDIUM land ~80/100 — six
+# medium/low findings floored the score at 10, reading like catastrophic
+# inconsistency when the docket was actually "0 high, 3 medium, 3 low". An
+# analyst reads severity first; the multiplier makes the score do the same:
+# only HIGH findings can produce a bearish floor, mediums pull toward neutral,
+# lows barely register.
+A1_SEV_MULT = {"high": 1.0, "medium": 0.5, "low": 0.2}
 
 
 def score_corporate_discrepancy(top_discrepancies: List[Dict]) -> Tuple[float, str, str]:
+    """PART 2 rolling-window update (2026-07-01): findings may carry a
+    `recency_weight` (1.0 = current period, halving per fiscal year of age —
+    set by run_discrepancy_agent). Each finding's penalty is scaled by it, so
+    a 5-year window doesn't floor every mature company at 10: today's
+    contradictions dominate, history informs. Findings without the field
+    weigh 1.0 — single-year callers are unchanged."""
     discs = [d for d in (top_discrepancies or []) if isinstance(d, dict)]
     if not discs:
         score = A1_BASELINE
@@ -81,22 +95,31 @@ def score_corporate_discrepancy(top_discrepancies: List[Dict]) -> Tuple[float, s
             "No cross-document discrepancies found — disclosures are internally "
             "consistent (clean baseline 90; capped below 100 since absence of "
             "found conflicts is not proof of none).")
-    ranked = sorted(discs, key=lambda d: d.get("final_score", 0.0), reverse=True)
+
+    def _eff(d):
+        sev_mult = A1_SEV_MULT.get(str(d.get("severity", "low")).lower(), 0.2)
+        rec = float(d.get("recency_weight", 1.0))
+        return (float(d.get("final_score", 0.0)) / 100.0) * sev_mult * rec
+
+    # Rank by EFFECTIVE contribution (severity x recency x score) so the rank
+    # decay applies to the effectively-worst finding first.
+    ranked = sorted(discs, key=_eff, reverse=True)
     penalty = 0.0
     for i, d in enumerate(ranked):
-        fs = float(d.get("final_score", 0.0))
-        penalty += (fs / 100.0) * A1_SINGLE_MAX * (A1_RANK_DECAY ** i)
+        penalty += _eff(d) * A1_SINGLE_MAX * (A1_RANK_DECAY ** i)
     score = _clamp(A1_BASELINE - penalty)
     sev = {"high": 0, "medium": 0, "low": 0}
     for d in ranked:
         s = d.get("severity", "low")
         if s in sev:
             sev[s] += 1
+    windowed = any("recency_weight" in d for d in ranked)
     rationale = (
         f"{len(ranked)} discrepancy(ies) "
         f"({sev['high']} high, {sev['medium']} medium, {sev['low']} low); "
-        f"rank-decayed penalty {penalty:.0f} from clean baseline 90 "
-        f"(worst final_score {ranked[0].get('final_score', 0):.0f}).")
+        f"{'recency-weighted, ' if windowed else ''}rank-decayed penalty {penalty:.0f} "
+        f"from clean baseline 90"
+        f"{' (older fiscal years discounted 50%/yr)' if windowed else ''}.")
     return round(score, 1), classify_signal(score), rationale
 
 

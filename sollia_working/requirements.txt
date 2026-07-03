@@ -1,27 +1,44 @@
 # Sollia financial analysis platform — Python dependencies.
+# PINNED (2026-07-01 final hardening pass) to the exact versions the full
+# 6-agent pipeline was verified against on Python 3.11 (homebrew, macOS arm64).
+# pip-audit 2026-07-01: no known vulnerabilities in this set.
 #
-# Core (all 4 agents + providers):
-requests>=2.31
-beautifulsoup4>=4.12
-numpy>=1.24
-pydantic>=2.0
-pydantic-settings>=2.0
+# For a fully hash-locked install (supply-chain pinning) regenerate a lock for
+# YOUR platform — hashes are per-wheel/per-platform, so they are kept out of
+# this cross-platform file. A frozen snapshot of the verified environment
+# lives in requirements.lock.
 
-# Web UI / app layer:
-streamlit>=1.30
+# ── Core (all agents + providers + backend) ─────────────────────────────────
+requests==2.34.2
+beautifulsoup4==4.14.3
+lxml==6.1.0
+numpy==2.4.4
+pydantic==2.13.4
+pydantic-settings==2.14.0
 
-# Agent 5 (Constraint Auditor) — USGS Mineral Commodity Summaries PDF table parsing.
-# Pure-Python (no Ghostscript/system deps). If absent, Agent 5's USGS supply/demand
-# extraction degrades to data_unavailable (the rest of the agent still runs).
-pdfplumber>=0.11
+# ── Web backend (FastAPI + SSE streaming) ───────────────────────────────────
+fastapi==0.136.3
+uvicorn==0.47.0
 
-# Agent 1 (Corporate Discrepancy) — sentence tokenization + FinBERT embeddings.
-# NOTE: en_core_web_sm must also be downloaded:  python -m spacy download en_core_web_sm
-# If spaCy/transformers/torch are absent, Agent 1 degrades (regex tokenizer) or, for
-# embeddings, runs only from the embedding cache and otherwise errors with guidance.
-spacy>=3.7
-transformers>=4.38
-torch>=2.1
+# ── Agent 5 (Constraint Auditor) — USGS Mineral Commodity Summaries PDF
+# parsing. Pure-Python. If absent, USGS supply/demand extraction degrades to
+# data_unavailable (the rest of the agent still runs).
+pdfplumber==0.11.10
 
-# LLM access (Groq primary/fallback, OpenRouter backup) uses the `requests` library
-# above directly — no provider SDK is required. Set GROQ_API_KEY and OPENROUTER_API_KEY.
+# ── Agent 1 (Corporate Discrepancy) — sentence tokenization + FinBERT.
+# NOTE: en_core_web_sm must also be downloaded:
+#   python -m spacy download en_core_web_sm
+# If spaCy is absent Agent 1 falls back to the regex tokenizer; if
+# transformers/torch are absent it runs from the embedding cache and otherwise
+# errors with install guidance.
+spacy==3.8.14
+transformers==5.9.0
+torch==2.12.0
+
+# ── Removed (2026-07-01 dependency audit) ───────────────────────────────────
+# streamlit — only the legacy sollia_working/src/ui/* imports it; the
+#   production UI is FastAPI + React (sollia_web/). Install manually if you
+#   need the old Streamlit view.
+#
+# LLM access (Groq / Gemini / OpenRouter) uses `requests` directly — no
+# provider SDK required. Keys: see .env.example.

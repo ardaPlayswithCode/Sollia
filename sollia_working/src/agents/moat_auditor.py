@@ -146,10 +146,20 @@ def _strip_html(raw: str) -> str:
 
 
 def _clean_sentences(text: str) -> List[str]:
-    """Sentences in a sane length band, de-duplicated (preserving order)."""
+    """Sentences in a sane length band, de-duplicated (preserving order). Page
+    furniture is stripped (2026-07-01 Part 6 fix): a leading page number +
+    "Table of Contents" run-in otherwise fuses with the next heading and surfaces
+    as a junk "claim" ("7 Table of Contents Leveraging our intellectual
+    property, or IP."). Heading fragments with no verb-bearing prose are dropped."""
     out, seen = [], set()
     for s in _split_sentences(text):
+        # strip leading page-number / Table of Contents run-ins
+        s = re.sub(r"^(?:\d{1,3}\s+)?Table of Contents\s+", "", s).strip()
+        if "table of contents" in s.lower():
+            continue
         if not (SENT_MIN_LEN <= len(s) <= SENT_MAX_LEN):
+            continue
+        if len(s.split()) < 8:  # heading fragments ("Leveraging our IP.") aren't claims
             continue
         key = _norm(s)
         if key in seen:
@@ -791,10 +801,18 @@ def match_moat_name(raw: str) -> Optional[str]:
 
 
 _CLEAREST_PROMPT = (
-    'For the moat type "{moat}", select the SINGLE clearest example sentence from '
-    "the list below. Prioritize: (1) SPECIFICITY over vagueness (named products or "
-    "numbers beat generic claims); (2) RECENCY; (3) QUANTIFIABILITY (a metric like "
-    '"95% retention" beats none).\n\nSENTENCES:\n{sentences}\n\n'
+    'For the moat type "{moat}", select the SINGLE sentence that BEST REPRESENTS '
+    "the company's claimed advantage for THIS moat type.\n\n"
+    "Prioritize sentences that:\n"
+    "1. Describe the MECHANISM of the moat — how the advantage actually works "
+    "(for Switching Costs: what makes leaving expensive, e.g. an ecosystem/"
+    "installed base customers have built on; for Network Effects: what grows "
+    "more valuable with participants).\n"
+    "2. Include specific metrics or evidence.\n"
+    "3. Reference the company's CORE product/platform, not a partnership.\n\n"
+    "A partnership or customer-win announcement is NOT a switching cost claim — "
+    "prefer the durable structural claim over news, even if the news is more "
+    "recent.\n\nSENTENCES:\n{sentences}\n\n"
     'Return ONLY: {{"selected_index": N, "rationale": "one sentence"}}'
 )
 
@@ -1081,8 +1099,12 @@ _ANALYSIS_PROMPT = (
     "(3) WHAT IS THE MAGNITUDE? (does it threaten a CORE moat the business depends "
     "on, or a PERIPHERAL one?).\n\n"
     "Write a concise 3-5 sentence analysis addressing all three. Then end with one "
-    "verdict. DIRECT THREAT: real, imminent, targets a core moat. WATCH: real but "
-    "not imminent, or peripheral. NO THREAT: not credible or not material.\n"
+    "verdict. DIRECT THREAT: real, imminent, and targets a core moat. WATCH: a "
+    "credible challenge to a CORE moat that is not yet imminent. NO THREAT: not "
+    "credible, not material, or PERIPHERAL to this moat.\n"
+    "Your verdict MUST agree with your analysis: if your analysis calls the "
+    "challenge peripheral or not material, the verdict is NO THREAT — do not "
+    "hedge a peripheral challenge into WATCH.\n"
     "Begin your response with the verdict on its own line, then the analysis paragraph."
 )
 
@@ -1092,13 +1114,23 @@ _NO_CHALLENGE_ANALYSIS = (
     "to challenge it in their SEC filings. Private-company competitors or non-filing "
     "entities may still pose threats.")
 
+# When candidate sentences EXISTED but none survived credibility selection, saying
+# "no competitor filing contained language" would be false — say what happened.
+_NO_CREDIBLE_CHALLENGE_ANALYSIS = (
+    "%d candidate statement(s) from competitor filings were reviewed for this moat, "
+    "but none credibly challenges it (vague, off-topic, or aspirational language "
+    "only). This does NOT mean the moat is impenetrable — private-company "
+    "competitors or non-filing entities may still pose threats.")
+
 
 def _analyze_pair(company: str, ticker: str, moat: str, claim: Dict[str, Any],
-                  challenge: Optional[Dict[str, Any]], log: List[Dict[str, str]]
-                  ) -> Tuple[str, str]:
+                  challenge: Optional[Dict[str, Any]], log: List[Dict[str, str]],
+                  n_candidates: int = 0) -> Tuple[str, str]:
     """PART 5 — return (verdict, analysis). No challenge -> NO THREAT + standard
     text (no LLM call). Challenge -> LLM analysis; parse the leading verdict line."""
     if not challenge:
+        if n_candidates > 0:
+            return "NO THREAT", _NO_CREDIBLE_CHALLENGE_ANALYSIS % n_candidates
         return "NO THREAT", _NO_CHALLENGE_ANALYSIS
     prompt = _ANALYSIS_PROMPT.format(
         company=company, ticker=ticker.upper(), moat=moat,
@@ -1212,8 +1244,10 @@ class MoatAuditor:
         moats_out: List[Dict[str, Any]] = []
         for moat in [m for m in MOAT_NAMES if m in claims]:  # stable moat order
             claim = claims[moat]
-            challenge = _select_challenge(moat, claim["sentence"], challenge_cands.get(moat, []), ticker, log)
-            verdict, analysis = _analyze_pair(company, ticker, moat, claim, challenge, log)
+            cands = challenge_cands.get(moat, [])
+            challenge = _select_challenge(moat, claim["sentence"], cands, ticker, log)
+            verdict, analysis = _analyze_pair(company, ticker, moat, claim, challenge, log,
+                                              n_candidates=len(cands))
             moats_out.append(self._moat_block(moat, claim, challenge, verdict, analysis, clean_10k))
 
         result = self._assemble(ticker, company, sector, competitors, moats_out, log, t0,

@@ -28,7 +28,9 @@ const statusConfig = {
 
 function QuoteExcerpt({ text, url, docType }) {
   if (!text) return <span className="text-slate-700 italic">—</span>
-  const words = text.split(' ').slice(0, 5).join(' ')
+  // 10 words: enough context to convey WHAT changed without clicking through
+  // (5 was too few for an analyst); the full quote stays in the expanded citation.
+  const words = text.split(' ').slice(0, 10).join(' ')
   const truncated = text.length > words.length ? `${words}...` : words
   return (
     <div className="text-slate-300 text-sm leading-relaxed">

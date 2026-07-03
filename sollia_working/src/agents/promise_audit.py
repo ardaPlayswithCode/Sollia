@@ -119,11 +119,39 @@ EXCLUDE_PATTERNS = [
     # range like "$40 billion and $42 billion" has only two amounts, so 3+ is safe.
     r'(?:\$\s*[\d,]+(?:\.\d+)?\s+){3,}',
     r'(?i)\$?\s*Change\s+%\s+Change',
+    # Customer-concentration disclosures ("sales to one direct customer, Customer
+    # A, represented 14% of total revenue") — a risk-factor fact, never a promise.
+    r'(?i)sales to\s+(?:one|two|three|four|a single)\s+(?:direct|indirect)?\s*customers?',
+    r'(?i)(?:direct|indirect)\s+customers?\b.{0,60}\b(?:accounted for|represented|purchas(?:ing|ed))',
+]
+
+# ── PAST-TENSE RESULT BLOCK (2026-07-01 Part 2b) ────────────────────────────
+# Historical results kept leaking into the candidate set through the
+# metric+deadline branch: "Revenue for fiscal year 2024 was $60.9 billion" has a
+# metric ($60.9 billion) AND a deadline-shaped token (fiscal year 2024) but zero
+# future orientation. A sentence matching one of these patterns is a REPORT of
+# what already happened; unless it ALSO carries a FUTURE_KEYWORD (mixed
+# past+outlook sentences stay), it must never reach the LLM.
+PAST_TENSE_BLOCK = [
+    r'(?i)(?:revenue|income|earnings|sales|data center|gaming|automotive|margin)\s+'
+    r'(?:for|in)\s+(?:the\s+)?(?:fiscal\s+year\s+|FY)?\d{4}\s+(?:was|were|grew|increased|'
+    r'decreased|rose|fell|totaled|amounted to)',
+    # sentence-framing variant: "In fiscal 2024, we generated/recorded/reported..."
+    r'(?i)(?:for|in|during)\s+(?:the\s+)?(?:fiscal\s+(?:year\s+)?|FY)?\d{4},?\s+(?:we\s+)?'
+    r'(?:generated|recorded|reported|recognized|delivered|achieved|returned|repurchased)',
+    # resultive "was/were up/down N%" ("Gaming revenue ... was up 15%")
+    r'(?i)\b(?:was|were)\s+(?:up|down)\s+\d+(?:\.\d+)?\s*%',
+    # resultive past-tense growth verbs ("revenue grew 62% year-on-year") — the
+    # future forms (grow/increase/decline) don't match, so guidance is unaffected
+    r'(?i)\b(?:grew|rose|increased|decreased|declined|fell)\s+\d+(?:\.\d+)?\s*%',
+    # press-release bullet openers in transcripts ("Announced the NVIDIA DGX...")
+    r'(?i)^\s*(?:announced|launched|introduced|unveiled|released|shipped)\b',
 ]
 
 # Compile all regex once
 _metric_re = [re.compile(p) for p in METRIC_PATTERNS]
 _exclude_re = [re.compile(p) for p in EXCLUDE_PATTERNS]
+_past_block_re = [re.compile(p) for p in PAST_TENSE_BLOCK]
 
 # Abbreviations that should NOT trigger sentence splits
 _ABBREVIATIONS = {
@@ -298,6 +326,7 @@ def annotate_sentences(
             "fiscal_year": doc_metadata.get("fiscal_year", 0),
             "section": doc_metadata.get("section", ""),
             "htm_url": doc_metadata.get("htm_url", ""),
+            "accession": doc_metadata.get("accession", ""),
         }
         for i, sent in enumerate(sentences)
     ]
@@ -336,14 +365,28 @@ def is_excluded(sentence: str) -> bool:
     return any(pat.search(sentence) for pat in _exclude_re)
 
 
+def is_past_result(sentence: str) -> bool:
+    """True when the sentence REPORTS a past result ("Revenue for fiscal year 2024
+    was $60.9 billion"). Such sentences are historical facts, not promises."""
+    return any(pat.search(sentence) for pat in _past_block_re)
+
+
 def filter_candidate_sentences(
     annotated_sentences: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """Filter sentences: keep only strategic forward-looking statements."""
+    """Filter sentences: keep only strategic forward-looking statements.
+
+    Order matters (Part 2b): a past-result sentence is dropped BEFORE the
+    metric+deadline branch can admit it; a mixed sentence (past result + future
+    outlook) survives because it carries a FUTURE_KEYWORD."""
     candidates = []
     for s in annotated_sentences:
         text = s["text"]
-        if not is_excluded(text) and (has_future_keyword(text) or has_metric_with_deadline(text)):
+        if is_excluded(text):
+            continue
+        if is_past_result(text) and not has_future_keyword(text):
+            continue
+        if has_future_keyword(text) or has_metric_with_deadline(text):
             candidates.append(s)
     return candidates
 
@@ -464,6 +507,12 @@ Severity: 1-3=minor, 4-6=meaningful, 7-8=major, 9-10=company-defining.
 
 ONLY extract strategic business promises about: revenue targets, product launches, margin goals, R&D investments, capacity expansion, and market expansion — statements where management commits to a FUTURE outcome.
 
+CRITICAL RULES:
+- A sentence describing PAST RESULTS is NOT a promise. "Revenue was $60.9 billion" is a historical fact, not a forward-looking commitment.
+- A promise must describe a FUTURE action, target, or expectation.
+- If a sentence only reports what already happened, EXCLUDE it.
+- If a sentence mixes past results with future outlook, extract ONLY the future portion, not the past result.
+
 EXCLUDE (do not return these): accounting policies; lease obligations; tax classifications or positions; revenue-recognition descriptions (ASC 606, performance obligations); fair-value measurements; legal-proceeding summaries; compensation, buybacks, dividends, debt, governance; PAST-TENSE or historical statements (e.g. "revenue WAS up 41%", "sales REPRESENTED 13% of total"); vague aspirations; and table/figure fragments or table-of-contents text.
 
 Generate 5-10 specific search terms for evidence retrieval."""
@@ -497,32 +546,36 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
     except json.JSONDecodeError:
         # Retry: extract first [ to last ]
         match = re.search(r'\[.*\]', cleaned, re.DOTALL)
+        data = None
         if match:
             try:
                 data = json.loads(match.group(0))
             except json.JSONDecodeError:
-                logger.warning("Failed to parse Stage 1 response JSON — using deterministic fallback")
-                # Generate promises with deterministic search_terms from the candidate sentences
-                fallback_promises = []
-                for s in batch:
-                    text = s.get("text", s.get("sentence", ""))
-                    if not text:
-                        continue
-                    words = [w.strip('.,;:!?()[]{}') for w in text.lower().split() if len(w) > 3]
-                    search_terms = list(set(words[:8])) if words else [text[:30]]
-                    fallback_promises.append({
-                        "is_promise": True,
-                        "text": text,
-                        "category": "other",
-                        "severity": 5,
-                        "deadline": None,
-                        "measurable_outcome": "",
-                        "search_terms": search_terms
-                    })
-                return fallback_promises
-        else:
-            logger.warning("No JSON array found in Stage 1 response")
-            return []
+                data = None
+        if data is None:
+            logger.warning("Failed to parse Stage 1 response JSON — using deterministic fallback")
+            # Deterministic fallback (2026-07-01 Part 2 fix): only sentences with an
+            # explicit FUTURE_KEYWORD survive — the old fallback marked EVERY batch
+            # sentence is_promise=true, which converted historical revenue
+            # statements into "promises" whenever a JSON parse failed. The items
+            # flow through the normal validation below, so they get the same
+            # verbatim check + source metadata as LLM-extracted promises.
+            data = []
+            for s in batch:
+                text = s.get("text", s.get("sentence", ""))
+                if not text or not has_future_keyword(text):
+                    continue
+                words = [w.strip('.,;:!?()[]{}') for w in text.lower().split() if len(w) > 3]
+                search_terms = list(set(words[:8])) if words else [text[:30]]
+                data.append({
+                    "is_promise": True,
+                    "text": text,
+                    "category": "other",
+                    "severity": 5,
+                    "deadline": None,
+                    "measurable_outcome": "",
+                    "search_terms": search_terms
+                })
     
     if not isinstance(data, list):
         return []
@@ -1092,6 +1145,7 @@ def extract_promises_from_documents(
             "fiscal_year": int(filing.get('period_of_report', '0000')[:4]) if filing.get('period_of_report') else 0,
             "section": "Item 7. MD&A" if '10-K' in form else "Item 2. MD&A",
             "htm_url": filing.get('htm_url', ''),
+            "accession": acc,
         }
         annotated = annotate_sentences(sentences, meta)
         
@@ -1099,24 +1153,34 @@ def extract_promises_from_documents(
         candidates = filter_candidate_sentences(annotated)
         all_candidates.extend(candidates)
     
-    # Also process transcripts (cleaned via SEC EDGAR pipeline)
+    # Also process transcripts (cleaned via SEC EDGAR pipeline). The provider
+    # returns DICTS with a `text` key (older caches used `content`; objects carry
+    # attributes) — the old attribute-only read returned '' for every dict, so
+    # transcripts were silently skipped and no earnings-call promise ever existed
+    # (2026-07-01 Part 2 fix).
     for t in transcripts:
-        content = getattr(t, 'content', '') or ''
+        if isinstance(t, dict):
+            content = t.get('text') or t.get('content') or ''
+            t_date = str(t.get('date', '') or '')
+            t_url = t.get('url') or t.get('source_url') or ''
+        else:
+            content = getattr(t, 'content', '') or getattr(t, 'text', '') or ''
+            t_date = str(t.date if hasattr(t, 'date') and t.date else '')
+            t_url = getattr(t, 'source_url', '') or getattr(t, 'url', '') or ''
         if not content or len(content) < 200:
             continue
-        
-        t_date = str(t.get('date', '') if isinstance(t, dict) else (t.date if hasattr(t, 'date') and t.date else ''))
-        
+
         cleaned = clean_document(content, doc_type="transcript")
         sentences = split_sentences(cleaned)
-        
+
         meta = {
             "ticker": ticker,
             "filing_type": "Transcript",
             "filing_date": t_date,
             "fiscal_year": int(t_date[:4]) if t_date else 0,
             "section": "Earnings Call",
-            "htm_url": getattr(t, 'source_url', '') or '',
+            "htm_url": t_url,
+            "accession": "",
         }
         annotated = annotate_sentences(sentences, meta)
         candidates = filter_candidate_sentences(annotated)

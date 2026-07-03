@@ -35,6 +35,7 @@ if _SOLLIA_WORKING not in sys.path:
 
 from src.config.llm_config import call_llm, start_tier
 from src.utils.scoring import score_risk_factors
+from src.utils.prompt_safety import neutralize_injections
 from src.providers.filings.sec_edgar import (
     SECEdgarProvider,
     get_cached_filings,
@@ -136,6 +137,17 @@ The quotes must be VERBATIM from the provided text. Copy them exactly. Do not pa
 - When in doubt between ESCALATED and REWORDED, lean toward REWORDED. Only flag ESCALATED when the language change clearly indicates a worsening situation.
 - A risk being split into two risks is NOT a removal — it's REWORDED with the same content.
 - A risk being merged from two risks is NOT new — it's REWORDED.
+- Human capital management disclosures (employee referrals, listening systems,
+  training programs, turnover statistics, engagement surveys) are OPERATIONAL
+  metrics, not risk factors. Only classify such text as a risk factor if the text
+  explicitly describes a THREAT (e.g. "failure to retain talent could harm our
+  ability to execute"). Never report an HR practice itself as a NEW risk.
+- If the OLD text described a program (e.g. employee development or training) and
+  the NEW text also describes a program of the same kind, that is REWORDED, not
+  REMOVED — even if the heading moved.
+- A topic moving to a different section (e.g. climate discussion absorbed into a
+  human-capital or sustainability section) is a SECTION RESTRUCTURE — do not
+  report the topic as REMOVED unless its substance is gone from the entire text.
 - If the OLD text uses future/forward-looking language ("may," "could," "might") and the NEW text uses present/past ("is," "has," "experienced"), this is ESCALATED — the risk materialized.
 - If the OLD text uses present/past and the NEW text uses future/forward-looking, this is DE-ESCALATED — the risk receded.
 
@@ -201,7 +213,7 @@ def _find_genuine_1a_start(clean: str, a_starts: List[int]) -> Optional[int]:
     (followed by a lowercase preposition)."""
     fallback = None
     for s in a_starts:
-        seg = clean[s:s + 90]
+        seg = clean[s:s + 200]
         m = re.match(r"item\s*1a[\.\:\)\s]*risk\s*factors[\.\:\s]*", seg, re.IGNORECASE)
         if not m:
             continue  # this "Item 1A" is not the Risk Factors header
@@ -210,6 +222,22 @@ def _find_genuine_1a_start(clean: str, a_starts: List[int]) -> Optional[int]:
         after = seg[m.end():].lstrip()
         if not after or after[0].isdigit():
             continue  # empty or a TOC page number
+        # Cross-reference guards (2026-07-01 Part 5 fix). NVDA's Item 1 Human
+        # Capital section reads: see "Item 1A. Risk Factors — Risks Related to
+        # ... Matters" for a discussion of this potential impact. The word-after
+        # check below misses it (a quoted SUBSECTION title follows, not a
+        # preposition), which anchored extraction inside Item 1 and pulled the
+        # HR-program text (employee listening systems, referrals) into the "risk
+        # factors" the LLM compared. Detect the lead-in BEFORE the match and the
+        # crossref tail AFTER it instead.
+        before = clean[max(0, s - 70):s].lower()
+        if re.search(r"(?:see|refer\s+to|described\s+in|discussed\s+in|set\s+forth\s+in|"
+                     r"included\s+in|under)\s*[\"'“]?\s*$", before):
+            continue  # preceded by a cross-reference lead-in
+        if re.search(r"for\s+(?:a\s+discussion|additional\s+information|"
+                     r"more\s+information|further\s+information)", seg[m.end():],
+                     re.IGNORECASE):
+            continue  # crossref tail ("... for a discussion of this potential impact")
         if fallback is None:
             fallback = s
         words = re.findall(r"[a-z]+", after.lower())
@@ -248,7 +276,11 @@ def extract_risk_factors(text: str) -> str:
     section = clean[start:end]
     section = re.sub(r"item\s*1a[\.\:\)\s]*risk\s*factors\s*\(continued\)", " ",
                      section, flags=re.IGNORECASE)
-    return re.sub(r"\s+", " ", section).strip()
+    section = re.sub(r"\s+", " ", section).strip()
+    # Defang injection directives in this UNTRUSTED section before it feeds the
+    # comparison prompt or is surfaced as a change quote (Part 3a, 2026-07-02).
+    # No-op on genuine filing text (verified across 948 real docs).
+    return neutralize_injections(section)
 
 
 def _norm(s: Optional[str]) -> str:

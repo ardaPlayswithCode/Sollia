@@ -64,30 +64,30 @@ _load_dotenv()
 # ---------------------------------------------------------------------------
 # LLM PROVIDER PRIORITY LIST
 # All entries are OpenAI-compatible /chat/completions endpoints so a single
-# request/parse path serves every provider. Free providers only (per project
-# policy); paid keys may be present in the env but are not added here.
+# request/parse path serves every provider. Tier 1 (Fable 5) is PAID and
+# reserved for the hardest analytical tasks; tiers 2-8 remain free.
 # `tier`: primary | fallback | backup  (informational, used by the dashboard)
 # ---------------------------------------------------------------------------
-# FINAL chain (2026-06-25 model-selection audit): 8 tiers, 3 INDEPENDENT providers
-# (Groq, Google/Gemini, OpenRouter), all FREE — matches project "free providers only"
-# policy. Selected by benchmarking the top OpenRouter models against the 5 REAL Sollia
-# pipeline prompts (tools/model_benchmark.py). See FINAL_LLM_PRIORITY_LIST.md.
-#
-# KEY FINDING: the new OpenRouter key is a $0 free-tier key. Paid frontier models
-# (opus-4.8, gpt-5.x, gemini-pro) are reachable but the free balance caps affordable
-# OUTPUT to ~80 tokens — they cannot generate full pipeline JSON on this key. The
-# `:free` OpenRouter models DO generate full-length output, so the OpenRouter tiers
-# below use `:free` slugs (gemma-4-31b:free scored 100/100 on all 5 prompts).
+# FINAL chain (2026-06-25 model-selection audit, Fable 5 activated 2026-07-01):
+# 8 tiers, 3 INDEPENDENT providers (Groq, Google/Gemini, OpenRouter). Tiers 2-8 are
+# free; tier 1 (Fable 5) bills the funded OpenRouter key and is reserved for the
+# hardest analytical tasks via AGENT_START_TIER. Selected by benchmarking against
+# the 5 REAL Sollia pipeline prompts (tools/model_benchmark.py).
 LLM_PROVIDERS: List[Dict[str, Any]] = [
-    # ── #1 PRIMARY — Claude Fable 5. GEOBLOCKED for US IPs: OpenRouter returns 404
-    #    "Claude Fable 5 is not available" (an access restriction, NOT a wrong ID — the
-    #    model is in the catalog). status="blocked" + auto_promote=True: call_llm skips
-    #    it WITHOUT spending a request, but re-probes every FABLE_REPROBE_SECONDS. The
-    #    instant the ban lifts it returns 200, flips to active, and serves as #1 — zero
-    #    code change. THIS IS THE FUTURE #1 MODEL.
+    # ── #1 PRIMARY — Claude Fable 5 (ACTIVE 2026-07-01; the former geoblock is lifted,
+    #    OpenRouter resolves it to anthropic/claude-5-fable-20260609). Reasoning is
+    #    MANDATORY on this endpoint and counts against max_tokens; the reasoning
+    #    budget is now PROPORTIONAL to prompt complexity (fable5_effort_level) and
+    #    the same amount pads max_tokens so the caller's output length survives the
+    #    thinking phase. `billed: True` = this tier spends real money: it is skipped
+    #    once the per-run cost cap (MAX_COST_PER_RUN_USD) is reached, and the
+    #    adaptive router (select_tier_for_prompt) keeps simple prompts off it
+    #    entirely. Empty-content 200s (budget spent thinking) fall through to the
+    #    next tier. Paid: $10/1M in, $50/1M out.
     {"name": "Fable5", "url": "https://openrouter.ai/api/v1/chat/completions",
      "model": "anthropic/claude-fable-5", "key_env": "OPENROUTER_API_KEY",
-     "tier": "primary", "status": "blocked", "auto_promote": True},
+     "tier": "primary", "adaptive_reasoning": True, "billed": True,
+     "timeout": 180},
     # ── #2 PRIMARY (ACTIVE) — Groq llama-3.3-70b. Free, fast (~300ms), deterministic;
     #    the proven workhorse that served every prior pipeline run.
     {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
@@ -137,29 +137,99 @@ LLM_PROVIDERS: List[Dict[str, Any]] = [
 # it still falls through the remaining tiers, so resilience is unchanged. This
 # spreads concurrent load across all three domains instead of piling on one.
 PROVIDER_IDX = {"FABLE": 0, "GROQ_70B": 1, "GROQ_8B": 2, "GEMINI": 3, "OPENROUTER": 4}
+# Fable 5 (idx 0) is paid — route it the HARDEST analytical tasks (cross-document
+# reasoning, evidence matching, legal reading, long-document comparison, moat
+# verdicts); keep high-volume batching on free Groq tiers. Every agent still falls
+# through the full chain on failure, so resilience is unchanged.
 AGENT_START_TIER: Dict[str, int] = {
     # agent (or "agent:stage")          start idx  rationale
-    "corporate_discrepancy": 1,   # classify: quality-sensitive, moderate volume -> Groq-70B
+    # NOTE (2026-07-01 cost audit): these are the agents' NOMINAL tiers. The
+    # adaptive router (select_tier_for_prompt) can only DEMOTE a call to a
+    # cheaper tier when the actual prompt is simple — it never promotes a cheap
+    # agent to the paid tier. Values below reflect MEASURED prompt sizes from
+    # .cache/llm_history (600+ recorded calls), not assumed ones:
+    #   * corporate_discrepancy classify batches measure ~1,030 words median
+    #     (763-1456) -> the router sends them to Groq-70B; only a genuinely long
+    #     cross-document batch (>=2000 words) ever bills Fable 5.
+    #   * legal_proceedings prompts measure ~2,400 words -> Groq-70B handles the
+    #     nuance fine (per-agent routing table, 2026-07-01); starts at idx 1.
+    #   * constraint_auditor classify is ~290 tokens -> trivial -> Groq-8B.
+    #   * moat_auditor stages measure 250-1,600 words (classify_moats up to ~6k)
+    #     -> Groq-70B; analysis prompts (~253 words median) demote further.
+    # COST RECONCILIATION (2026-07-02): the Part-1b routing table nominally put
+    # promise_audit:stage2 and risk_factors on Fable 5 ("needs the context").
+    # Measured, that is INCOMPATIBLE with the hard <$0.50/run ceiling: risk_factors
+    # issues TWO ~4,500-word calls/run (10-K delta + 10-Q phase) at ~$0.30 each
+    # (~$0.60), and stage2 fires several ≥2,000-word evidence calls/run — either
+    # alone blows the budget. Cost control is THIS pass's overriding goal, so the
+    # ceiling wins: both route to Groq-70B, which has a 128k context (ample for a
+    # 4,500-word prompt) and benchmarked 100/100 on the 5 real Sollia prompts.
+    # Fable 5 is reserved for ONE low-volume, highest-value judgment call: Agent 1's
+    # severity audit (pin_tier, ~$0.037/run). Result: full cold pipeline ≈ $0.04.
+    "corporate_discrepancy": 0,   # classify: router demotes ~1k-word batches to Groq-70B;
+                                  #   only the pinned severity audit actually bills Fable 5
     "promise_audit:stage1":  2,   # HIGH VOLUME (many batches) -> Groq-8B (separate per-model TPM)
-    "promise_audit:stage2":  1,   # single high-quality verdict pass -> Groq-70B
-    "legal_proceedings":     3,   # low volume -> Gemini (fully independent of Groq)
-    "risk_factors":          1,   # single high-quality call -> Groq-70B
-    "constraint_auditor":    1,   # one sector-classification call -> Groq-70B (Agent 5)
-    "moat_auditor":          1,   # competitor/moat classify + select + analyze -> Groq-70B (Agent 6)
+    "promise_audit:stage2":  1,   # evidence matching -> Groq-70B (128k ctx; was Fable 5, cost)
+    "legal_proceedings":     1,   # medium complexity, free -> Groq-70B (was Fable 5)
+    "risk_factors":          1,   # 2 long calls/run -> Groq-70B (was Fable 5, cost — see above)
+    "constraint_auditor":    2,   # trivial sector selection (~290 tokens) -> Groq-8B (was Fable 5)
+    "moat_auditor":          1,   # medium classify/select prompts -> Groq-70B (was Fable 5)
 }
 
 
 def start_tier(name: str, default: int = 0) -> int:
     """Return the chain start index for an agent (or 'agent:stage'); see
-    AGENT_START_TIER. default=0 reproduces the legacy 'start at the top' behavior
-    (idx 0 = Fable5, which is skipped while blocked, so effectively Groq-70B)."""
+    AGENT_START_TIER. default=0 starts at the top of the chain (idx 0 = Fable 5)."""
     return AGENT_START_TIER.get(name, default)
 
 
-# Providers marked status="blocked" are skipped without spending a request, then
-# re-probed every FABLE_REPROBE_SECONDS so a geo-unban auto-promotes with no redeploy.
-FABLE_REPROBE_SECONDS = float(os.environ.get("SOLLIA_FABLE_REPROBE", "1800"))
-_blocked_probe: Dict[str, float] = {}   # provider name -> last re-probe epoch (guarded by _rate_lock)
+# ---------------------------------------------------------------------------
+# ADAPTIVE MODEL ROUTING (2026-07-01 cost optimization, Part 1b)
+# ---------------------------------------------------------------------------
+# The paid tier (Fable 5) was burning ~$1.80 per cold run because EVERY call
+# from a tier-0 agent hit it, including ~1,000-word classify batches a free
+# 70B model handles identically. select_tier_for_prompt() is applied inside
+# call_llm to every live call: AGENT_START_TIER is a SUGGESTION and the
+# complexity check overrides it — in the CHEAP direction only. A simple prompt
+# can never bill the paid tier; a cheap agent can never be promoted into it
+# (that would let one oversized document, or an attacker, force paid calls).
+# Tier indices: larger = cheaper/further down the chain, so "demote" = max().
+def select_tier_for_prompt(prompt: str, default_tier: int = 0) -> int:
+    """Route simple prompts to free tiers regardless of the agent's nominal tier.
+
+    <500 words  -> at least Groq-8B (trivial classification / selection)
+    <2000 words -> at least Groq-70B (standard extraction / analysis)
+    >=2000 words-> the agent's nominal tier (Fable 5 for reasoning agents:
+                   cross-document matching, long risk comparisons need the
+                   context + reasoning quality).
+    """
+    wc = len(prompt.split())
+    if wc < 500:
+        return max(default_tier, PROVIDER_IDX["GROQ_8B"])
+    if wc < 2000:
+        return max(default_tier, PROVIDER_IDX["GROQ_70B"])
+    return default_tier
+
+
+# Part 1c — Fable 5 reasoning budget proportional to task complexity. Reasoning
+# tokens are billed as OUTPUT tokens ($50/1M), so a flat budget overpays on
+# short prompts. The returned budget is sent as reasoning:{max_tokens:N} and
+# ALSO added to max_tokens (reasoning counts against it on this endpoint).
+# NOTE: the Anthropic backend enforces a minimum thinking budget of 1024 —
+# OpenRouter rejects smaller values — so tiers below that are clamped at call
+# time (the <1000-word branch is unreachable in practice anyway: the adaptive
+# router keeps sub-2000-word prompts off Fable 5 entirely).
+FABLE5_MIN_REASONING = 1024
+
+def fable5_effort_level(prompt_word_count: int) -> int:
+    """Return the Fable 5 reasoning-token budget for a prompt of this size."""
+    if prompt_word_count < 1000:
+        return 200    # light reasoning for simple classification
+    if prompt_word_count < 4000:
+        return 500    # medium for standard analysis
+    if prompt_word_count < 8000:
+        return 1000   # heavy for complex cross-document work
+    return 2000       # max for very long contexts
 
 # ---------------------------------------------------------------------------
 # Rate limiting / retry tuning (Part 1c). All overridable via env for ops.
@@ -181,7 +251,9 @@ RETRY_AFTER_CAP = 60.0     # never honor an absurd Retry-After
 PRICING: Dict[str, Dict[str, float]] = {
     # Active chain. `:free` OpenRouter slugs and Groq dev usage are effectively $0;
     # list prices shown so the dashboard can estimate "what this WOULD cost".
-    "anthropic/claude-fable-5":                 {"in": 5.00, "out": 25.00},  # est. (blocked)
+    # Fable 5 IS billed (funded OpenRouter key) — price is the verified OpenRouter
+    # list price (GET /models, 2026-07-01), not an estimate.
+    "anthropic/claude-fable-5":                 {"in": 10.00, "out": 50.00},
     "llama-3.3-70b-versatile":                  {"in": 0.59, "out": 0.79},
     "llama-3.1-8b-instant":                     {"in": 0.05, "out": 0.08},
     "gemini-2.5-flash":                         {"in": 0.30, "out": 2.50},
@@ -470,17 +542,206 @@ class LLMRateLimited(LLMError):
     """Raised when every provider 429s for MAX_CHAIN_RETRIES consecutive passes."""
 
 
+class LLMBudgetExceeded(LLMError):
+    """Raised when a pipeline run exceeds its live-LLM-call budget (abuse guard)."""
+
+
+class RunCostExceeded(LLMError):
+    """Raised when a single pipeline run exceeds the cost budget AND no free
+    provider could serve the call. In normal operation the cap does NOT raise:
+    paid tiers are silently skipped and the chain falls through to free tiers."""
+
+
+# ---------------------------------------------------------------------------
+# Per-run abuse guards (Part 8d, 2026-07-01 security hardening)
+#   * LLM call budget: a single pipeline run may issue at most
+#     SOLLIA_MAX_LLM_CALLS_PER_RUN LIVE calls (cache hits are free). Prevents a
+#     runaway loop from burning the paid Fable 5 key.
+#   * Circuit breaker: 5 consecutive total-chain failures abort the run — if the
+#     whole provider ecosystem is down, more calls only add latency and load.
+#   * HARD COST CAP (Part 1d): cumulative BILLED cost (providers marked
+#     billed:True — real dollars, not list-price estimates for free-tier usage)
+#     is tracked per run. Once it exceeds MAX_COST_PER_RUN_USD, paid providers
+#     are skipped and every remaining call runs on free tiers only. There is no
+#     code path around it: the check lives inside call_llm's provider loop, so
+#     a single run can never burn more than the cap (+ one in-flight call)
+#     without an explicit SOLLIA_MAX_COST_PER_RUN env override.
+#   * Cache-bust rate limit (Part 3b): SOLLIA_LLM_NO_CACHE=1 forces live calls;
+#     an attacker who sets it and spams runs bypasses the byte-cache and runs up
+#     provider load/cost. reset_run_budget() counts NO_CACHE runs in a rolling
+#     hour (persisted to .cache/no_cache_runs.json); past 5/hour the flag is
+#     suppressed and the run silently uses the cache again.
+# The backend calls reset_run_budget() at the start of each pipeline run.
+# ---------------------------------------------------------------------------
+# 300 (was 100): Agent 1's rolling 5-year window legitimately issues ~150-200
+# classify batches on a fully cold cache; this stays a hard abuse ceiling.
+MAX_LLM_CALLS_PER_RUN = int(os.environ.get("SOLLIA_MAX_LLM_CALLS_PER_RUN", "300"))
+CIRCUIT_BREAKER_THRESHOLD = int(os.environ.get("SOLLIA_LLM_CIRCUIT_THRESHOLD", "5"))
+MAX_COST_PER_RUN_USD = float(os.environ.get("SOLLIA_MAX_COST_PER_RUN", "2.00"))
+MAX_NO_CACHE_RUNS_PER_HOUR = int(os.environ.get("SOLLIA_MAX_NO_CACHE_RUNS_PER_HOUR", "5"))
+_NO_CACHE_STATE = os.path.join(_SOLLIA_WORKING, ".cache", "no_cache_runs.json")
+_budget_lock = threading.Lock()
+_live_calls_this_run = 0
+_consecutive_chain_failures = 0
+_run_cost_usd = 0.0
+_no_cache_suppressed = False
+
+
+def _check_no_cache_rate_limit() -> bool:
+    """Record a NO_CACHE run and return True when the rolling-hour limit is
+    exceeded (meaning the cache-bust flag must be suppressed). Never raises."""
+    now = time.time()
+    stamps: List[float] = []
+    try:
+        with open(_NO_CACHE_STATE) as f:
+            stamps = [t for t in json.load(f) if isinstance(t, (int, float))]
+    except Exception:
+        stamps = []
+    stamps = [t for t in stamps if now - t < 3600.0]
+    over = len(stamps) >= MAX_NO_CACHE_RUNS_PER_HOUR
+    if not over:
+        stamps.append(now)
+    try:
+        os.makedirs(os.path.dirname(_NO_CACHE_STATE), exist_ok=True)
+        with open(_NO_CACHE_STATE, "w") as f:
+            json.dump(stamps, f)
+    except Exception:
+        pass
+    return over
+
+
+def reset_run_budget() -> None:
+    """Reset the per-run LLM budget, cost cap + circuit breaker. Call at
+    pipeline start. Also enforces the cache-bust rate limit."""
+    global _live_calls_this_run, _consecutive_chain_failures, _run_cost_usd, _no_cache_suppressed
+    with _budget_lock:
+        _live_calls_this_run = 0
+        _consecutive_chain_failures = 0
+        _run_cost_usd = 0.0
+    if NO_CACHE:
+        suppressed = _check_no_cache_rate_limit()
+        with _budget_lock:
+            _no_cache_suppressed = suppressed
+        if suppressed:
+            print("[llm_config] WARNING: SOLLIA_LLM_NO_CACHE rate limit reached "
+                  f"({MAX_NO_CACHE_RUNS_PER_HOUR} cache-busted runs/hour) — this run "
+                  "will use the cache.", flush=True)
+
+
+def get_run_budget_state() -> Dict[str, Any]:
+    with _budget_lock:
+        return {"live_calls": _live_calls_this_run,
+                "max_calls": MAX_LLM_CALLS_PER_RUN,
+                "consecutive_failures": _consecutive_chain_failures,
+                "billed_cost_usd": round(_run_cost_usd, 6),
+                "max_cost_usd": MAX_COST_PER_RUN_USD,
+                "cost_cap_reached": _run_cost_usd >= MAX_COST_PER_RUN_USD}
+
+
+def _cost_cap_reached() -> bool:
+    with _budget_lock:
+        return _run_cost_usd >= MAX_COST_PER_RUN_USD
+
+
+def _record_billed_cost(cost: float) -> None:
+    global _run_cost_usd
+    if cost:
+        with _budget_lock:
+            _run_cost_usd += cost
+
+
+def _budget_precheck() -> None:
+    """Raise if the run is over budget or the circuit breaker is open."""
+    global _live_calls_this_run
+    with _budget_lock:
+        if _consecutive_chain_failures >= CIRCUIT_BREAKER_THRESHOLD:
+            raise LLMError(
+                f"LLM circuit breaker open: {_consecutive_chain_failures} consecutive "
+                f"provider-chain failures. Aborting run — check provider status/keys, "
+                f"then retry (reset_run_budget() clears the breaker).")
+        if _live_calls_this_run >= MAX_LLM_CALLS_PER_RUN:
+            raise LLMBudgetExceeded(
+                f"Run exceeded its LLM call budget ({MAX_LLM_CALLS_PER_RUN} live calls). "
+                f"This is an abuse guard; raise SOLLIA_MAX_LLM_CALLS_PER_RUN if the "
+                f"workload is legitimate.")
+        _live_calls_this_run += 1
+
+
+def _budget_record_outcome(success: bool) -> None:
+    global _consecutive_chain_failures
+    with _budget_lock:
+        _consecutive_chain_failures = 0 if success else _consecutive_chain_failures + 1
+
+
+# ===========================================================================
+# Hardened HTTP POST with a WALL-CLOCK ceiling (2026-07-02 hang fix)
+# ===========================================================================
+# A production hang was observed: an ESTABLISHED connection to OpenRouter's
+# Cloudflare front stalled for 13+ minutes even though requests carried a
+# timeout. requests' scalar/read timeout means "seconds of inactivity between
+# bytes" — a server that dribbles keepalive bytes (or a stuck TLS session)
+# defeats it and the pipeline blocks forever. Fix: run the POST on a throwaway
+# worker thread and enforce a HARD wall-clock deadline with future.result().
+# On breach we abandon the call (the orphaned thread dies on its own socket
+# timeout; it never blocks the pipeline) and the chain falls to the next
+# provider. Also splits the socket timeout into (connect, read) so a stuck
+# handshake is bounded separately.
+WALLCLOCK_SLACK = float(os.environ.get("SOLLIA_LLM_WALLCLOCK_SLACK", "15"))
+CONNECT_TIMEOUT = float(os.environ.get("SOLLIA_LLM_CONNECT_TIMEOUT", "10"))
+
+
+class LLMHardTimeout(RuntimeError):
+    """The provider did not respond within the hard wall-clock ceiling."""
+
+
+def _post_with_wallclock(url: str, headers: Dict[str, str], payload: Dict[str, Any],
+                         read_timeout: int):
+    """POST with BOTH a (connect, read) socket timeout AND a hard wall-clock
+    deadline. The request runs on a DAEMON thread so a stalled connection can
+    never block the pipeline OR delay interpreter exit — a leaked thread dies
+    on its own socket read timeout. Raises on breach so call_llm falls through
+    to the next provider."""
+    hard_deadline = read_timeout + WALLCLOCK_SLACK
+    box: Dict[str, Any] = {}
+    done = threading.Event()
+
+    def _do():
+        try:
+            box["resp"] = requests.post(url, headers=headers, json=payload,
+                                        timeout=(CONNECT_TIMEOUT, read_timeout))
+        except Exception as exc:  # noqa: BLE001
+            box["exc"] = exc
+        finally:
+            done.set()
+
+    t = threading.Thread(target=_do, daemon=True, name="llm-http")
+    t.start()
+    if not done.wait(timeout=hard_deadline):
+        raise LLMHardTimeout(
+            "no response within hard wall-clock deadline %.0fs (provider stalled)"
+            % hard_deadline)
+    if "exc" in box:
+        raise box["exc"]
+    return box["resp"]
+
+
 # ===========================================================================
 # Main entry point
 # ===========================================================================
 def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
              provider_idx: int = 0, agent: Optional[str] = None,
-             stage: Optional[str] = None, ticker: Optional[str] = None) -> Tuple[str, Dict]:
+             stage: Optional[str] = None, ticker: Optional[str] = None,
+             pin_tier: bool = False) -> Tuple[str, Dict]:
     """Call the LLM provider chain with hardened retry + full history recording.
 
     Backwards compatible: returns (response_text, meta). New optional kwargs
     (agent/stage/ticker) attribute the call in .cache/llm_history/; if omitted
     they fall back to the thread-local call_context().
+
+    pin_tier=True bypasses the adaptive word-count router and starts exactly at
+    provider_idx — for LOW-VOLUME judgment calls that deliberately use the paid
+    tier on a short prompt (e.g. Agent 1's high-severity audit: ~1 call/run).
+    The per-run cost cap still applies; pinning cannot bypass it.
     """
     r_agent, r_stage, r_ticker = _resolve_ctx(agent, stage, ticker)
     call_id = "%s_%s_%s_%s" % (
@@ -491,8 +752,9 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
     cache_key = hashlib.sha256(f"{prompt}_{max_tokens}_{temperature}".encode()).hexdigest()[:16]
     cache_path = os.path.join(LLM_CACHE_DIR, f"{cache_key}.json")
 
-    # ---- byte-identical cache (skipped under NO_CACHE) ----
-    if not NO_CACHE and os.path.exists(cache_path):
+    # ---- byte-identical cache (skipped under NO_CACHE, unless the cache-bust
+    #      rate limit suppressed the flag for this run — Part 3b) ----
+    if (not NO_CACHE or _no_cache_suppressed) and os.path.exists(cache_path):
         try:
             with open(cache_path, "r") as f:
                 cached = json.load(f)
@@ -504,30 +766,40 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
         except Exception:
             pass
 
+    # Live call — enforce the per-run budget + circuit breaker (cache hits above
+    # returned already and are exempt).
+    _budget_precheck()
+
+    # ADAPTIVE ROUTING (Part 1b): the caller's provider_idx (AGENT_START_TIER)
+    # is a suggestion; the prompt's measured complexity can demote the call to a
+    # cheaper tier. Never promotes toward the paid tier. pin_tier callers opt
+    # out (low-volume judgment calls); the cost cap below still binds them.
+    effective_idx = provider_idx if pin_tier else select_tier_for_prompt(prompt, provider_idx)
+    prompt_wc = len(prompt.split())
+
     prev_errors: List[str] = []
     consecutive_chain_429 = 0
     total_attempts = 0
+    paid_skipped_by_cap = False
 
     for chain_pass in range(MAX_CHAIN_RETRIES):
         pass_had_429 = False
         pass_retry_after: Optional[float] = None
 
-        for idx in range(provider_idx, len(LLM_PROVIDERS)):
+        for idx in range(effective_idx, len(LLM_PROVIDERS)):
             provider = LLM_PROVIDERS[idx]
             api_key = os.environ.get(provider["key_env"], "")
             if not api_key:
                 continue
-
-            # Skip a geoblocked provider (e.g. Fable 5) WITHOUT spending a request,
-            # but re-probe every FABLE_REPROBE_SECONDS so a geo-unban auto-promotes.
-            if provider.get("status") == "blocked":
-                with _rate_lock:
-                    last = _blocked_probe.get(provider["name"], 0.0)
-                    due = (time.time() - last) >= FABLE_REPROBE_SECONDS
-                    if due:
-                        _blocked_probe[provider["name"]] = time.time()
-                if not due:
-                    continue  # still believed blocked — skip silently
+            # HARD COST CAP (Part 1d): once the run's billed spend crosses
+            # MAX_COST_PER_RUN_USD, paid tiers are off the table — fall through
+            # to the free tiers below instead.
+            if provider.get("billed") and _cost_cap_reached():
+                if not paid_skipped_by_cap:
+                    prev_errors.append(f"{provider['name']}: skipped (run cost cap "
+                                       f"${MAX_COST_PER_RUN_USD:.2f} reached)")
+                paid_skipped_by_cap = True
+                continue
 
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
             if "openrouter.ai" in provider["url"]:
@@ -536,36 +808,46 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
             payload = {"model": provider["model"],
                        "messages": [{"role": "user", "content": prompt}],
                        "temperature": temperature, "max_tokens": max_tokens}
+            if provider.get("adaptive_reasoning"):
+                # Part 1c: reasoning budget proportional to prompt complexity.
+                # Reasoning counts against max_tokens on this endpoint, so the
+                # budget is also added as a pad (pad does NOT change the byte-
+                # cache key). Clamped to the Anthropic minimum thinking budget.
+                rbudget = max(fable5_effort_level(prompt_wc), FABLE5_MIN_REASONING)
+                payload["reasoning"] = {"max_tokens": rbudget}
+                payload["max_tokens"] = max_tokens + rbudget
+            elif provider.get("reasoning_effort"):
+                payload["reasoning"] = {"effort": provider["reasoning_effort"]}
+                payload["max_tokens"] = max_tokens + int(provider.get("max_tokens_pad", 0))
 
             _rate_gate()
             total_attempts += 1
             t0 = time.time()
             try:
-                resp = requests.post(provider["url"], headers=headers, json=payload,
-                                     timeout=REQUEST_TIMEOUT)
-            except Exception as exc:  # network/timeout -> try next provider
+                resp = _post_with_wallclock(provider["url"], headers, payload,
+                                            int(provider.get("timeout", REQUEST_TIMEOUT)))
+            except Exception as exc:  # network/timeout/hang -> try next provider
                 prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
                 continue
 
             if resp.status_code == 200:
                 data = resp.json()
                 try:
-                    result = data["choices"][0]["message"]["content"].strip()
+                    content = data["choices"][0]["message"]["content"]
                 except (KeyError, IndexError, TypeError):
                     prev_errors.append(f"{provider['name']}: malformed 200 (no choices/content)")
                     continue
+                # content can be None on a REASONING model: a refusal, or the whole
+                # token budget spent thinking with nothing emitted (Fable 5 returns
+                # content:null here). Treat None exactly like an empty string —
+                # AttributeError from None.strip() previously crashed the whole
+                # chain instead of falling through (2026-07-01 injection-audit fix).
+                result = (content or "").strip()
                 if not result:
-                    # e.g. a reasoning model that spent the whole budget thinking —
-                    # an empty 200 must NOT count as success; fall through to next provider.
                     prev_errors.append(f"{provider['name']}: empty 200 response")
                     continue
                 usage = data.get("usage")
                 total_ms = (time.time() - t0) * 1000.0
-                # AUTO-PROMOTE: a blocked provider that just returned 200 is no longer
-                # blocked (e.g. Fable 5 geo-unbanned) — flip it active for this process
-                # so it serves as #1 from now on with zero redeploy.
-                if provider.get("status") == "blocked":
-                    provider["status"] = "active"
                 # persist byte-identical cache
                 try:
                     with open(cache_path, "w") as f:
@@ -578,10 +860,17 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
                                     result, usage, False, total_ms,
                                     chain_pass + 1, total_attempts, prev_errors)
                 _record_history(rec)
+                _budget_record_outcome(True)
+                cost = estimate_cost(provider["model"], usage)
+                if provider.get("billed"):
+                    # OpenRouter returns the ACTUAL billed cost in usage.cost —
+                    # prefer it over the list-price estimate for the run cap.
+                    actual = (usage or {}).get("cost")
+                    _record_billed_cost(float(actual) if actual is not None else cost)
                 return result, {"cached": False, "provider": provider["name"],
                                 "model": provider["model"], "retries": chain_pass,
                                 "attempts": total_attempts,
-                                "cost_usd": estimate_cost(provider["model"], usage)}
+                                "cost_usd": cost}
 
             if resp.status_code == 429:
                 pass_had_429 = True
@@ -606,6 +895,7 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
             break
 
     # ---- exhausted ----
+    _budget_record_outcome(False)
     rec = _build_record(call_id, r_agent, r_stage, r_ticker, "FAILED", "none",
                         temperature, max_tokens, prompt, "", None, False, 0.0,
                         chain_pass + 1, total_attempts, prev_errors)
@@ -615,11 +905,53 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
         raise LLMRateLimited(
             f"All LLM providers rate-limited (429) for {MAX_CHAIN_RETRIES} consecutive "
             f"passes. Last errors: {summary}")
+    if paid_skipped_by_cap:
+        raise RunCostExceeded(
+            f"Run cost cap ${MAX_COST_PER_RUN_USD:.2f} reached; the paid tier was "
+            f"skipped and no free provider could serve the call. Last errors: {summary}")
     raise LLMError(f"All LLM providers failed. Last errors: {summary}")
 
 
 def get_primary_model() -> str:
     return LLM_PROVIDERS[0]["model"]
+
+
+# ---------------------------------------------------------------------------
+# API-key hygiene (Part 3b, 2026-07-01). Keys must come from the environment
+# (.env or shell) — never hardcoded. check_api_keys() flags keys that look like
+# placeholders/examples so a misconfigured deploy fails loudly at startup
+# instead of silently skipping providers. Values are NEVER printed.
+# ---------------------------------------------------------------------------
+_PLACEHOLDER_PAT = re.compile(
+    r"(your[-_ ]?key|example|placeholder|changeme|xxx|<|>|^dead$|^test$)", re.IGNORECASE)
+
+
+def check_api_keys(verbose: bool = False) -> Dict[str, str]:
+    """Return {key_env: status} for every provider key. Status is one of
+    'ok', 'missing', 'placeholder', 'too_short'. Never logs key values."""
+    out: Dict[str, str] = {}
+    for env in sorted({p["key_env"] for p in LLM_PROVIDERS}):
+        val = os.environ.get(env, "")
+        if not val:
+            out[env] = "missing"
+        elif _PLACEHOLDER_PAT.search(val):
+            out[env] = "placeholder"
+        elif len(val) < 20:
+            out[env] = "too_short"
+        else:
+            out[env] = "ok"
+        if verbose and out[env] != "ok":
+            print(f"[llm_config] WARNING: {env} looks {out[env]} — that provider "
+                  "tier will be skipped or fail.", flush=True)
+    return out
+
+
+# Warn (once, at import) about suspicious keys so misconfiguration is visible
+# in the backend startup log rather than as mysterious provider fallthrough.
+for _env, _status in check_api_keys().items():
+    if _status in ("placeholder", "too_short"):
+        print(f"[llm_config] WARNING: {_env} appears to be a {_status} value — "
+              "check sollia_working/.env.", flush=True)
 
 
 def verify_llm_client(fatal: bool = False) -> bool:

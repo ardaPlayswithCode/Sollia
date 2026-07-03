@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config.llm_config import call_llm, start_tier
 from src.utils.scoring import score_legal_proceedings
+from src.utils.prompt_safety import neutralize_injections
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,28 @@ def _quote_in_text(quote: Optional[str], source: Optional[str]) -> bool:
         return True
     probe = q[:60]
     return len(probe) >= 20 and probe in src
+
+
+# ── Financing-event guard (Part 4, 2026-07-01) ─────────────────────────────
+# 8-Ks are dominated by corporate-finance events (Item 1.01/8.01 notes offerings,
+# credit facilities, indentures). Those are NOT legal proceedings; if the LLM
+# returns one anyway, this deterministic check drops it. An event stays when its
+# text carries genuine legal language (settlement, lawsuit, investigation...).
+_FINANCING_RE = re.compile(
+    r'(?i)notes?\s+offering|debt\s+offering|senior\s+notes|underwriting\s+agreement|'
+    r'credit\s+(?:facility|agreement)|indenture|term\s+loan|commercial\s+paper|'
+    r'stock\s+(?:offering|issuance)|securities\s+offering|notes?\s+due\s+\d{4}')
+_LEGAL_RE = re.compile(
+    r'(?i)lawsuit|litigation|settle(?:ment|d)?|investigation|subpoena|enforcement|'
+    r'plaintiff|defendant|court|judgment|consent\s+decree|complaint|class\s+action|'
+    r'regulatory\s+action|proceeding')
+
+
+def _is_financing_event(ev: Dict) -> bool:
+    """True when an extracted 8-K event is a financing event with no legal content."""
+    txt = " ".join(str(ev.get(k) or "") for k in
+                   ("description", "current_quote", "prior_quote", "case_name", "item"))
+    return bool(_FINANCING_RE.search(txt)) and not _LEGAL_RE.search(txt)
 
 
 def _dedup_proceedings(proceedings: List[Dict]) -> List[Dict]:
@@ -130,7 +153,8 @@ class LegalProceedingsTracker:
             return _CIK_CACHE[key]
         try:
             url = "https://www.sec.gov/files/company_tickers.json"
-            resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app"})
+            resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app"},
+                                timeout=(10, 30))
             data = resp.json()
             for item in data.values():
                 if item.get("ticker", "").upper() == key:
@@ -155,7 +179,8 @@ class LegalProceedingsTracker:
 
         if not filings_data:
             url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-            resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"})
+            resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"},
+                                timeout=(10, 30))
             if resp.status_code == 200:
                 filings_data = resp.json()
                 # Also fetch historical archives
@@ -504,6 +529,12 @@ class LegalProceedingsTracker:
                     curr_text = self.extract_legal_section(curr_raw, doc_type) if curr_raw else None
                     prev_text = self.extract_legal_section(prev_raw, doc_type) if prev_raw else None
 
+                # Defang prompt-injection directives in this UNTRUSTED filing
+                # text before it reaches the comparison prompt or is surfaced as
+                # a quote (Part 3a, 2026-07-02). No-op on genuine filing text.
+                curr_text = neutralize_injections(curr_text) if curr_text else curr_text
+                prev_text = neutralize_injections(prev_text) if prev_text else prev_text
+
                 if curr_raw and prev_raw:
                     if curr_text and prev_text:
                         # PART 1a reference gate: a 10-K Item 3 / 10-Q Part II Item 1
@@ -577,7 +608,11 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
 }}"""
 
                         else:
-                            prompt = f"""Compare legal events in 8-K filings.
+                            prompt = f"""Compare LEGAL PROCEEDINGS disclosed in 8-K filings.
+
+Only report legal proceedings: lawsuits, investigations, regulatory or enforcement actions, subpoenas, consent decrees, and litigation settlements. Do NOT report financing events (notes offerings, debt issuances, credit facilities, stock issuances, indentures), ordinary commercial agreements, or other corporate finance activity as legal proceedings — a $3.5B notes offering is a financing event, not a legal proceeding.
+
+If neither filing discloses a legal proceeding, return an empty "events" list and set "summary" to one line describing what the filings actually covered (e.g. "8-K filings covered a debt offering — no legal proceedings to report.").
 
 PRIOR ({prev['filing_date']}):
 {prev_text[:8000]}
@@ -589,8 +624,8 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
 {{
   "events": [
     {{
-      "item": "1.01|1.03|8.01",
-      "description": "brief description",
+      "item": "1.03|8.01|other",
+      "description": "brief description of the LEGAL proceeding",
       "prior_quote": "exact text or null",
       "current_quote": "exact text",
       "counterparties": ["list"],
@@ -602,7 +637,8 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
 }}"""
 
                         response, _ = call_llm(prompt, max_tokens=2000,
-                                               provider_idx=start_tier("legal_proceedings"))
+                                               provider_idx=start_tier("legal_proceedings"),
+                                               agent="legal_proceedings", ticker=ticker)
                         try:
                             cleaned = response.strip()
                             # Remove markdown
@@ -628,6 +664,21 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                             proceedings_list = data.get('proceedings', data.get('events', []))
                             # Merge duplicate findings that describe the same case/event.
                             proceedings_list = _dedup_proceedings(proceedings_list)
+                            # Deterministic backstop (Part 4, 2026-07-01): an 8-K
+                            # financing event (notes offering, credit facility...) is
+                            # NOT a legal proceeding — drop it even if the LLM
+                            # returned it, and say what the filing actually covered.
+                            if doc_type == "8-K" and proceedings_list:
+                                kept_events = [ev for ev in proceedings_list
+                                               if not _is_financing_event(ev)]
+                                if not kept_events and not data.get('summary'):
+                                    data['summary'] = ("8-K filing covered a financing "
+                                                       "event — no legal proceedings to report.")
+                                if len(kept_events) < len(proceedings_list):
+                                    data['summary'] = ((data.get('summary') or "").strip() or
+                                                       "8-K filing covered a financing event — "
+                                                       "no legal proceedings to report.")
+                                proceedings_list = kept_events
                             # Confirm each LLM-quoted excerpt is actually present in the
                             # source filing text, so the export can flag trustworthy
                             # citations. Pure string match — no model call, no cache write.
