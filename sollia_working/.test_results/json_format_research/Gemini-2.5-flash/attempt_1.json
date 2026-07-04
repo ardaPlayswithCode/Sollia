@@ -1,0 +1,12 @@
+{
+  "model": "gemini-2.5-flash",
+  "status": 200,
+  "raw": "```json\n[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"USG Export Restrictions\",\n    \"rank\": 1,\n    \"old_quote\": \"In August 2022, the U.S. government, or USG, announced export restrictions and export licensing requirements targeting China's semiconductor and supercomputing industries. These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology",
+  "usage": {
+    "completion_tokens": 100,
+    "prompt_tokens": 2603,
+    "total_tokens": 5099
+  },
+  "ms": 10907,
+  "finish_reason": "length"
+}

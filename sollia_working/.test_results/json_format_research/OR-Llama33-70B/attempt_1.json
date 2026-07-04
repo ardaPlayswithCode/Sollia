@@ -1,0 +1,7 @@
+{
+  "model": "meta-llama/llama-3.3-70b-instruct:free",
+  "status": 402,
+  "raw": null,
+  "error": "{\"error\":{\"message\":\"Provider returned error\",\"code\":402,\"metadata\":{\"raw\":\"{\\\"error\\\":\\\"API key USD spend limit exceeded. Your account may still have USD balance, but this API key has reached its configured USD spending limit.\\\"}\",\"provider_name\":\"Venice\",\"is_byok\":false,\"retry_after_seconds\":30,\"r",
+  "ms": 487
+}

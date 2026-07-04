@@ -1,0 +1,16 @@
+{
+  "Agent 4 risk delta (TSLA-class strict JSON)": {
+    "samples": 10,
+    "responses": 10,
+    "parsed_ok": 10,
+    "parse_failures": 0,
+    "schema_failures": 0,
+    "provider_failures": 0,
+    "parse_failure_rate_pct": 0.0,
+    "providers": {
+      "Groq-8B": 4,
+      "Gemini-2.5-flash": 5,
+      "OR-Gemma4-31B": 1
+    }
+  }
+}

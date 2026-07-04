@@ -1,0 +1,30 @@
+{
+  "model": "anthropic/claude-fable-5",
+  "status": 200,
+  "raw": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"U.S. Export Control Restrictions on China\",\n    \"rank\": 1,\n    \"old_quote\": \"In August 2022, the U.S. government, or USG, announced export restrictions and export licensing requirements targeting China's semiconductor and supercomputing industries.\",\n    \"new_quote\": \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and D:5 countries, or to companies headquartered or with an ultimate par\",\n    \"summary\": \"The export control risk materialized further \u2014 the new filing discloses that in April 2025 the USG informed the company of a new license requirement for exports to China and D:5 countries, expanding the restrictions beyond the August 2022 regime described in the old filing. Past/present tense ('informed us that it requires') indicates the restriction is now in effect.\"\n  },\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Export Restrictions \u2014 Specific Product Impact (A100/H100)\",\n    \"rank\": 2,\n    \"old_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits.\",\n    \"summary\": \"The new filing expands the export restriction disclosure to explicitly name affected flagship products (A100 and H100 integrated circuits, DGX systems) and adds Russia and Hong Kong/Macau to the affected geographies, making the risk more concrete and specific.\"\n  },\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"Performance Threshold Licensing Requirements (Country Group D5)\",\n    \"rank\": 3,\n    \"old_quote\": \"\",\n    \"new_quote\": \"The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China.\",\n    \"summary\": \"New disclosure with no counterpart in the old filing \u2014 licensing requirements now extend to any products exceeding performance thresholds sold to parties headquartered in (or with ultimate parents in) Country Group D5, broadening the scope of restricted transactions beyond named chips.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Social Media Disclosure Materiality\",\n    \"rank\": 4,\n    \"old_quote\": \"The information we post through these social media channels may be deemed material. This list may be updated from time to time.\",\n    \"new_quote\": \"\",\n    \"summary\": \"The old filing's disclosure that information posted through social media channels may be deemed material does not appear in the new filing.\"\n  }\n]",
+  "usage": {
+    "prompt_tokens": 4096,
+    "completion_tokens": 2485,
+    "total_tokens": 6581,
+    "cost": 0.16521,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.16521,
+      "upstream_inference_prompt_cost": 0.04096,
+      "upstream_inference_completions_cost": 0.12425
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 220,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "ms": 30535,
+  "finish_reason": "stop"
+}

@@ -229,6 +229,17 @@ async def start_analysis(req: AnalysisRequest, request: Request):
             "window": "last 5 fiscal years + current partial year"}
 
 
+@app.post("/api/analyze/cancel/{run_id}")
+async def cancel_analysis(run_id: str):
+    """Cancel a running analysis (Part 4a). The stream ends with a 'cancelled'
+    event; in-flight agent work finishes quietly in the background (it cannot
+    be killed mid-LLM-call) but the run never reports as complete."""
+    if runs.cancel(run_id):
+        return {"run_id": run_id, "status": "cancelled"}
+    return JSONResponse(status_code=409, content={
+        "detail": "Run is not running (unknown id, already finished, or already cancelled)."})
+
+
 @app.get("/api/analyze/stream/{run_id}")
 async def stream_analysis(run_id: str):
     """Server-sent events: live per-agent milestones, then a final 'complete'
@@ -251,6 +262,9 @@ async def stream_analysis(run_id: str):
             if snap["status"] == "complete":
                 yield "data: %s\n\n" % json.dumps({
                     "type": "complete", "result": snap.get("result"), "export": snap.get("export")})
+                return
+            if snap["status"] == "cancelled":
+                yield "data: %s\n\n" % json.dumps({"type": "cancelled"})
                 return
             if snap["status"] == "error":
                 yield "data: %s\n\n" % json.dumps({

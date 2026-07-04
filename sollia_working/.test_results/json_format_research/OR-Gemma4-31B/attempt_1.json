@@ -1,0 +1,30 @@
+{
+  "model": "google/gemma-4-31b-it:free",
+  "status": 200,
+  "raw": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Export Control Restrictions\",\n    \"rank\": 1,\n    \"old_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits.\",\n    \"summary\": \"The risk has materialized and escalated from general 'certain chips' to specifically naming high-value products (A100, H100, DGX) and expanding the restricted regions to include Russia.\"\n  },\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"April 2025 Export Licensing Requirement\",\n    \"rank\": 2,\n    \"old_quote\": \"\",\n    \"new_quote\": \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and D:5 countries, or to companies headquartered or with an ultimate par\",\n    \"summary\": \"A new, specific regulatory event occurred in April 2025 regarding export licenses for China and D:5 countries.\"\n  },\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"Country Group D5 Performance Thresholds\",\n    \"rank\": 3,\n    \"old_quote\": \"\",\n    \"new_quote\": \"The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China.\",\n    \"summary\": \"New disclosure regarding specific performance thresholds and the classification of Country Group D5.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Interactive Data File Submission\",\n    \"rank\": 4,\n    \"old_quote\": \"Yes \u2612 No \u2610 Indicate by check mark whether the registrant has submitted electronically every Interactive Data File required to be submitted pursuant to Rule 405 of Regulation S-T (\u00a7232.405 of this chapter) during the preceding 12 months (or for such shorter period that the registrant was required to submit such files).\",\n    \"new_quote\": \"\",\n    \"summary\": \"The regulatory check-mark regarding Interactive Data File submissions was removed from the provided text.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Unresolved Staff Comments/Cybersecurity Index\",\n    \"rank\": 5,\n    \"old_quote\": \"Unresolved Staff Comments 32 Item 1C Cybersecurity 32 Item 2. Quantitative and Qualitative Disclosures About Market Risk 44 Item 8.\",\n    \"new_quote\": \"\",\n    \"summary\": \"The table of contents references for Unresolved Staff Comments, Cybersecurity, and Market Risk were removed from the provided text.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Social Media Materiality\",\n    \"rank\": 6,\n    \"old_quote\": \"The information we post through these social media channels may be deemed material.\",\n    \"new_quote\": \"\",\n    \"summary\": \"The specific risk regarding the materiality of social media posts was removed.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Social Media List Updates\",\n    \"rank\": 7,\n    \"old_quote\": \"This list may be updated from time to time.\",\n    \"new_quote\": \"\",\n    \"summary\": \"The statement regarding the updating of the social media list was removed.\"\n  }\n]",
+  "usage": {
+    "prompt_tokens": 2614,
+    "completion_tokens": 892,
+    "total_tokens": 3506,
+    "cost": 0,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0,
+      "upstream_inference_prompt_cost": 0,
+      "upstream_inference_completions_cost": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "ms": 27587,
+  "finish_reason": "stop"
+}

@@ -1,0 +1,80 @@
+[
+  {
+    "scenario": "normal",
+    "served_by": "Primary",
+    "attempts": 1,
+    "wall_s": 0.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Primary",
+    "pass": true
+  },
+  {
+    "scenario": "429-storm",
+    "served_by": "Fallback",
+    "attempts": 3,
+    "wall_s": 0.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Fallback",
+    "pass": true
+  },
+  {
+    "scenario": "provider-down",
+    "served_by": "Fallback",
+    "attempts": 2,
+    "wall_s": 0.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Fallback",
+    "pass": true
+  },
+  {
+    "scenario": "provider-404",
+    "served_by": "Fallback",
+    "attempts": 2,
+    "wall_s": 0.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Fallback",
+    "pass": true
+  },
+  {
+    "scenario": "high-latency-5s",
+    "served_by": "Slow",
+    "attempts": 1,
+    "wall_s": 5.0,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Slow",
+    "pass": true
+  },
+  {
+    "scenario": "read-timeout",
+    "served_by": "Fallback",
+    "attempts": 2,
+    "wall_s": 2.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Fallback",
+    "pass": true
+  },
+  {
+    "scenario": "slow-trickle",
+    "served_by": "Fallback",
+    "attempts": 2,
+    "wall_s": 8.21,
+    "valid_json": true,
+    "error": null,
+    "expected_provider": "Fallback",
+    "pass": true
+  },
+  {
+    "scenario": "hang-memo",
+    "pass": true
+  },
+  {
+    "scenario": "hang-reroute",
+    "pass": true
+  }
+]

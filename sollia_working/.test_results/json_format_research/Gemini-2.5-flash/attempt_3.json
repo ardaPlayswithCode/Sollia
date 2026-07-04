@@ -1,0 +1,12 @@
+{
+  "model": "gemini-2.5-flash",
+  "status": 200,
+  "raw": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Expanded Export Control Restrictions and Specific Product Impact\",\n    \"rank\": 1,\n    \"old_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"These restrictions impacted exports of certain chips, as well",
+  "usage": {
+    "completion_tokens": 98,
+    "prompt_tokens": 2603,
+    "total_tokens": 5099
+  },
+  "ms": 10103,
+  "finish_reason": "length"
+}

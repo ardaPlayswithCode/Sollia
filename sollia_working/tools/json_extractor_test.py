@@ -48,6 +48,31 @@ CASES = [
      [{"cite": "28 U.S.C. \\ 1332"}]),
     ("valid escapes survive repair", '[{"s": "a\\"b\\\\c\\nd"}]',
      [{"s": 'a"b\\c\nd'}]),
+    # ── 2026-07-03 JSON-format audit (tools/json_format_research.py) ──────────
+    # Gemini-2.5-flash truncates when thinking starves its completion budget
+    # (finish=length): observed BOTH bare and inside an UNCLOSED ```json fence.
+    # Recovery = drop the incomplete trailing element, close the root.
+    ("truncated mid-string (Gemini class)",
+     '[{"category": "ESCALATED", "risk_title": "Export"}, {"category": "NEW", "old_quote": "impacted exports of certain chips, as well',
+     [{"category": "ESCALATED", "risk_title": "Export"}]),
+    ("truncated inside unclosed fence (Gemini class)",
+     '```json\n[\n  {"category": "ESCALATED", "risk_title": "USG Export Restrictions"},\n  {"category": "NEW", "new_quote": "software, hardware, equipment and technology',
+     [{"category": "ESCALATED", "risk_title": "USG Export Restrictions"}]),
+    ("truncated after comma", '[{"a": 1}, {"b": 2},', [{"a": 1}, {"b": 2}]),
+    ("truncated mid-key", '[{"a": 1}, {"ris', [{"a": 1}]),
+    ("truncated mid-value", '[{"a": 1}, {"b": ', [{"a": 1}]),
+    ("truncated nested object root", '{"changes": [{"a": 1}], "summ',
+     {"changes": [{"a": 1}]}),
+    ("truncated object root mid-value", '{"a": 1, "b": [1, 2], "c": ',
+     {"a": 1, "b": [1, 2]}),
+    ("truncated string array (classify shape)", '["KEPT", "BROKEN", "PEND',
+     ["KEPT", "BROKEN"]),
+    ("truncated index array (Agent 1 classify shape)", '[0, 2, 5, 1',
+     [0, 2, 5]),
+    ("truncated with trailing whitespace", '[{"a": 1},\n  {"b": 2}\n  ,\n',
+     [{"a": 1}, {"b": 2}]),
+    ("truncation + single quotes need repair", "[{'a': 1}, {'b': 'unfin",
+     [{"a": 1}]),
 ]
 
 FAILURES = [
@@ -55,6 +80,13 @@ FAILURES = [
     ("whitespace only", "   \n  "),
     ("no json at all", "I could not find any risk factor changes."),
     ("scalar only", "42"),
+    # ── 2026-07-03 pre-parse validation (Part 2c) ─────────────────────────────
+    ("provider error body is not data",
+     '{"error": {"code": 429, "message": "Rate limit exceeded: free-models-per-day"}}'),
+    ("rate-limit prose", "Error: 429 Too Many Requests — rate limit exceeded, try again in 12s"),
+    ("long response without any array", "x" * 10_001),
+    ("truncated single partial object salvages nothing",
+     '[{"category": "ESCALATED", "risk_title": "USG Export Restr'),
 ]
 
 

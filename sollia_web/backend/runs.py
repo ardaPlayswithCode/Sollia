@@ -59,7 +59,7 @@ def new_run(ticker: str, agents, year=None) -> str:
             "run_id": run_id,
             "ticker": ticker,
             "year": year,  # deprecated — informational only
-            "status": "running",  # running | complete | error
+            "status": "running",  # running | complete | error | cancelled
             "created": time.time(),
             "agents": {aid: {"id": aid, "name": AGENT_NAMES.get(aid, aid),
                              "status": "queued", "logs": []} for aid in agents},
@@ -98,6 +98,13 @@ def finalize(run_id: str, result: dict, export: dict) -> None:
         run = _RUNS.get(run_id)
         if not run:
             return
+        if run["status"] == "cancelled":
+            # The user cancelled mid-run (Part 4a). The pipeline thread can't be
+            # killed, so it finishes and lands here — keep the cancelled verdict
+            # but store what it produced (the work already warmed the caches).
+            run["result"] = result
+            run["export"] = export
+            return
         run["status"] = "complete"
         run["result"] = result
         run["export"] = export
@@ -111,12 +118,30 @@ def fail(run_id: str, message: str, result: dict = None, export: dict = None) ->
         run = _RUNS.get(run_id)
         if not run:
             return
-        run["status"] = "error"
+        if run["status"] != "cancelled":
+            run["status"] = "error"
         run["error"] = message
         if result is not None:
             run["result"] = result
         if export is not None:
             run["export"] = export
+
+
+def cancel(run_id: str) -> bool:
+    """User-initiated cancel (Part 4a). Marks the run cancelled so the stream
+    ends now and finalize/fail can no longer flip it to complete/error. Running
+    agent threads are not killed — they finish quietly and their results are
+    stored for cache warmth but never surface as a completed run. Returns False
+    for unknown/already-finished runs."""
+    with _LOCK:
+        run = _RUNS.get(run_id)
+        if not run or run["status"] != "running":
+            return False
+        run["status"] = "cancelled"
+        for a in run["agents"].values():
+            if a["status"] in ("queued", "running"):
+                a["status"] = "cancelled"
+        return True
 
 
 def get(run_id: str) -> Optional[dict]:

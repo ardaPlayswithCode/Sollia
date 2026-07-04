@@ -161,6 +161,16 @@ input:focus {
 .drag-handle { cursor: grab; }
 .react-draggable-dragging .drag-handle { cursor: grabbing; }
 
+/* Dot-grid board behind the draggable card area (Part 4b): cards visibly snap
+   against it. Dots align to the 30px RGL row unit; subtle enough to read as
+   texture, not chrome. */
+.agent-grid-board {
+  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.12) 1.5px, transparent 1.5px);
+  background-size: 30px 30px;
+  background-position: 8px 8px;
+  border-radius: 20px;
+}
+
 /* Respect prefers-reduced-motion globally: kill every animation/transition,
    including aurora, glow, grid drift, RGL springs. */
 @media (prefers-reduced-motion: reduce) {

@@ -73,6 +73,24 @@ _load_dotenv()
 # free; tier 1 (Fable 5) bills the funded OpenRouter key and is reserved for the
 # hardest analytical tasks via AGENT_START_TIER. Selected by benchmarking against
 # the 5 REAL Sollia pipeline prompts (tools/model_benchmark.py).
+#
+# MULTI-KEY REALITY (2026-07-03 empirical audit — LLM_ROUTING_REPORT.md):
+# All 11 Groq keys belong to ONE organization and Groq enforces limits at the
+# ORG level (verified: 3 keys hammered in parallel 429 together; one key alone
+# gets the same 30 RPM). All 8 OpenRouter keys belong to ONE account (identical
+# credits/usage) and OpenRouter limits are per-ACCOUNT. So key rotation buys
+# ZERO extra throughput today — it exists for (a) resilience if a key is
+# revoked, and (b) automatic N× scaling the day the keys are re-issued from
+# separate accounts. _KEY_429_CUTOFF stops the doomed try-every-key cascade.
+# Measured org limits: 70B = 30 RPM / 1k RPD / 12k TPM / 100k TPD;
+# 8B = 30 RPM / 14.4k RPD / 6k TPM / 500k TPD (per-MODEL buckets, so the two
+# Groq tiers add up to ~18k TPM). OpenRouter :free = 20 RPM + 1000 req/DAY
+# account-wide (the funded account's "high-balance" tier); paid models have no
+# daily cap and every key can bill the one funded balance.
+_GROQ_KEYS = ["GROQ_API_KEY"] + [f"GROQ_API_KEY_{i}" for i in range(2, 12)]
+_OPENROUTER_KEYS = ["OPENROUTER_API_KEY"] + [
+    f"OPENROUTER_API_KEY_{i}" for i in (2, 3, 4, 5, 6, 8, 9)  # no _7 (never issued)
+]
 LLM_PROVIDERS: List[Dict[str, Any]] = [
     # ── #1 PRIMARY — Claude Fable 5 (ACTIVE 2026-07-01; the former geoblock is lifted,
     #    OpenRouter resolves it to anthropic/claude-5-fable-20260609). Reasoning is
@@ -87,40 +105,54 @@ LLM_PROVIDERS: List[Dict[str, Any]] = [
     {"name": "Fable5", "url": "https://openrouter.ai/api/v1/chat/completions",
      "model": "anthropic/claude-fable-5", "key_env": "OPENROUTER_API_KEY",
      "tier": "primary", "adaptive_reasoning": True, "billed": True,
-     "timeout": 180},
+     "timeout": 180, "key_envs": _OPENROUTER_KEYS},
     # ── #2 PRIMARY (ACTIVE) — Groq llama-3.3-70b. Free, fast (~300ms), deterministic;
-    #    the proven workhorse that served every prior pipeline run. key_envs
-    #    (Part 3b): optional extra Groq accounts — each key is its OWN rate-limit
-    #    bucket, so N keys ≈ N× Groq throughput. Keys rotate per call and a 429
-    #    advances to the next key before falling down the chain.
+    #    the proven workhorse that served every prior pipeline run. All 11 keys are
+    #    wired but share ONE org bucket (see MULTI-KEY REALITY above): rotation is
+    #    for key-revocation resilience, not throughput, until the keys span accounts.
     {"name": "Groq-70B", "url": "https://api.groq.com/openai/v1/chat/completions",
      "model": "llama-3.3-70b-versatile", "key_env": "GROQ_API_KEY", "tier": "primary",
-     "key_envs": ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]},
-    # ── #3 FALLBACK — Groq llama-3.1-8b. Fastest; same account as Groq-70B.
+     "key_envs": _GROQ_KEYS},
+    # ── #3 FALLBACK — Groq llama-3.1-8b. Fastest; same account as Groq-70B but a
+    #    SEPARATE per-model TPM bucket (6k), so 70B+8B together ≈ 18k TPM.
     {"name": "Groq-8B", "url": "https://api.groq.com/openai/v1/chat/completions",
      "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY", "tier": "fallback",
-     "key_envs": ["GROQ_API_KEY", "GROQ_API_KEY_2", "GROQ_API_KEY_3"]},
+     "key_envs": _GROQ_KEYS},
     # ── #4 FALLBACK — Gemini 2.5 Flash. INDEPENDENT Google account = real resilience
     #    when Groq's single account rate-limits. OpenAI-compatible endpoint, ~1.3s.
+    #    payload_extra (2026-07-03 JSON-format audit): 2.5-flash THINKS by default
+    #    and thinking bills against max_tokens — measured finish=length at ~400
+    #    chars on a 2500-token request, i.e. every long JSON truncated mid-string.
+    #    reasoning_effort "none" disables thinking per Google's OpenAI-compat docs
+    #    (verify when the free quota resets; a rejected param would 400 and fall
+    #    through the chain, which still beats parsing truncated garbage).
     {"name": "Gemini-2.5-flash",
      "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-     "model": "gemini-2.5-flash", "key_env": "GEMINI_API_KEY", "tier": "fallback"},
+     "model": "gemini-2.5-flash", "key_env": "GEMINI_API_KEY", "tier": "fallback",
+     "payload_extra": {"reasoning_effort": "none"}},
     # ── #5 BACKUP — OpenRouter Gemma-4-31B (FREE). INDEPENDENT provider. Benchmarked
     #    100/100 quality on all 5 Sollia prompts (verbatim quotes + valid JSON at temp 0).
     {"name": "OR-Gemma4-31B", "url": "https://openrouter.ai/api/v1/chat/completions",
-     "model": "google/gemma-4-31b-it:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup"},
+     "model": "google/gemma-4-31b-it:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup",
+     "key_envs": _OPENROUTER_KEYS},
     # ── #6 BACKUP — OpenRouter Gemma-4-26B (FREE). Also benchmarked 100/100 — second
     #    free pick; kept adjacent to #5 as the strongest free pair.
     {"name": "OR-Gemma4-26B", "url": "https://openrouter.ai/api/v1/chat/completions",
-     "model": "google/gemma-4-26b-a4b-it:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup"},
+     "model": "google/gemma-4-26b-a4b-it:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup",
+     "key_envs": _OPENROUTER_KEYS},
     # ── #7 BACKUP — OpenRouter Nemotron-3-Super 120B (FREE). Partial (40/100: solid on
     #    test1/test3, weaker JSON on test2/4/5) but a large independent last-but-one tier.
+    #    json_weak (2026-07-03 Part-2d burst test): on the Agent-4 strict-JSON shape it
+    #    returned prose ("We need to compare…"), a truncated string, and empty [] — 0/5
+    #    useful. Strict-JSON calls skip it; free-form calls still use it.
     {"name": "OR-Nemotron3-Super", "url": "https://openrouter.ai/api/v1/chat/completions",
-     "model": "nvidia/nemotron-3-super-120b-a12b:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup"},
+     "model": "nvidia/nemotron-3-super-120b-a12b:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup",
+     "key_envs": _OPENROUTER_KEYS, "json_weak": True},
     # ── #8 BACKUP — OpenRouter llama-3.3-70b (FREE). A llama-70b instance INDEPENDENT of
     #    Groq's account — last-resort free tier.
     {"name": "OR-Llama33-70B", "url": "https://openrouter.ai/api/v1/chat/completions",
-     "model": "meta-llama/llama-3.3-70b-instruct:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup"},
+     "model": "meta-llama/llama-3.3-70b-instruct:free", "key_env": "OPENROUTER_API_KEY", "tier": "backup",
+     "key_envs": _OPENROUTER_KEYS},
 ]
 
 # ---------------------------------------------------------------------------
@@ -171,8 +203,12 @@ AGENT_START_TIER: Dict[str, int] = {
     # 4,500-word prompt) and benchmarked 100/100 on the 5 real Sollia prompts.
     # Fable 5 is reserved for ONE low-volume, highest-value judgment call: Agent 1's
     # severity audit (pin_tier, ~$0.037/run). Result: full cold pipeline ≈ $0.04.
-    "corporate_discrepancy": 0,   # classify: router demotes ~1k-word batches to Groq-70B;
-                                  #   only the pinned severity audit actually bills Fable 5
+    "corporate_discrepancy": 1,   # classify batches are strict-JSON -> Groq-70B anyway.
+                                  #   Was 0 (nominal Fable 5): with the 2026-07-03 policy,
+                                  #   Fable 5 is reachable ONLY via pin_tier (the severity
+                                  #   audit) or the >90k-word long-context promotion — a
+                                  #   nominal tier-0 gave unflagged >=2000-word prompts a
+                                  #   third, unintended path onto the paid tier.
     "promise_audit:stage1":  2,   # HIGH VOLUME (many batches) -> Groq-8B (separate per-model TPM)
     "promise_audit:stage2":  1,   # evidence matching -> Groq-70B (128k ctx; was Fable 5, cost)
     "legal_proceedings":     1,   # medium complexity, free -> Groq-70B (was Fable 5)
@@ -282,6 +318,45 @@ MODEL_PROFILES: Dict[int, Dict[str, Any]] = {
     # 2026-06-25 benchmark (FINAL_LLM_PRIORITY_LIST.md).
 }
 
+# ---------------------------------------------------------------------------
+# RELIABILITY UNDER STRESS (network-condition pass, 2026-07-03).
+# Chain-level behaviors were verified against the REAL chain code with local
+# mock providers (tools/network_condition_test.py, 9/9): 429-storm key-cycling
+# + cutoff, provider-down/404 fallthrough, 5s-latency served without tripping
+# the guard, slow-trickle bounded at timeout+slack, hang memo + reroute.
+# Per-provider REAL stress evidence backing the routing decisions:
+STRESS_PROFILES: Dict[str, str] = {
+    "Fable5": "transport = OpenRouter/Cloudflare — the 2026-07-02 13-minute "
+              "production stall lived here. Wall-clock guard bounds it; hang "
+              "memo clamps its next timeout and drops its >90k promotion. "
+              "Reliability-weighted: pinned severity audit + guarded overflow "
+              "ONLY (a 99%-clean model that can stall loses to a 95%-clean "
+              "one that always answers).",
+    "Groq-70B": "org-level 30 RPM/12k TPM 429 storms measured (hammer test): "
+                "keys 429 together; cutoff=2 avoids doomed cycling; recovers "
+                "next TPM window. Never observed hanging (~4s worst case). "
+                "Highest reliability-under-stress -> stays THE strict-JSON "
+                "primary.",
+    "Groq-8B": "same org bucket, separate 6k-TPM model bucket. Survived the "
+               "Part-2d saturation burst serving valid A4 JSON. Reliable "
+               "high-volume fallback.",
+    "Gemini-2.5-flash": "independent account = real 429 refuge, but daily "
+                        "quota exhausts under sustained fallthrough (measured "
+                        "twice). Thinking-starvation truncation FIXED "
+                        "(reasoning_effort:none, verified live 5/5 clean).",
+    "OR-Gemma4-31B": "served clean JSON under the Part-2d saturation burst; "
+                     "subject to account-shared :free limits + upstream "
+                     "capacity 429s.",
+    "OR-Gemma4-26B": "upstream capacity exhausted for HOURS on 2026-07-03 "
+                     "(third :free limit layer — provider-side, all-users). "
+                     "Do not rely on availability.",
+    "OR-Nemotron3-Super": "json_weak: prose/truncation/empty on strict shapes "
+                          "(0/5 useful) -> skipped for requires_strict_json "
+                          "even on 429 fallthrough.",
+    "OR-Llama33-70B": "clean when reachable; one transient 402 observed "
+                      "(key-cycling now advances past 401/402/403).",
+}
+
 
 def select_best_tier(prompt_word_count: int,
                      requires_strict_json: bool = False,
@@ -307,8 +382,21 @@ def select_best_tier(prompt_word_count: int,
     B: clean 1.0, valid 1.0, byte-deterministic) — is reached via pin_tier
     (Agent 1's severity audit), a deliberate opt-in, not a size rule.
     Tiers 3-7 stay BACKUP-ONLY — the chain falls through on 429/failure.
+
+    RELIABILITY UNDER STRESS (network-condition pass, 2026-07-03): clean-JSON
+    rate alone is not fitness. The weighting applied here and in the chain:
+      * a provider that recently HUNG past the wall-clock guard loses its
+        >90k-word promotion (Groq-70B takes the call; a truncated-but-served
+        answer beats a 180s stall — the 2026-07-02 production hang was
+        OpenRouter/Cloudflare, i.e. exactly Fable 5's transport);
+      * `json_weak` providers (Nemotron: prose/empty on strict shapes) are
+        skipped for requires_strict_json calls even on 429 fallthrough;
+      * hung providers also get a clamped read timeout (HUNG_PROVIDER_TIMEOUT)
+        so a repeat stall costs ~35s, not minutes.
     """
     if requires_long_context and prompt_word_count > 90_000:
+        if _recently_hung("Fable5"):
+            return PROVIDER_IDX["GROQ_70B"]  # hang memo: don't promote into a stall
         if _projected_fable5_cents(prompt_word_count) <= max_cost_cents * 10:
             return PROVIDER_IDX["FABLE"]  # beyond Groq's 128k window
         return PROVIDER_IDX["GROQ_70B"]
@@ -360,6 +448,10 @@ BACKOFF_BASE = 1.0         # exponential backoff base seconds
 BACKOFF_MAX = 16.0         # exponential backoff ceiling seconds
 BACKOFF_JITTER = 0.25      # +/- jitter fraction to avoid thundering herd
 RATE_LIMIT_COOLDOWN = float(os.environ.get("SOLLIA_LLM_COOLDOWN", "30"))  # global pause after a 429
+# Stop cycling a provider's keys after this many CONSECUTIVE 429s: today's keys
+# share one org/account bucket per provider (2026-07-03 audit), so a second 429
+# proves the bucket is dry for every remaining key.
+_KEY_429_CUTOFF = int(os.environ.get("SOLLIA_LLM_KEY_429_CUTOFF", "2"))
 MAX_CHAIN_RETRIES = int(os.environ.get("SOLLIA_LLM_MAX_CHAIN_RETRIES", "3"))  # full-chain 429 passes before raising
 REQUEST_TIMEOUT = int(os.environ.get("SOLLIA_LLM_TIMEOUT", "60"))
 RETRY_AFTER_CAP = 60.0     # never honor an absurd Retry-After
@@ -702,7 +794,9 @@ class RunCostExceeded(LLMError):
 # classify batches on a fully cold cache; this stays a hard abuse ceiling.
 MAX_LLM_CALLS_PER_RUN = int(os.environ.get("SOLLIA_MAX_LLM_CALLS_PER_RUN", "300"))
 CIRCUIT_BREAKER_THRESHOLD = int(os.environ.get("SOLLIA_LLM_CIRCUIT_THRESHOLD", "5"))
-MAX_COST_PER_RUN_USD = float(os.environ.get("SOLLIA_MAX_COST_PER_RUN", "2.00"))
+# $1.00 (was $2.00, 2026-07-03): with Fable 5 reserved for ~1 pinned call/run
+# (~$0.037) actual spend is ~$0.04/run — the cap is a safety net, not a budget.
+MAX_COST_PER_RUN_USD = float(os.environ.get("SOLLIA_MAX_COST_PER_RUN", "1.00"))
 MAX_NO_CACHE_RUNS_PER_HOUR = int(os.environ.get("SOLLIA_MAX_NO_CACHE_RUNS_PER_HOUR", "5"))
 _NO_CACHE_STATE = os.path.join(_SOLLIA_WORKING, ".cache", "no_cache_runs.json")
 _budget_lock = threading.Lock()
@@ -817,6 +911,34 @@ CONNECT_TIMEOUT = float(os.environ.get("SOLLIA_LLM_CONNECT_TIMEOUT", "10"))
 
 class LLMHardTimeout(RuntimeError):
     """The provider did not respond within the hard wall-clock ceiling."""
+
+
+# ---------------------------------------------------------------------------
+# Provider-health memo (network-condition pass, 2026-07-03). A provider that
+# just HUNG (wall-clock breach — the 13-minute Cloudflare-stall class) is the
+# single worst latency tail in the system: the chain survives it, but every
+# retry risks another `timeout+slack` stall. So hard timeouts are remembered
+# for HARD_TIMEOUT_MEMO_SECONDS and, while the memo is fresh:
+#   * that provider's read timeout is clamped to HUNG_PROVIDER_TIMEOUT so a
+#     repeat stall costs ~35s, not 180+15s;
+#   * select_best_tier stops PROMOTING >90k-word calls to a hung Fable 5 —
+#     Groq-70B (128k ctx) takes them instead. pin_tier callers still pin.
+# ---------------------------------------------------------------------------
+HARD_TIMEOUT_MEMO_SECONDS = float(os.environ.get("SOLLIA_LLM_HANG_MEMO", "600"))
+HUNG_PROVIDER_TIMEOUT = float(os.environ.get("SOLLIA_LLM_HUNG_TIMEOUT", "30"))
+_provider_health_lock = threading.Lock()
+_provider_last_hang: Dict[str, float] = {}
+
+
+def _note_hard_timeout(provider_name: str) -> None:
+    with _provider_health_lock:
+        _provider_last_hang[provider_name] = time.time()
+
+
+def _recently_hung(provider_name: str) -> bool:
+    with _provider_health_lock:
+        ts = _provider_last_hang.get(provider_name, 0.0)
+    return (time.time() - ts) < HARD_TIMEOUT_MEMO_SECONDS
 
 
 def _post_with_wallclock(url: str, headers: Dict[str, str], payload: Dict[str, Any],
@@ -936,7 +1058,8 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
         return _call_llm_chain(prompt, max_tokens, temperature, effective_idx,
                                prompt_wc, cache_path, call_id,
                                r_agent, r_stage, r_ticker,
-                               prev_errors, paid_skipped_by_cap)
+                               prev_errors, paid_skipped_by_cap,
+                               requires_strict_json)
     finally:
         _LLM_SEMAPHORE.release()
 
@@ -971,7 +1094,8 @@ def _rotated(keys: List[str], provider_name: str) -> List[str]:
 
 def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                     cache_path, call_id, r_agent, r_stage, r_ticker,
-                    prev_errors, paid_skipped_by_cap) -> Tuple[str, Dict]:
+                    prev_errors, paid_skipped_by_cap,
+                    requires_strict_json: bool = False) -> Tuple[str, Dict]:
     """The provider-chain loop of call_llm (runs holding the LLM semaphore)."""
     consecutive_chain_429 = 0
     total_attempts = 0
@@ -983,6 +1107,12 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
 
         for idx in range(effective_idx, len(LLM_PROVIDERS)):
             provider = LLM_PROVIDERS[idx]
+            # A model measured incapable of a strict-JSON shape (json_weak) is
+            # never given a strict-JSON task — 429 fallthrough included
+            # (2026-07-03 Part 2d: Nemotron answered the Agent-4 shape with
+            # prose/truncation/empty arrays; skipping beats parsing garbage).
+            if requires_strict_json and provider.get("json_weak"):
+                continue
             api_keys = _rotated(_provider_keys(provider), provider["name"])
             if not api_keys:
                 continue
@@ -999,6 +1129,9 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
             payload = {"model": provider["model"],
                        "messages": [{"role": "user", "content": prompt}],
                        "temperature": temperature, "max_tokens": max_tokens}
+            # Provider-specific payload knobs (e.g. Gemini reasoning_effort:none).
+            if provider.get("payload_extra"):
+                payload.update(provider["payload_extra"])
             if provider.get("adaptive_reasoning"):
                 # Part 1c: reasoning budget proportional to prompt complexity.
                 # Reasoning counts against max_tokens on this endpoint, so the
@@ -1012,8 +1145,17 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                 payload["max_tokens"] = max_tokens + int(provider.get("max_tokens_pad", 0))
 
             resp = None
-            # Key cycling (Part 3b): a 429 on one key tries the provider's NEXT
-            # key (separate rate bucket) before falling down the chain.
+            # Key cycling (Part 3b, recalibrated 2026-07-03): a 429 on one key
+            # tries the provider's NEXT key — but only until _KEY_429_CUTOFF
+            # consecutive 429s. Measured: today's keys share ONE bucket per
+            # provider (org/account-level limits), so after two keys 429 the
+            # rest are guaranteed to as well; cycling through all 11 would burn
+            # ~5s of doomed round-trips per chain pass. Two consecutive 429s
+            # also stays correct if the keys are later re-issued from separate
+            # accounts (independent buckets rarely 429 in the same instant).
+            # Auth failures (401/403 revoked key, 402 out of credits) always
+            # advance to the next key — one dead key must not kill the tier.
+            consecutive_429 = 0
             for k_i, api_key in enumerate(api_keys):
                 headers = {"Content-Type": "application/json",
                            "Authorization": f"Bearer {api_key}"}
@@ -1023,15 +1165,34 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                 _rate_gate()
                 total_attempts_holder[0] += 1
                 t0 = time.time()
+                # Reliability-under-stress (network-condition pass): a provider
+                # that recently breached the wall-clock guard gets a clamped
+                # timeout so a repeat stall costs seconds, not minutes.
+                read_timeout = int(provider.get("timeout", REQUEST_TIMEOUT))
+                if _recently_hung(provider["name"]):
+                    read_timeout = int(min(read_timeout, HUNG_PROVIDER_TIMEOUT))
                 try:
                     resp = _post_with_wallclock(provider["url"], headers, payload,
-                                                int(provider.get("timeout", REQUEST_TIMEOUT)))
+                                                read_timeout)
                 except Exception as exc:  # network/timeout/hang -> try next provider
+                    if isinstance(exc, LLMHardTimeout):
+                        _note_hard_timeout(provider["name"])
                     prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
                     resp = None
                     break
                 if resp.status_code == 429 and k_i < len(api_keys) - 1:
+                    consecutive_429 += 1
+                    if consecutive_429 >= _KEY_429_CUTOFF:
+                        prev_errors.append(
+                            f"{provider['name']}: {consecutive_429} keys 429 in a row "
+                            "— shared rate bucket, skipping remaining keys")
+                        break
                     prev_errors.append(f"{provider['name']} key#{k_i + 1}: 429 — rotating key")
+                    continue
+                if resp.status_code in (401, 402, 403) and k_i < len(api_keys) - 1:
+                    consecutive_429 = 0
+                    prev_errors.append(f"{provider['name']} key#{k_i + 1}: "
+                                       f"HTTP {resp.status_code} — trying next key")
                     continue
                 break
             if resp is None:

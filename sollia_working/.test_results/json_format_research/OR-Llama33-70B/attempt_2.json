@@ -1,0 +1,30 @@
+{
+  "model": "meta-llama/llama-3.3-70b-instruct:free",
+  "status": 200,
+  "raw": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Export Restrictions\",\n    \"rank\": 1,\n    \"old_quote\": \"In August 2022, the U.S. government, or USG, announced export restrictions and export licensing requirements targeting China's semiconductor and supercomputing industries. These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"In August 2022, the U.S. government, or USG, announced export restrictions and export licensing requirements targeting China's semiconductor and supercomputing industries. These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits.\",\n    \"summary\": \"Added details on impacted products and regions.\"\n  },\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"Licensing Requirements for Exports\",\n    \"rank\": 2,\n    \"old_quote\": \"\",\n    \"new_quote\": \"The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China.\",\n    \"summary\": \"New risk introduced regarding licensing requirements for exports.\"\n  },\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Export Control Restrictions\",\n    \"rank\": 3,\n    \"old_quote\": \"Over the past three years, we have been subject to a series of shifting and expanding export control restrictions, impacting our ability to serve customers outside the United States.\",\n    \"new_quote\": \"Over the past three years, we have been subject to a series of shifting and expanding export control restrictions, impacting our ability to serve customers outside the United States. In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and D:5 countries, or to companies headquartered or with an ultimate parent headquartered in, Country Group D5.\",\n    \"summary\": \"Added specific details on recent developments in export control restrictions.\"\n  }\n]",
+  "usage": {
+    "prompt_tokens": 2530,
+    "completion_tokens": 492,
+    "total_tokens": 3022,
+    "cost": 0,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0,
+      "upstream_inference_prompt_cost": 0,
+      "upstream_inference_completions_cost": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "ms": 37773,
+  "finish_reason": "stop"
+}

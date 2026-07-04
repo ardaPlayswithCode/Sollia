@@ -1,0 +1,30 @@
+{
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "status": 200,
+  "raw": "[\n{\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Export Control Restrictions\",\n    \"rank\": 1,\n    \"old_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits. The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China. In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and D:5 countries, or to companies headquartered or with an ultimate par\",\n    \"summary\": \"Language strengthened with specific product impacts (A100/H100), geographic extension to Russia, licensing thresholds, and update as of April 2025, indicating escalated risk.\"\n  }\n]",
+  "usage": {
+    "prompt_tokens": 2643,
+    "completion_tokens": 2012,
+    "total_tokens": 4655,
+    "cost": 0,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0,
+      "upstream_inference_prompt_cost": 0,
+      "upstream_inference_completions_cost": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 2084,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "ms": 17204,
+  "finish_reason": "stop"
+}

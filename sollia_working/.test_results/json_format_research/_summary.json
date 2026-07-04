@@ -1,0 +1,82 @@
+{
+  "Fable5": {
+    "n": 3,
+    "clean": 3,
+    "fenced": 0,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": []
+  },
+  "Groq-70B": {
+    "n": 4,
+    "clean": 4,
+    "fenced": 0,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": []
+  },
+  "Groq-8B": {
+    "n": 5,
+    "clean": 5,
+    "fenced": 0,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": []
+  },
+  "Gemini-2.5-flash": {
+    "n": 3,
+    "clean": 0,
+    "fenced": 2,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 3,
+    "other": []
+  },
+  "OR-Gemma4-31B": {
+    "n": 2,
+    "clean": 2,
+    "fenced": 0,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": []
+  },
+  "OR-Nemotron3-Super": {
+    "n": 5,
+    "clean": 3,
+    "fenced": 2,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": [
+      "NO-JSON (prose/refusal)",
+      "NO-JSON (prose/refusal)"
+    ]
+  },
+  "OR-Llama33-70B": {
+    "n": 1,
+    "clean": 1,
+    "fenced": 0,
+    "preamble": 0,
+    "trailing_comma": 0,
+    "single_quotes": 0,
+    "comments": 0,
+    "truncated": 0,
+    "other": []
+  }
+}

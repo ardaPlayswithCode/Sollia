@@ -1,0 +1,30 @@
+{
+  "model": "anthropic/claude-fable-5",
+  "status": 200,
+  "raw": "[\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"U.S. Export Controls on China Sales\",\n    \"rank\": 1,\n    \"old_quote\": \"In August 2022, the U.S. government, or USG, announced export restrictions and export licensing requirements targeting China's semiconductor and supercomputing industries.\",\n    \"new_quote\": \"In April 2025, the USG informed us that it requires a license for export to China (including Hong Kong and Macau) and D:5 countries, or to companies headquartered or with an ultimate par\",\n    \"summary\": \"The export control risk materialized further \u2014 the new filing discloses an April 2025 USG action imposing a license requirement (present tense 'requires') on exports to China and D:5 countries, going beyond the previously disclosed August 2022 restrictions.\"\n  },\n  {\n    \"category\": \"ESCALATED\",\n    \"risk_title\": \"Scope of Export Restrictions on Specific Products\",\n    \"rank\": 2,\n    \"old_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hon\",\n    \"new_quote\": \"These restrictions impacted exports of certain chips, as well as software, hardware, equipment and technology used to develop, produce and manufacture certain chips to China (including Hong Kong and Macau) and Russia, and specifically impact our A100 and H100 integrated circuits, DGX or any other systems or boards which incorporate A100 or H100 integrated circuits.\",\n    \"summary\": \"The new filing expands the disclosed scope of restrictions, explicitly naming affected products (A100, H100, DGX systems) and adding Russia, Hong Kong, and Macau \u2014 the restriction footprint has broadened and become more concrete.\"\n  },\n  {\n    \"category\": \"NEW\",\n    \"risk_title\": \"Performance-Threshold Licensing Requirements for Country Group D5\",\n    \"rank\": 3,\n    \"old_quote\": \"Over the past three years, we have been subject to a series of shifting and expanding export control restrictions, impacting our ability to serve customers outside the United States.\",\n    \"new_quote\": \"The licensing requirements also apply to the export of products exceeding certain performance thresholds to a party headquartered in, or with an ultimate parent headquartered in, Country Group D5, including China.\",\n    \"summary\": \"New disclosure that licensing requirements extend to any products exceeding performance thresholds shipped to Country Group D5 parties or their subsidiaries \u2014 a broader jurisdictional net not detailed in the old filing's disclosed text.\"\n  },\n  {\n    \"category\": \"REMOVED\",\n    \"risk_title\": \"Social Media Disclosure Materiality\",\n    \"rank\": 4,\n    \"old_quote\": \"The information we post through these social media channels may be deemed material.\",\n    \"new_quote\": \"These statements involve known and unknown risks, uncertainties and other factors, which may cause our actual results, performance, time frames or achievements to be materially different from any future results, performance, time frames or achievements expressed or implied by the forward-looking statements.\",\n    \"summary\": \"The old filing's statement that social media postings may be deemed material information has no counterpart in the new filing's disclosed text.\"\n  }\n]",
+  "usage": {
+    "prompt_tokens": 4096,
+    "completion_tokens": 1937,
+    "total_tokens": 6033,
+    "cost": 0.13781,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.13781,
+      "upstream_inference_prompt_cost": 0.04096,
+      "upstream_inference_completions_cost": 0.09685
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 204,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "ms": 23884,
+  "finish_reason": "stop"
+}

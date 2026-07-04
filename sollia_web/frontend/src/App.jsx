@@ -3,6 +3,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import AgentGrid from './components/AgentGrid'
 import { generateBrief } from './utils/brief'
 import {
+  SCORING_AGENTS, sevLabel, riskSeverity, severityCounts, sortFindings,
+} from './utils/severity'
+import {
   GlowCard, GridBackground, NumberTicker, TextReveal,
   AnimatedList, AnimatedItem, CardEntrance, Tip,
 } from './components/effects'
@@ -45,18 +48,41 @@ export default function App() {
   const [agentLogs, setAgentLogs] = useState({})
   const [resetToken, setResetToken] = useState(0)
   const esRef = useRef(null)
+  const runIdRef = useRef(null)
+  // The ticker the RUNNING pipeline was started with. The input stays editable
+  // during a run (the analyst queues the next ticker) without touching this.
+  const runTickerRef = useRef(null)
 
   // Tidy up any open stream on unmount
   useEffect(() => () => { if (esRef.current) esRef.current.close() }, [])
 
   function toggleAgent(id) {
+    // Part 4a: agent selection is LOCKED while a run is in flight — toggling
+    // used to wipe the live results out from under the running pipeline.
+    if (loading) return
     setSelected(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id])
     setResult(null); setExportData(null); setError(null)
+  }
+
+  function cancelAnalysis() {
+    if (!loading) return
+    if (!window.confirm('Cancel analysis? Progress will be lost.')) return
+    const runId = runIdRef.current
+    if (esRef.current) { esRef.current.close(); esRef.current = null }
+    if (runId) {
+      // Best-effort: the UI resets regardless; the backend stops reporting the
+      // run and lets in-flight agent work wind down into the caches.
+      fetch(`${API_BASE}/api/analyze/cancel/${runId}`, { method: 'POST' }).catch(() => {})
+    }
+    runIdRef.current = null
+    setLoading(false); setResult(null); setExportData(null); setAgentLogs({}); setError(null)
   }
 
   function runAnalysis() {
     if (!ticker.trim() || selected.length === 0 || loading) return
     if (esRef.current) esRef.current.close()
+    const runTicker = ticker.toUpperCase()
+    runTickerRef.current = runTicker
     setLoading(true); setError(null); setResult(null); setExportData(null)
 
     const seed = {}
@@ -66,10 +92,11 @@ export default function App() {
     fetch(`${API_BASE}/api/analyze/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ticker: ticker.toUpperCase(), agents: selected }),
+      body: JSON.stringify({ ticker: runTicker, agents: selected }),
     })
       .then(r => { if (!r.ok) throw new Error('Server error: ' + r.status); return r.json() })
       .then(({ run_id }) => {
+        runIdRef.current = run_id
         const es = new EventSource(`${API_BASE}/api/analyze/stream/${run_id}`)
         esRef.current = es
         es.onmessage = (e) => {
@@ -91,10 +118,13 @@ export default function App() {
             // LIVE per-agent results (Part 7d): render each card the moment
             // its agent finishes — the analyst reads while the rest still run.
             if (ev.new_results) {
-              setResult(prev => ({ ...(prev || { ticker: ticker.toUpperCase(), live: true }), ...ev.new_results }))
+              setResult(prev => ({ ...(prev || { ticker: runTicker, live: true }), ...ev.new_results }))
             }
           } else if (ev.type === 'complete') {
             setResult(ev.result); setExportData(ev.export); setLoading(false); es.close()
+          } else if (ev.type === 'cancelled') {
+            // Cancelled from another tab/client — mirror the local cancel reset.
+            setLoading(false); setResult(null); setExportData(null); setAgentLogs({}); es.close()
           } else if (ev.type === 'error') {
             setError(ev.message || 'Analysis error')
             if (ev.result) setResult(ev.result)
@@ -163,8 +193,22 @@ export default function App() {
               loading || !ticker.trim() ? 'bg-white/5 text-slate-700 cursor-not-allowed' : 'bg-gradient-to-r from-blue-500 to-violet-500 text-white hover:shadow-lg hover:shadow-blue-500/20'
             }`}
           >
-            {loading ? 'Running...' : 'Analyze'}
+            {loading ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-500 border-t-transparent animate-spin" />
+                Running…
+              </span>
+            ) : 'Analyze'}
           </button>
+          {loading && (
+            <button
+              onClick={cancelAnalysis}
+              className="px-5 py-3.5 rounded-xl font-bold text-sm tracking-wide text-red-400/80 hover:text-red-300 bg-red-500/5 border border-red-500/20 hover:border-red-500/40 transition-all"
+              title="Stop this analysis"
+            >
+              Cancel
+            </button>
+          )}
           {result && !loading && (
             <button
               onClick={() => setResetToken(t => t + 1)}
@@ -176,16 +220,22 @@ export default function App() {
           )}
         </div>
 
-        {/* AGENTS */}
+        {/* AGENTS — selection locks while a run is in flight (Part 4a) */}
         <div className="mb-6">
-          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Agents</label>
+          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">
+            Agents {loading && <span className="text-slate-600 normal-case tracking-normal ml-1">· locked during run</span>}
+          </label>
           <div className="flex flex-wrap gap-2">
             {defaultAgents.map(agent => (
-              <Tip key={agent.id} label={AGENT_BLURBS[agent.id]}>
+              <Tip key={agent.id} label={loading ? 'Locked while the analysis runs' : AGENT_BLURBS[agent.id]}>
                 <button
                   onClick={() => toggleAgent(agent.id)}
-                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border hover:scale-[1.02] ${
-                    selected.includes(agent.id) ? 'bg-blue-500/15 border-blue-400 text-blue-300' : 'bg-white/[0.02] border-white/5 hover:border-white/30 text-slate-400'
+                  disabled={loading}
+                  aria-disabled={loading}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all border ${
+                    loading ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'
+                  } ${
+                    selected.includes(agent.id) ? 'bg-blue-500/15 border-blue-400 text-blue-300' : `bg-white/[0.02] border-white/5 text-slate-400 ${loading ? '' : 'hover:border-white/30'}`
                   }`}
                 >
                   {agent.name}
@@ -224,27 +274,39 @@ export default function App() {
           </div>
         )}
 
+        {/* COMPOSITE — hidden until ALL agents finish (Part 4e). While the run
+            is live, a progress line replaces it. Per-agent scores stay in the
+            JSON export; the UI shows severity distributions instead (Part 4c). */}
+        {(loading || result) && (
+          <div className="mb-6">
+            {loading ? (
+              <div className="bg-[#0A0B14] border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-3">
+                <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-400/60 border-t-transparent animate-spin" />
+                <p className="text-slate-400 text-sm font-medium">
+                  Analysis in progress ({selected.filter(id => agentLogs[id]?.status === 'complete').length} of {selected.length} agent{selected.length === 1 ? '' : 's'} complete)
+                </p>
+              </div>
+            ) : (
+              result && !result.live && result.score != null && (
+                <CompositeBox score={result.score} signal={signalFor(result.score)} />
+              )
+            )}
+          </div>
+        )}
+
         {/* RESULTS — cards stream in live as each agent finishes */}
         {result && (
           <div className="space-y-6">
-            {/* SCORE CARDS */}
+            {/* SEVERITY DISTRIBUTIONS (Part 4c) — scoring agents only; the
+                audit agents (Constraint, Moat) keep their own card displays */}
             <motion.div
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
               initial="hidden" animate="show"
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }}
             >
-              {result.corporate_discrepancy && (
-                <ScoreBox label="Corporate Discrepancy" score={result.corporate_discrepancy.score ?? 50} signal={signalFor(result.corporate_discrepancy.score)} />
-              )}
-              {result.promise_audit && (
-                <ScoreBox label="Promise Audit" score={result.promise_audit.score ?? 50} signal={signalFor(result.promise_audit.score)} />
-              )}
-              {result.legal_proceedings && (
-                <ScoreBox label="Legal Proceedings" score={result.legal_proceedings.agent3_score ?? 50} signal={signalFor(result.legal_proceedings.agent3_score)} />
-              )}
-              {result.risk_factors && (
-                <ScoreBox label="Risk Factors" score={result.risk_factors.score ?? 50} signal={signalFor(result.risk_factors.score)} />
-              )}
+              {SCORING_AGENTS.filter(id => result[id]).map(id => (
+                <SeverityBox key={id} label={AGENT_LABELS[id]} counts={severityCounts(id, result[id])} />
+              ))}
             </motion.div>
 
             {/* AGENT CARDS — draggable/resizable grid, presence-animated */}
@@ -339,28 +401,33 @@ function JsonPanel({ data, ticker }) {
 }
 
 // ── Agent 1: Corporate Discrepancy ────────────────────────────────────────────
+// Severity distribution text for card subtitles (Part 4c): "3 high · 6 medium ·
+// 4 low" (zero-count buckets dropped; "no findings" when empty).
+function sevText(counts) {
+  const parts = ['high', 'medium', 'low']
+    .filter(s => counts[s] > 0)
+    .map(s => `${counts[s]} ${s}`)
+  return parts.length ? parts.join(' · ') : 'no findings'
+}
+
 function DiscrepancyCard({ data }) {
-  const findings = data.top_discrepancies || []
-  const tone = findings.some(d => d.severity === 'high') ? 'bearish' : findings.length ? 'neutral' : 'bullish'
+  const findings = sortFindings(data.top_discrepancies || [], d => sevLabel(d.severity))
+  const tone = findings.some(d => sevLabel(d.severity) === 'high') ? 'bearish' : findings.length ? 'neutral' : 'bullish'
   return (
     <Card title="Corporate Discrepancy" tone={tone} active={findings.length > 0}
       blurb={AGENT_BLURBS.corporate_discrepancy}
-      subtitle={`Score: ${data.score ?? '—'} · ${data.total_aligned_pairs ?? 0} aligned passages`}>
+      subtitle={`${sevText(severityCounts('corporate_discrepancy', data))} · ${data.total_aligned_pairs ?? 0} aligned passages`}>
       {findings.length === 0 && (
         <p className="text-slate-600 text-sm">No material cross-document discrepancies surfaced.</p>
       )}
-      <AnimatedList className="space-y-3">
-        {findings.slice(0, 5).map((d, i) => (
-          <AnimatedItem key={i}>
-            <Row badge={d.severity === 'high' ? 'RED' : d.severity === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={d.severity} meta={d.pair_display || d.pair?.replace(/_/g, ' ')}>
-              {d.same_filing && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400">SAME FILING — DOWNRANKED</span>}
-              <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
-              <Quote text={d.source_a?.sentence_text} url={d.source_a?.edgar_url || d.source_a?.htm_link} label={d.source_a?.document_type} page={d.source_a?.page_number} />
-              <Quote text={d.source_b?.sentence_text} url={d.source_b?.edgar_url || d.source_b?.htm_link} label={d.source_b?.document_type} page={d.source_b?.page_number} />
-            </Row>
-          </AnimatedItem>
-        ))}
-      </AnimatedList>
+      <ExpandableFindings items={findings} renderItem={(d) => (
+        <Row badge={sevLabel(d.severity) === 'high' ? 'RED' : sevLabel(d.severity) === 'medium' ? 'YELLOW' : 'GREEN'} badgeText={sevLabel(d.severity)} meta={d.pair_display || d.pair?.replace(/_/g, ' ')}>
+          {d.same_filing && <span className="inline-block mb-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-500/10 text-slate-400">SAME FILING — DOWNRANKED</span>}
+          <p className="text-slate-400 text-xs mb-2">{d.reasoning}</p>
+          <Quote text={d.source_a?.sentence_text} url={d.source_a?.edgar_url || d.source_a?.htm_link} label={d.source_a?.document_type} page={d.source_a?.page_number} />
+          <Quote text={d.source_b?.sentence_text} url={d.source_b?.edgar_url || d.source_b?.htm_link} label={d.source_b?.document_type} page={d.source_b?.page_number} />
+        </Row>
+      )} />
     </Card>
   )
 }
@@ -369,21 +436,18 @@ function DiscrepancyCard({ data }) {
 function PromiseCard({ data }) {
   const broken = data.total_broken || 0
   const tone = broken > (data.total_kept || 0) ? 'bearish' : 'bullish'
+  const promises = sortFindings(data.top_promises || [], p => sevLabel(p.severity))
   return (
-    <Card title="Promise Audit" tone={tone} active={(data.top_promises || []).length > 0}
+    <Card title="Promise Audit" tone={tone} active={promises.length > 0}
       blurb={AGENT_BLURBS.promise_audit}
-      subtitle={`${data.total_promises_extracted || 0} promises · ${data.total_kept || 0} kept · ${broken} broken`}>
-      <AnimatedList className="space-y-3">
-        {(data.top_promises || []).map((p, i) => (
-          <AnimatedItem key={i}>
-            <Row badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
-              <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
-              <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
-              {p.reasoning && <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>}
-            </Row>
-          </AnimatedItem>
-        ))}
-      </AnimatedList>
+      subtitle={`${sevText(severityCounts('promise_audit', data))} · ${data.total_promises_extracted || 0} promises · ${data.total_kept || 0} kept · ${broken} broken`}>
+      <ExpandableFindings items={promises} label="promises" renderItem={(p) => (
+        <Row badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
+          <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
+          <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
+          {p.reasoning && <p className="text-slate-500 text-xs mt-1">{p.reasoning}</p>}
+        </Row>
+      )} />
     </Card>
   )
 }
@@ -395,28 +459,28 @@ function LegalCard({ data }) {
   return (
     <Card title="Legal Proceedings" tone={hasChanges ? 'neutral' : 'bullish'} active={hasChanges}
       blurb={AGENT_BLURBS.legal_proceedings}
-      subtitle={`${findings.length} filing types compared`}>
+      subtitle={`${sevText(severityCounts('legal_proceedings', data))} · ${findings.length} filing types compared`}>
       {findings.map((f, i) => (
         <div key={i} className="mb-4">
           <p className="text-slate-400 text-xs font-semibold mb-2">
-            {f.doc_type}{f.prior_date ? `: ${f.prior_date} → ${f.current_date}` : ''} · Score: {f.agent3_score}
+            {f.doc_type}{f.prior_date ? `: ${f.prior_date} → ${f.current_date}` : ''}
           </p>
           {(!f.proceedings || f.proceedings.length === 0) ? (
             <p className="text-slate-600 text-xs italic">{f.summary || `No legal proceedings in ${f.doc_type}`}</p>
           ) : (
             <>
               {f.summary && <p className="text-slate-500 text-xs mb-2">{f.summary}</p>}
-              <AnimatedList className="space-y-3">
-                {f.proceedings.slice(0, 5).map((p, j) => (
-                  <AnimatedItem key={j}>
-                    <Row badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
-                      <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" page={p.prior_quote_page} />
-                      <Quote text={p.current_quote || p.current_text} url={p.edgar_url} label="Current" page={p.current_quote_page} />
-                      {p.liability_change && <p className="text-slate-500 text-xs mt-1">Liability: {p.liability_change}</p>}
-                    </Row>
-                  </AnimatedItem>
-                ))}
-              </AnimatedList>
+              <ExpandableFindings
+                items={sortFindings(f.proceedings, p => sevLabel(p.priority))}
+                label="proceedings"
+                renderItem={(p) => (
+                  <Row badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
+                    <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" page={p.prior_quote_page} />
+                    <Quote text={p.current_quote || p.current_text} url={p.edgar_url} label="Current" page={p.current_quote_page} />
+                    {p.liability_change && <p className="text-slate-500 text-xs mt-1">Liability: {p.liability_change}</p>}
+                  </Row>
+                )}
+              />
             </>
           )}
         </div>
@@ -427,45 +491,43 @@ function LegalCard({ data }) {
 
 // ── Agent 4: Risk Factors ─────────────────────────────────────────────────────
 function RiskCard({ data }) {
-  const changes = data.top_changes || []
+  const changes = sortFindings(data.top_changes || [], c => riskSeverity(c.category))
   const bearish = changes.some(c => ['ESCALATED', 'NEW'].includes(String(c.category).toUpperCase()))
   return (
     <Card title="Risk Factors" tone={bearish ? 'bearish' : changes.length ? 'neutral' : 'bullish'} active={changes.length > 0}
       blurb={AGENT_BLURBS.risk_factors}
-      subtitle={`Item 1A delta · ${data.old_filing_date || '—'} → ${data.new_filing_date || '—'} · ${data.total_risks_old ?? 0}→${data.total_risks_new ?? 0} risks · ${data.changes_found || 0} changes`}>
+      subtitle={`${sevText(severityCounts('risk_factors', data))} · Item 1A delta · ${data.old_filing_date || '—'} → ${data.new_filing_date || '—'} · ${data.total_risks_old ?? 0}→${data.total_risks_new ?? 0} risks`}>
       {changes.length === 0 && (
         <p className="text-slate-600 text-sm">{data.summary || 'No material changes in risk factors between the two 10-Ks.'}</p>
       )}
-      <AnimatedList className="space-y-3">
-        {changes.map((c, i) => (
-          <AnimatedItem key={i}>
-            <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
-              {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
-              <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" page={c.old_quote_page} />
-              <Quote text={c.new_quote} url={c.new_url} label="New 10-K" page={c.new_quote_page} />
-              {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
-            </Row>
-          </AnimatedItem>
-        ))}
-      </AnimatedList>
+      <ExpandableFindings items={changes} label="changes" renderItem={(c) => (
+        <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
+          {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
+          <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" page={c.old_quote_page} />
+          <Quote text={c.new_quote} url={c.new_url} label="New 10-K" page={c.new_quote_page} />
+          {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
+        </Row>
+      )} />
       {data.ten_q_findings && (
         <div className="mt-4 pt-4 border-t border-white/10">
           <p className="text-slate-500 text-xs font-semibold mb-3">
             10-Q Update · {data.ten_q_findings.filing_date} · vs {data.ten_q_findings.compared_against} ({data.ten_q_findings.compared_date}) · {data.ten_q_findings.changes_found} changes
           </p>
-          <div className="space-y-3">
-            {(data.ten_q_findings.changes || []).length === 0 && (
-              <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
-            )}
-            {(data.ten_q_findings.changes || []).map((c, i) => (
-              <Row key={i} badge={c.category} badgeText={c.category} meta={c.risk_title}>
+          {(data.ten_q_findings.changes || []).length === 0 && (
+            <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
+          )}
+          <ExpandableFindings
+            items={sortFindings(data.ten_q_findings.changes || [], c => riskSeverity(c.category))}
+            label="changes"
+            renderItem={(c) => (
+              <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
                 {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
                 <Quote text={c.old_quote} url={c.old_url} label={`Old ${data.ten_q_findings.compared_against}`} page={c.old_quote_page} />
                 <Quote text={c.new_quote} url={c.new_url} label="New 10-Q" page={c.new_quote_page} />
                 {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
               </Row>
-            ))}
-          </div>
+            )}
+          />
         </div>
       )}
     </Card>
@@ -524,43 +586,50 @@ function ConstraintAuditorCard({ data }) {
         <CagrLine label="Industry" c={pc.industry} />
       </div>
 
-      <AnimatedList className="space-y-3">
-        {constraints.map((c, i) => {
+      <ExpandableFindings
+        items={[...constraints].sort((a, b) => {
+          // urgency first (audit display unchanged otherwise — Part 4c);
+          // materials with live data outrank NO DATA rows at equal urgency.
+          const rank = { immediate: 4, high: 3, medium: 2, low: 1, none: 0 }
+          const u = (rank[b.urgency] ?? 0) - (rank[a.urgency] ?? 0)
+          if (u !== 0) return u
+          return (b.status === 'success') - (a.status === 'success')
+        })}
+        label="materials"
+        renderItem={(c) => {
           const ok = c.status === 'success'
           return (
-            <AnimatedItem key={i}>
-              <div className="border border-white/[0.04] rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <Tip label={c.model_note || ''}>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${URGENCY_BADGE[c.urgency] || URGENCY_BADGE.none}`}>
-                      {ok ? (c.urgency_badge || '—') : 'NO DATA'}
-                    </span>
-                  </Tip>
-                  <span className="text-sm font-semibold text-slate-200">{c.material}</span>
-                </div>
-                {ok ? (
-                  <>
-                    <p className="text-slate-400 text-xs mb-2 leading-relaxed">
-                      {c.crossover_detail || `Demand exceeds supply — management CAGR ${c.crossover_management}, industry CAGR ${c.crossover_industry}`}
-                    </p>
-                    {c.supply && (
-                      <Quote text={c.supply.quote} url={c.supply.url}
-                        label={`Supply ${c.supply.value ?? ''} ${c.supply.unit ?? ''} @ ${c.supply.growth_rate_pct ?? '?'}%`} />
-                    )}
-                    {c.demand && (
-                      <Quote text={c.demand.quote} url={c.demand.url}
-                        label={`Demand ${c.demand.value ?? ''} ${c.demand.unit ?? ''}`} />
-                    )}
-                    {c.date_note && <p className="text-slate-600 text-[11px] mt-1 italic">⚠ {c.date_note}</p>}
-                  </>
-                ) : (
-                  <p className="text-slate-500 text-xs">{c.reason || c.status}</p>
-                )}
+            <div className="border border-white/[0.04] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <Tip label={c.model_note || ''}>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${URGENCY_BADGE[c.urgency] || URGENCY_BADGE.none}`}>
+                    {ok ? (c.urgency_badge || '—') : 'NO DATA'}
+                  </span>
+                </Tip>
+                <span className="text-sm font-semibold text-slate-200">{c.material}</span>
               </div>
-            </AnimatedItem>
+              {ok ? (
+                <>
+                  <p className="text-slate-400 text-xs mb-2 leading-relaxed">
+                    {c.crossover_detail || `Demand exceeds supply — management CAGR ${c.crossover_management}, industry CAGR ${c.crossover_industry}`}
+                  </p>
+                  {c.supply && (
+                    <Quote text={c.supply.quote} url={c.supply.url}
+                      label={`Supply ${c.supply.value ?? ''} ${c.supply.unit ?? ''} @ ${c.supply.growth_rate_pct ?? '?'}%`} />
+                  )}
+                  {c.demand && (
+                    <Quote text={c.demand.quote} url={c.demand.url}
+                      label={`Demand ${c.demand.value ?? ''} ${c.demand.unit ?? ''}`} />
+                  )}
+                  {c.date_note && <p className="text-slate-600 text-[11px] mt-1 italic">⚠ {c.date_note}</p>}
+                </>
+              ) : (
+                <p className="text-slate-500 text-xs">{c.reason || c.status}</p>
+              )}
+            </div>
           )
-        })}
-      </AnimatedList>
+        }}
+      />
 
       {prov && (prov.missing_keys?.length > 0 || prov.needs_pdf_parser?.length > 0) && (
         <p className="text-slate-600 text-[10px] mt-2">
@@ -633,27 +702,30 @@ function MoatAuditorCard({ data }) {
         <p className="text-slate-500 text-sm">No moat claims identified in company filings.</p>
       )}
 
-      <AnimatedList className="space-y-3">
-        {moats.map((m, i) => {
+      <ExpandableFindings
+        items={[...moats].sort((a, b) => {
+          const rank = { 'DIRECT THREAT': 2, 'WATCH': 1, 'NO THREAT': 0 }
+          return (rank[b.verdict] ?? 0) - (rank[a.verdict] ?? 0)
+        })}
+        label="moats"
+        renderItem={(m) => {
           const cc = m.company_claim || {}
           const ch = m.strongest_challenge
           return (
-            <AnimatedItem key={i}>
-              <div className="border border-white/[0.04] rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${MOAT_VERDICT[m.verdict] || MOAT_VERDICT['NO THREAT']}`}>{m.verdict}</span>
-                  <span className="text-sm font-semibold text-slate-200">{m.moat_type}</span>
-                </div>
-                <MoatQuote label="Company Claim" sub={cc.source} text={cc.sentence} url={cc.url} page={cc.page_number} />
-                {ch
-                  ? <MoatQuote label="Competitor Challenge" sub={`${ch.competitor} · ${ch.source}${ch.date ? ' · ' + ch.date : ''}`} text={ch.sentence} url={ch.url} />
-                  : <p className="text-slate-500 text-xs mt-2"><span className="uppercase font-semibold text-[10px]">Competitor Challenge</span> · None found.</p>}
-                {m.analysis && <p className="text-slate-400 text-xs mt-2 leading-relaxed">{m.analysis}</p>}
+            <div className="border border-white/[0.04] rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${MOAT_VERDICT[m.verdict] || MOAT_VERDICT['NO THREAT']}`}>{m.verdict}</span>
+                <span className="text-sm font-semibold text-slate-200">{m.moat_type}</span>
               </div>
-            </AnimatedItem>
+              <MoatQuote label="Company Claim" sub={cc.source} text={cc.sentence} url={cc.url} page={cc.page_number} />
+              {ch
+                ? <MoatQuote label="Competitor Challenge" sub={`${ch.competitor} · ${ch.source}${ch.date ? ' · ' + ch.date : ''}`} text={ch.sentence} url={ch.url} />
+                : <p className="text-slate-500 text-xs mt-2"><span className="uppercase font-semibold text-[10px]">Competitor Challenge</span> · None found.</p>}
+              {m.analysis && <p className="text-slate-400 text-xs mt-2 leading-relaxed">{m.analysis}</p>}
+            </div>
           )
-        })}
-      </AnimatedList>
+        }}
+      />
     </Card>
   )
 }
@@ -667,21 +739,81 @@ function signalFor(score) {
   return s > 65 ? 'BULLISH' : s < 35 ? 'BEARISH' : 'NEUTRAL'
 }
 
-function ScoreBox({ label, score, signal }) {
+// Composite score — the ONE number kept in the UI (Part 4c/4e). Only rendered
+// once the whole run is complete, never from partial live results.
+function CompositeBox({ score, signal }) {
   const colors = { BULLISH: '#22C55E', NEUTRAL: '#F59E0B', BEARISH: '#EF4444', HOLD: '#F59E0B' }
   const color = colors[signal] || '#F59E0B'
   return (
     <motion.div
-      className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 text-center lift-card"
-      variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } } }}
+      className="bg-[#0A0B14] border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-5 lift-card"
+      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
     >
-      <div className="text-5xl font-black mb-2" style={{ color }}>
+      <div className="text-5xl font-black" style={{ color }}>
         <NumberTicker value={Math.round(score)} />
         <span className="text-2xl font-bold text-slate-600">/100</span>
       </div>
-      <div className="text-slate-400 text-sm font-medium">{label}</div>
-      <div className="text-xs mt-1" style={{ color }}>{signal}</div>
+      <div>
+        <div className="text-slate-300 text-sm font-semibold">Composite</div>
+        <div className="text-xs mt-0.5" style={{ color }}>{signal}</div>
+      </div>
     </motion.div>
+  )
+}
+
+// Per-agent severity distribution (Part 4c): "3 high · 6 medium · 4 low"
+// replaces the per-agent score number. Scores remain in the JSON export.
+const SEV_COLORS = { high: '#EF4444', medium: '#F59E0B', low: '#22C55E' }
+
+function SeverityBox({ label, counts }) {
+  const total = (counts.high || 0) + (counts.medium || 0) + (counts.low || 0)
+  return (
+    <motion.div
+      className="bg-[#0A0B14] border border-white/5 rounded-2xl p-5 lift-card"
+      variants={{ hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } } }}
+    >
+      <div className="text-slate-400 text-sm font-medium mb-2">{label}</div>
+      {total === 0 ? (
+        <div className="text-slate-600 text-lg font-bold">no findings</div>
+      ) : (
+        <div className="flex items-baseline gap-2 flex-wrap">
+          {['high', 'medium', 'low'].map(sev => (
+            counts[sev] > 0 && (
+              <span key={sev} className="text-lg font-black whitespace-nowrap" style={{ color: SEV_COLORS[sev] }}>
+                {counts[sev]} <span className="text-xs font-semibold opacity-80">{sev}</span>
+              </span>
+            )
+          )).filter(Boolean).flatMap((el, i, arr) => i < arr.length - 1
+            ? [el, <span key={`dot${i}`} className="text-slate-700">·</span>] : [el])}
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
+// Part 4d — every findings list shows its top 5 (callers pre-sort by
+// severity > recency > importance); the rest sit behind "+N more findings".
+function ExpandableFindings({ items, renderItem, label = 'findings', className = 'space-y-3' }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!items || items.length === 0) return null
+  const shown = expanded ? items : items.slice(0, 5)
+  const hidden = items.length - 5
+  return (
+    <>
+      <AnimatedList className={className}>
+        {shown.map((item, i) => (
+          <AnimatedItem key={i}>{renderItem(item, i)}</AnimatedItem>
+        ))}
+      </AnimatedList>
+      {hidden > 0 && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-xs font-semibold text-blue-400/80 hover:text-blue-300 transition-colors mt-1"
+        >
+          {expanded ? '− Show top 5 only' : `+${hidden} more ${label}`}
+        </button>
+      )}
+    </>
   )
 }
 

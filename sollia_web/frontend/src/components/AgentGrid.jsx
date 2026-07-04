@@ -69,7 +69,7 @@ export default function AgentGrid({ ids, renderCard, resetToken = 0 }) {
 
   return (
     <RGL
-      className="layout"
+      className="layout agent-grid-board"
       layouts={merged}
       breakpoints={{ lg: 1024, md: 768, sm: 0 }}
       cols={{ lg: 12, md: 12, sm: 6 }}
