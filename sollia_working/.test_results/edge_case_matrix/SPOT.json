@@ -1,0 +1,74 @@
+{
+  "ticker": "SPOT",
+  "started": "2026-07-04 01:46:34",
+  "agents": {
+    "corporate_discrepancy": {
+      "status": "MISSING/ERROR"
+    },
+    "promise_audit": {
+      "status": "MISSING/ERROR"
+    },
+    "legal_proceedings": {
+      "status": "OK",
+      "keys": [
+        "agent3_score",
+        "findings",
+        "score",
+        "score_rationale",
+        "signal",
+        "ticker",
+        "timestamp"
+      ]
+    },
+    "risk_factors": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "changes_found",
+        "new_filing_date",
+        "old_filing_date",
+        "run_timestamp",
+        "score",
+        "signal",
+        "summary"
+      ]
+    },
+    "constraint_auditor": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_id",
+        "agent_log",
+        "company",
+        "elapsed_ms",
+        "message",
+        "score",
+        "sector"
+      ]
+    },
+    "moat_auditor": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_id",
+        "agent_log",
+        "company",
+        "competitors_analyzed",
+        "elapsed_ms",
+        "message",
+        "moats_audited"
+      ]
+    }
+  },
+  "wall_seconds": 0.5,
+  "billed_cost_usd": 0.0,
+  "live_llm_calls": 0,
+  "sec_fetches": 4,
+  "network": {
+    "groq:mac_studio": "congested",
+    "groq:berkeley": "normal",
+    "groq:heysollia": "congested",
+    "openrouter:account": "normal",
+    "gemini:account": "normal"
+  }
+}

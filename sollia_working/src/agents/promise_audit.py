@@ -573,6 +573,11 @@ def _parse_stage1_response(response: str, batch: List[Dict[str, Any]]) -> List[D
     promises = []
     
     for item in data:
+        # Type guard (2026-07-03 OPEN fix): models occasionally answer the
+        # Stage-1 prompt with sentence indices ([0, 2, 5]) or bare strings
+        # instead of promise objects — .get() on those crashed the agent.
+        if not isinstance(item, dict):
+            continue
         if not item.get("is_promise"):
             continue
         if item.get("category") not in valid_categories:
@@ -665,7 +670,10 @@ class PromiseAuditAgent:
         self._add_log("FETCH", f"Fetching all filings for {ticker}...")
         all_filings_raw = edgar.get_all_filings(ticker)
         if not all_filings_raw:
-            return {"error": f"No filings available for {ticker}"}
+            # Accurate degradation message (2026-07-04): distinguishes
+            # "foreign private issuer files 20-F" from a genuine data gap.
+            from src.providers.filings.sec_edgar import no_filings_reason
+            return {"error": no_filings_reason(ticker)}
         # NOTE: intentionally NOT calling cache_filings(ticker, all_filings_raw) here.
         # cache_filings() writes a keyed-by-accession schema to {ticker}_filings.json, but
         # Agent 1 & Agent 3 read that SAME file as RAW SEC submissions JSON
@@ -1551,8 +1559,10 @@ def parse_stage2_response(
     results = []
     
     for item in data:
+        if not isinstance(item, dict):  # type guard — see Stage 1 (OPEN fix)
+            continue
         pid = item.get("promise_id", "")
-        status = item.get("status", "").upper()
+        status = str(item.get("status", "") or "").upper()
         if status not in valid_statuses:
             continue
         

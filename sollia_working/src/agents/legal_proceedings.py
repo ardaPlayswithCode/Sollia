@@ -179,8 +179,15 @@ class LegalProceedingsTracker:
 
         if not filings_data:
             url = f"https://data.sec.gov/submissions/CIK{cik}.json"
-            resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"},
-                                timeout=(10, 30))
+            try:
+                resp = requests.get(url, headers={"User-Agent": "Sollia contact@sollia.app", "Host": "data.sec.gov"},
+                                    timeout=(10, 30))
+            except Exception as e:
+                # Includes SECUnavailable from the outage breaker: degrade to
+                # "no filings" (track() skips doc types with <2 filings) —
+                # an open breaker must never kill the whole agent (2026-07-04).
+                logger.warning("Submissions fetch failed for %s: %s", ticker, str(e)[:120])
+                return []
             if resp.status_code == 200:
                 filings_data = resp.json()
                 # Also fetch historical archives
@@ -262,7 +269,12 @@ class LegalProceedingsTracker:
                     else:
                         full_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_clean}/{doc_url}"
 
-                    doc_resp = requests.get(full_url, headers={"User-Agent": "Sollia contact@sollia.app"}, timeout=60)
+                    try:
+                        doc_resp = requests.get(full_url, headers={"User-Agent": "Sollia contact@sollia.app"}, timeout=60)
+                    except Exception as e:
+                        # breaker/network failure -> no text; caller handles None
+                        logger.warning("Filing text fetch failed: %s", str(e)[:120])
+                        return None
                     if doc_resp.status_code == 200:
                         text = doc_resp.text
 
@@ -650,6 +662,13 @@ Output ONLY valid JSON. Do NOT include ANY text before or after the JSON. Do NOT
                                 raise ValueError("expected a JSON object")
                             # Extract proceedings list (for 10-K/10-Q) or events (for 8-K)
                             proceedings_list = data.get('proceedings', data.get('events', []))
+                            # Type guard (2026-07-03 OPEN-class fix): a scalar or a
+                            # list of indices here crashes every dict-assuming
+                            # consumer below (_is_financing_event, quote verify).
+                            if not isinstance(proceedings_list, list):
+                                proceedings_list = []
+                            proceedings_list = [p for p in proceedings_list
+                                                if isinstance(p, dict)]
                             # Merge duplicate findings that describe the same case/event.
                             proceedings_list = _dedup_proceedings(proceedings_list)
                             # Deterministic backstop (Part 4, 2026-07-01): an 8-K

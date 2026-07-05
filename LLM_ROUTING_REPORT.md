@@ -252,3 +252,108 @@ rate** (implemented + unit-verified):
 ## 8. Speed Tests (Part 3)
 
 _See section appended after the speed-test phase below._
+
+---
+
+# 9. Bulletproofing Pass (2026-07-03, evening) — 3 Groq Orgs + Network-Aware Router
+
+## 9.1 Official rate limits re-verified from PRIMARY sources (Part 4a)
+
+**Groq** (console.groq.com/docs/rate-limits, fetched live):
+
+| Model | RPM | RPD | TPM | TPD |
+|---|---|---|---|---|
+| `llama-3.3-70b-versatile` | 30 | 1,000 | 12,000 | 100,000 |
+| `llama-3.1-8b-instant` | 30 | 14,400 | 6,000 | 500,000 |
+
+- **"Rate limits apply at the organization level, not individual users."** (verbatim)
+- No concurrent-request cap documented; none observed below the RPM ceiling.
+- Free plan = base limits; Developer plan raises them for select workloads.
+
+**OpenRouter** (openrouter.ai/docs/api/reference/limits, fetched live):
+- `:free` models: **20 requests/min**; **1,000 requests/day** with ≥$10 purchased
+  (50/day below $10).
+- **"Making additional accounts or API keys will not affect your rate limits,
+  as we govern capacity globally."** (verbatim) — per-ACCOUNT enforcement.
+- Paid models: no documented cap; Cloudflare DDoS layer; 402 on negative balance.
+
+## 9.2 THREE Groq orgs wired and empirically verified (Part 5)
+
+`.env` now carries 17 Groq keys tagged by org in `GROQ_ORG_KEYS`:
+`mac_studio` (11 keys), `berkeley` (3), `heysollia` (3).
+
+**Org-fingerprint proof** (1-token pings, x-ratelimit-remaining-requests):
+berkeley keys decremented ONE shared daily counter (14399→14398→14397),
+heysollia decremented its OWN (14399→14398→14397), mac_studio untouched →
+**three independent buckets**. Effective Groq capacity is now genuinely 3×:
+90 RPM, 36k TPM (70B), 18k TPM (8B), 3k RPD (70B).
+
+**Live 429-storm rescue** (`scratchpad/org_storm_test.py`):
+1. mac_studio org hammered on 8B → first 429 at request **#31** (RPM=30
+   confirmed to the request, matching the docs).
+2. Second mac_studio key mid-storm → **429** (shared bucket re-confirmed).
+3. berkeley key mid-storm → **200 in 303ms**; heysollia → **200 in 228ms**.
+4. PRODUCTION chain call mid-storm → served by **Groq-8B in 0.5s,
+   attempts=2** — the org-hop (mac 429 → berkeley 200). Before this pass the
+   chain would have burned same-org keys and fallen through to Gemini.
+
+## 9.3 Key cycling is now ORG-aware
+
+- `_GROQ_KEYS` is org-INTERLEAVED (`_interleave_org_keys`): consecutive keys
+  belong to different orgs, so "next key" = "next rate-limit bucket".
+- On a 429, every remaining key of THAT org is skipped for the pass; the
+  provider is abandoned only when ALL its orgs have 429'd. Single-account
+  providers (OpenRouter, Gemini) abandon on the first 429 — measured, their
+  keys 429 together. `_KEY_429_CUTOFF` is deprecated (kept for env compat).
+- `_rotated()` sinks keys of congested/down orgs to the back of the attempt
+  order (healthy-first), preserving interleave within each health group.
+
+## 9.4 NetworkMonitor — live network-state detector (Part 4e)
+
+`NETWORK_MONITOR` tracks per rate-limit DOMAIN — ("groq", org) /
+("openrouter", "account") / ("gemini", "account"):
+
+| State | Trigger | Expiry |
+|---|---|---|
+| congested | ≥3 consecutive 429s (or huge Retry-After) | 75s (one RPM window + slack), up to 1h on daily-pool 429s |
+| degraded | ≥3 consecutive 200s slower than 10s | 300s or one fast success |
+| down | ≥2 transport errors, or ONE wall-clock hang | 120s |
+
+Fed from inside the chain's key loop (every 200/429/exception/hard-timeout);
+consumed by `select_best_tier`, `_rotated`, and a chain-level fast-skip of
+DOWN providers (the last tier is always tried — fail-open).
+
+## 9.5 select_best_tier — the six-dimension decision engine (Part 4d)
+
+Priority order (all thresholds empirical; 28/28 unit checks pass):
+1. OpenRouter down → never start at Fable 5 / OR-* (same transport).
+2. All 3 Groq orgs congested → start at Gemini (the only real refuge
+   measured under total Groq saturation; strict-JSON safe post-fix).
+3. >90k words + long-context → Fable 5 (200k ctx) UNLESS hung/down/
+   congested/cost-gated → then **Gemini (1M ctx)** — it actually FITS the
+   prompt, unlike Groq's 128k (this upgraded the old Groq-70B reroute).
+4. Strict JSON → Groq-70B, never below (8B measured 0/3 on indices).
+5. >1500 words → Groq-70B; else Groq-8B.
+6. COST GATE (Part 4f): run spend ≥80% of the $1.00 cap → paid promotion
+   off (pinned severity audit exempt until the hard cap).
+
+Chain-level suite (mock providers, REAL chain code): **9/9 scenarios pass**
+— normal, 429-storm, provider-down, 404, high-latency, read-timeout,
+slow-trickle (wall-clock guard at timeout+slack), hang-memo, hang-reroute.
+
+## 9.6 SEC backup research is documented in SEC_BACKUP_SOURCES.md
+
+## 9.7 Field fix from live stress (2026-07-04): congestion-memo TTL cap
+
+Observed live during the edge-case re-runs: a transient Groq RPD dip (rolling
+24h window, heavy test day) returned an hours-scale Retry-After; the monitor
+stamped all Groq orgs "congested" for its full 3600s cap, so every call
+STARTED at Gemini (daily pool dry until 07:00 UTC) and crawled down to
+OR-`:free` (39s Gemma-26B calls, one full-chain FAIL) — while direct pings
+showed all 3 Groq orgs serving 200s with full buckets again.
+
+Fix: `CONGESTED_TTL_MAX = 300s` — a Retry-After-driven memo now expires
+within 5 minutes and Groq gets re-probed. A wrong probe costs one ~200ms
+429; the old behavior cost up to an hour of 40s-per-call fallback crawl.
+Verified: unit test (10800s Retry-After → 300s memo) + the live batch
+recovered onto Groq-8B the minute its in-process memo expired.

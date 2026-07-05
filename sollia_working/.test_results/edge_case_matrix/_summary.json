@@ -1,0 +1,17 @@
+{
+  "OPEN": "6/6 OK in matrix \u2014 157.6s, $0.000",
+  "BRK.A": "6/6 OK in matrix \u2014 3458.7s, $0.000",
+  "SNAP": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (corporate_discrepancy re-verified individually) \u2014 103.7s, $0.000",
+  "MSTR": "6/6 OK in matrix \u2014 3752.1s, $0.067",
+  "COIN": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (corporate_discrepancy re-verified individually) \u2014 48.9s, $0.000",
+  "SPOT": "4/6 OK + 2 by-design degradations (foreign private issuer, 20-F) \u2014 accurate message verified \u2014 0.5s, $0.000",
+  "BABA": "4/6 OK + 2 by-design degradations (foreign private issuer, 20-F) \u2014 accurate message verified \u2014 0.4s, $0.000",
+  "IBM": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (corporate_discrepancy re-verified individually) \u2014 51.0s, $0.000",
+  "GE": "6/6 OK in matrix \u2014 311.0s, $0.000",
+  "RIVN": "6/6 OK in matrix \u2014 152.6s, $0.054",
+  "GME": "6/6 OK in matrix \u2014 117.9s, $0.062",
+  "CHPT": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (corporate_discrepancy re-verified individually) \u2014 38.3s, $0.000",
+  "FUBO": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (corporate_discrepancy re-verified individually) \u2014 162.3s, $0.000",
+  "UBER": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (risk_factors re-verified individually) \u2014 2066.8s, $0.000",
+  "PLTR": "5/6 OK in matrix -> 6/6 after 2026-07-04 fixes (legal_proceedings re-verified individually) \u2014 12379.7s, $0.074"
+}

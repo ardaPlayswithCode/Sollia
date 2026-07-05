@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import AgentGrid from './components/AgentGrid'
-import { generateBrief } from './utils/brief'
 import {
-  SCORING_AGENTS, sevLabel, riskSeverity, severityCounts, sortFindings,
+  sevLabel, riskSeverity, sortFindings, headerCounts, headerText,
 } from './utils/severity'
 import {
-  GlowCard, GridBackground, NumberTicker, TextReveal,
+  GlowCard, GridBackground, TextReveal,
   AnimatedList, AnimatedItem, CardEntrance, Tip,
 } from './components/effects'
 
@@ -274,38 +273,34 @@ export default function App() {
           </div>
         )}
 
-        {/* COMPOSITE — hidden until ALL agents finish (Part 4e). While the run
-            is live, a progress line replaces it. Per-agent scores stay in the
-            JSON export; the UI shows severity distributions instead (Part 4c). */}
-        {(loading || result) && (
+        {/* NO COMPOSITE SCORE (Part 3a, 2026-07-03): a single averaged number
+            across fundamentally different audits is not actionable — the
+            analyst reads per-agent severity distributions instead. Per-agent
+            scores remain in the JSON export for API users. */}
+        {loading && (
           <div className="mb-6">
-            {loading ? (
-              <div className="bg-[#0A0B14] border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-3">
-                <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-400/60 border-t-transparent animate-spin" />
-                <p className="text-slate-400 text-sm font-medium">
-                  Analysis in progress ({selected.filter(id => agentLogs[id]?.status === 'complete').length} of {selected.length} agent{selected.length === 1 ? '' : 's'} complete)
-                </p>
-              </div>
-            ) : (
-              result && !result.live && result.score != null && (
-                <CompositeBox score={result.score} signal={signalFor(result.score)} />
-              )
-            )}
+            <div className="bg-[#0A0B14] border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-3">
+              <span className="inline-block w-4 h-4 rounded-full border-2 border-blue-400/60 border-t-transparent animate-spin" />
+              <p className="text-slate-400 text-sm font-medium">
+                Analysis in progress ({selected.filter(id => agentLogs[id]?.status === 'complete').length} of {selected.length} agent{selected.length === 1 ? '' : 's'} complete)
+              </p>
+            </div>
           </div>
         )}
 
         {/* RESULTS — cards stream in live as each agent finishes */}
         {result && (
           <div className="space-y-6">
-            {/* SEVERITY DISTRIBUTIONS (Part 4c) — scoring agents only; the
-                audit agents (Constraint, Moat) keep their own card displays */}
+            {/* SEVERITY / URGENCY DISTRIBUTIONS (Part 3b) — ALL 6 agents:
+                the audit agents count their native buckets (Constraint by
+                urgency, Moat by verdict) */}
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
               initial="hidden" animate="show"
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.1 } } }}
             >
-              {SCORING_AGENTS.filter(id => result[id]).map(id => (
-                <SeverityBox key={id} label={AGENT_LABELS[id]} counts={severityCounts(id, result[id])} />
+              {defaultAgents.map(a => a.id).filter(id => result[id]).map(id => (
+                <SeverityBox key={id} label={AGENT_LABELS[id]} buckets={headerCounts(id, result[id])} agentId={id} />
               ))}
             </motion.div>
 
@@ -375,20 +370,13 @@ function JsonPanel({ data, ticker }) {
     URL.revokeObjectURL(url)
   }
   const download = () => downloadBlob(text, `sollia_${(ticker || 'export').toLowerCase()}.json`, 'application/json')
-  // Meeting brief (Part 6b): generated client-side from the export — no LLM,
-  // no server round-trip, instant.
-  const downloadBrief = () => downloadBlob(
-    generateBrief(data), `sollia_brief_${(ticker || 'export').toLowerCase()}.txt`, 'text/plain')
   const copy = () => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500) }
   const btn = 'px-5 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white bg-white/[0.03] border border-white/10 transition-all font-medium hover:scale-[1.02]'
   return (
     <div className="bg-[#0A0B14] border border-white/5 rounded-2xl p-6 lift-card">
       <h3 className="text-xl font-bold mb-1">Export</h3>
-      <p className="text-slate-500 text-sm mb-4">Analyst-ready JSON + a 1-page meeting brief for your PM</p>
+      <p className="text-slate-500 text-sm mb-4">Analyst-ready JSON (per-agent scores included for API users)</p>
       <div className="flex gap-3 mb-3 flex-wrap">
-        <Tip label="1-page executive brief: attention items, stable areas, per-agent detail">
-          <button onClick={downloadBrief} className={`${btn} border-blue-400/30 text-blue-300`}>Download Brief</button>
-        </Tip>
         <button onClick={download} className={btn}>Download JSON</button>
         <button onClick={copy} className={btn}>{copied ? 'Copied!' : 'Copy'}</button>
         <button onClick={() => setView(v => !v)} className={btn}>{view ? 'Hide' : 'View JSON'}</button>
@@ -401,14 +389,8 @@ function JsonPanel({ data, ticker }) {
 }
 
 // ── Agent 1: Corporate Discrepancy ────────────────────────────────────────────
-// Severity distribution text for card subtitles (Part 4c): "3 high · 6 medium ·
-// 4 low" (zero-count buckets dropped; "no findings" when empty).
-function sevText(counts) {
-  const parts = ['high', 'medium', 'low']
-    .filter(s => counts[s] > 0)
-    .map(s => `${counts[s]} ${s}`)
-  return parts.length ? parts.join(' · ') : 'no findings'
-}
+// Card subtitles use headerText (Part 3b): the SAME severity/urgency counts as
+// the summary strip, per agent's native buckets — "3 high · 6 medium · 4 low".
 
 function DiscrepancyCard({ data }) {
   const findings = sortFindings(data.top_discrepancies || [], d => sevLabel(d.severity))
@@ -416,7 +398,7 @@ function DiscrepancyCard({ data }) {
   return (
     <Card title="Corporate Discrepancy" tone={tone} active={findings.length > 0}
       blurb={AGENT_BLURBS.corporate_discrepancy}
-      subtitle={`${sevText(severityCounts('corporate_discrepancy', data))} · ${data.total_aligned_pairs ?? 0} aligned passages`}>
+      subtitle={`${headerText('corporate_discrepancy', data)} · ${data.total_aligned_pairs ?? 0} aligned passages`}>
       {findings.length === 0 && (
         <p className="text-slate-600 text-sm">No material cross-document discrepancies surfaced.</p>
       )}
@@ -440,8 +422,8 @@ function PromiseCard({ data }) {
   return (
     <Card title="Promise Audit" tone={tone} active={promises.length > 0}
       blurb={AGENT_BLURBS.promise_audit}
-      subtitle={`${sevText(severityCounts('promise_audit', data))} · ${data.total_promises_extracted || 0} promises · ${data.total_kept || 0} kept · ${broken} broken`}>
-      <ExpandableFindings items={promises} label="promises" renderItem={(p) => (
+      subtitle={`${headerText('promise_audit', data)} · ${data.total_promises_extracted || 0} promises · ${data.total_kept || 0} kept · ${broken} broken`}>
+      <ExpandableFindings items={promises} renderItem={(p) => (
         <Row badge={p.status} badgeText={p.status} meta={`${p.category} · severity ${p.severity}/10`}>
           <Quote text={p.text} url={p.promise_url} label={p.promise_source || 'Promise'} />
           <Quote text={p.evidence_text} url={p.evidence_url} label={p.evidence_filing || 'Evidence'} />
@@ -459,7 +441,7 @@ function LegalCard({ data }) {
   return (
     <Card title="Legal Proceedings" tone={hasChanges ? 'neutral' : 'bullish'} active={hasChanges}
       blurb={AGENT_BLURBS.legal_proceedings}
-      subtitle={`${sevText(severityCounts('legal_proceedings', data))} · ${findings.length} filing types compared`}>
+      subtitle={`${headerText('legal_proceedings', data)} · ${findings.length} filing types compared`}>
       {findings.map((f, i) => (
         <div key={i} className="mb-4">
           <p className="text-slate-400 text-xs font-semibold mb-2">
@@ -472,7 +454,6 @@ function LegalCard({ data }) {
               {f.summary && <p className="text-slate-500 text-xs mb-2">{f.summary}</p>}
               <ExpandableFindings
                 items={sortFindings(f.proceedings, p => sevLabel(p.priority))}
-                label="proceedings"
                 renderItem={(p) => (
                   <Row badge={p.status || p.change_type} badgeText={p.status || p.change_type} meta={p.case_name || p.description}>
                     <Quote text={p.prior_quote || p.prior_text} url={p.prior_edgar_url} label="Prior" page={p.prior_quote_page} />
@@ -496,11 +477,11 @@ function RiskCard({ data }) {
   return (
     <Card title="Risk Factors" tone={bearish ? 'bearish' : changes.length ? 'neutral' : 'bullish'} active={changes.length > 0}
       blurb={AGENT_BLURBS.risk_factors}
-      subtitle={`${sevText(severityCounts('risk_factors', data))} · Item 1A delta · ${data.old_filing_date || '—'} → ${data.new_filing_date || '—'} · ${data.total_risks_old ?? 0}→${data.total_risks_new ?? 0} risks`}>
+      subtitle={`${headerText('risk_factors', data)} · Item 1A delta · ${data.old_filing_date || '—'} → ${data.new_filing_date || '—'} · ${data.total_risks_old ?? 0}→${data.total_risks_new ?? 0} risks`}>
       {changes.length === 0 && (
         <p className="text-slate-600 text-sm">{data.summary || 'No material changes in risk factors between the two 10-Ks.'}</p>
       )}
-      <ExpandableFindings items={changes} label="changes" renderItem={(c) => (
+      <ExpandableFindings items={changes} renderItem={(c) => (
         <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
           {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
           <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" page={c.old_quote_page} />
@@ -518,7 +499,7 @@ function RiskCard({ data }) {
           )}
           <ExpandableFindings
             items={sortFindings(data.ten_q_findings.changes || [], c => riskSeverity(c.category))}
-            label="changes"
+           
             renderItem={(c) => (
               <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
                 {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
@@ -578,7 +559,7 @@ function ConstraintAuditorCard({ data }) {
     <Card
       title="Constraint Auditor" tone="audit" active={binding}
       blurb={AGENT_BLURBS.constraint_auditor}
-      subtitle={`${data.sector || '—'} · ${constraints.length} materials · ${evaluated} with live supply/demand · AUDIT (no bull/bear score)`}
+      subtitle={`${data.sector || '—'} · ${headerText('constraint_auditor', data)} · ${evaluated} of ${constraints.length} with live supply/demand · AUDIT (no bull/bear score)`}
     >
       <div className="border border-white/[0.06] rounded-xl p-4 space-y-2">
         <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide">Projected CAGR being pressure-tested</p>
@@ -595,7 +576,6 @@ function ConstraintAuditorCard({ data }) {
           if (u !== 0) return u
           return (b.status === 'success') - (a.status === 'success')
         })}
-        label="materials"
         renderItem={(c) => {
           const ok = c.status === 'success'
           return (
@@ -682,7 +662,7 @@ function MoatAuditorCard({ data }) {
     <Card
       title="Moat Auditor" tone="audit" active={threats + watches > 0}
       blurb={AGENT_BLURBS.moat_auditor}
-      subtitle={`${data.sector || '—'} · ${competitors.length} competitors · ${moats.length} moats · ${threats} direct threat${threats === 1 ? '' : 's'}, ${watches} watch · AUDIT (no bull/bear score)`}
+      subtitle={`${data.sector || '—'} · ${competitors.length} competitors · ${headerText('moat_auditor', data)} · AUDIT (no bull/bear score)`}
     >
       <div className="border border-white/[0.06] rounded-xl p-4">
         <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-2">Competitors analyzed</p>
@@ -707,7 +687,6 @@ function MoatAuditorCard({ data }) {
           const rank = { 'DIRECT THREAT': 2, 'WATCH': 1, 'NO THREAT': 0 }
           return (rank[b.verdict] ?? 0) - (rank[a.verdict] ?? 0)
         })}
-        label="moats"
         renderItem={(m) => {
           const cc = m.company_claim || {}
           const ch = m.strongest_challenge
@@ -730,43 +709,14 @@ function MoatAuditorCard({ data }) {
   )
 }
 
-// Unified bullishness → signal. Every agent reports on the same 10-90 scale
-// (higher = better prospects, 50 = neutral), so one mapping serves them all and
-// the badge here always agrees with the backend export: >65 BULLISH (green),
-// <35 BEARISH (red), otherwise NEUTRAL (yellow).
-function signalFor(score) {
-  const s = score ?? 50
-  return s > 65 ? 'BULLISH' : s < 35 ? 'BEARISH' : 'NEUTRAL'
-}
-
-// Composite score — the ONE number kept in the UI (Part 4c/4e). Only rendered
-// once the whole run is complete, never from partial live results.
-function CompositeBox({ score, signal }) {
-  const colors = { BULLISH: '#22C55E', NEUTRAL: '#F59E0B', BEARISH: '#EF4444', HOLD: '#F59E0B' }
-  const color = colors[signal] || '#F59E0B'
-  return (
-    <motion.div
-      className="bg-[#0A0B14] border border-white/5 rounded-2xl px-6 py-5 flex items-center gap-5 lift-card"
-      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-    >
-      <div className="text-5xl font-black" style={{ color }}>
-        <NumberTicker value={Math.round(score)} />
-        <span className="text-2xl font-bold text-slate-600">/100</span>
-      </div>
-      <div>
-        <div className="text-slate-300 text-sm font-semibold">Composite</div>
-        <div className="text-xs mt-0.5" style={{ color }}>{signal}</div>
-      </div>
-    </motion.div>
-  )
-}
-
-// Per-agent severity distribution (Part 4c): "3 high · 6 medium · 4 low"
-// replaces the per-agent score number. Scores remain in the JSON export.
-const SEV_COLORS = { high: '#EF4444', medium: '#F59E0B', low: '#22C55E' }
-
-function SeverityBox({ label, counts }) {
-  const total = (counts.high || 0) + (counts.medium || 0) + (counts.low || 0)
+// Per-agent severity/urgency distribution (Part 3b): "3 high · 6 medium ·
+// 4 low" / "3 BINDING NOW · 1 partial" / "0 direct threats · 3 watch" —
+// each agent counts its native buckets (headerCounts). No composite score:
+// scores live only in the JSON export.
+function SeverityBox({ label, buckets, agentId }) {
+  const total = buckets.reduce((s, b) => s + b.count, 0)
+  const shown = buckets.filter(b => b.count > 0 ||
+    (agentId === 'moat_auditor' && b.key === 'threat' && total > 0))
   return (
     <motion.div
       className="bg-[#0A0B14] border border-white/5 rounded-2xl p-5 lift-card"
@@ -774,16 +724,16 @@ function SeverityBox({ label, counts }) {
     >
       <div className="text-slate-400 text-sm font-medium mb-2">{label}</div>
       {total === 0 ? (
-        <div className="text-slate-600 text-lg font-bold">no findings</div>
+        <div className="text-slate-600 text-lg font-bold">
+          {agentId === 'legal_proceedings' ? 'No material changes' : 'no findings'}
+        </div>
       ) : (
         <div className="flex items-baseline gap-2 flex-wrap">
-          {['high', 'medium', 'low'].map(sev => (
-            counts[sev] > 0 && (
-              <span key={sev} className="text-lg font-black whitespace-nowrap" style={{ color: SEV_COLORS[sev] }}>
-                {counts[sev]} <span className="text-xs font-semibold opacity-80">{sev}</span>
-              </span>
-            )
-          )).filter(Boolean).flatMap((el, i, arr) => i < arr.length - 1
+          {shown.map(b => (
+            <span key={b.key} className="text-lg font-black whitespace-nowrap" style={{ color: b.color }}>
+              {b.count} <span className="text-xs font-semibold opacity-80">{b.label}</span>
+            </span>
+          )).flatMap((el, i, arr) => i < arr.length - 1
             ? [el, <span key={`dot${i}`} className="text-slate-700">·</span>] : [el])}
         </div>
       )}
@@ -791,9 +741,10 @@ function SeverityBox({ label, counts }) {
   )
 }
 
-// Part 4d — every findings list shows its top 5 (callers pre-sort by
-// severity > recency > importance); the rest sit behind "+N more findings".
-function ExpandableFindings({ items, renderItem, label = 'findings', className = 'space-y-3' }) {
+// Part 3e — UNIFORM expand/collapse across all 6 agents: every findings list
+// shows its top 5 (callers pre-sort by severity > recency > importance); the
+// rest sit behind "+N more"; expanded lists collapse via "− Show top 5".
+function ExpandableFindings({ items, renderItem, className = 'space-y-3' }) {
   const [expanded, setExpanded] = useState(false)
   if (!items || items.length === 0) return null
   const shown = expanded ? items : items.slice(0, 5)
@@ -810,7 +761,7 @@ function ExpandableFindings({ items, renderItem, label = 'findings', className =
           onClick={() => setExpanded(e => !e)}
           className="text-xs font-semibold text-blue-400/80 hover:text-blue-300 transition-colors mt-1"
         >
-          {expanded ? '− Show top 5 only' : `+${hidden} more ${label}`}
+          {expanded ? '− Show top 5' : `+${hidden} more`}
         </button>
       )}
     </>

@@ -1,0 +1,94 @@
+{
+  "ticker": "RIVN",
+  "started": "2026-07-04 01:52:37",
+  "agents": {
+    "corporate_discrepancy": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_log",
+        "documents_analyzed",
+        "elapsed_seconds",
+        "run_timestamp",
+        "score",
+        "score_rationale",
+        "signal"
+      ]
+    },
+    "promise_audit": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_log",
+        "run_timestamp",
+        "score",
+        "score_rationale",
+        "signal",
+        "ticker",
+        "top_promises"
+      ]
+    },
+    "legal_proceedings": {
+      "status": "OK",
+      "keys": [
+        "agent3_score",
+        "findings",
+        "score",
+        "score_rationale",
+        "signal",
+        "ticker",
+        "timestamp"
+      ]
+    },
+    "risk_factors": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "changes_found",
+        "cik",
+        "new_filing_date",
+        "new_url",
+        "old_filing_date",
+        "old_url",
+        "run_timestamp"
+      ]
+    },
+    "constraint_auditor": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_id",
+        "agent_log",
+        "company",
+        "constraints",
+        "data_provisioning",
+        "elapsed_ms",
+        "human_readable"
+      ]
+    },
+    "moat_auditor": {
+      "status": "OK",
+      "keys": [
+        "agent",
+        "agent_id",
+        "agent_log",
+        "company",
+        "competitors_analyzed",
+        "elapsed_ms",
+        "human_readable",
+        "moats_audited"
+      ]
+    }
+  },
+  "wall_seconds": 152.6,
+  "billed_cost_usd": 0.05435,
+  "live_llm_calls": 13,
+  "sec_fetches": 30,
+  "network": {
+    "groq:mac_studio": "congested",
+    "groq:berkeley": "normal",
+    "groq:heysollia": "normal",
+    "openrouter:account": "degraded",
+    "gemini:account": "normal"
+  }
+}

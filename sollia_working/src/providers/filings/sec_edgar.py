@@ -15,14 +15,52 @@ _TEXTS_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'texts')
 _LLM_CACHE_DIR = _os.path.join(_CACHE_ROOT, 'llm')
 _COMPANY_TICKERS_CACHE = _os.path.join(_CACHE_ROOT, 'company_tickers.json')
 _FILINGS_TTL_SECONDS = 24 * 3600  # refresh the shared filings list at most daily
+_BACKUP_TTL_SECONDS = 3600        # backup-sourced metadata revalidates hourly
 for _d in (_CACHE_ROOT, _FILINGS_CACHE_DIR, _TEXTS_CACHE_DIR, _LLM_CACHE_DIR):
     _os.makedirs(_d, exist_ok=True)
 
 
 SEC_BASE = "https://data.sec.gov"
 EDGAR_BASE = "https://www.sec.gov"
+EFTS_BASE = "https://efts.sec.gov"
 _HEADERS = {"User-Agent": "Sollia contact@sollia.app", "Accept-Encoding": "gzip, deflate"}
 _DATA_HEADERS = {"User-Agent": "Sollia contact@sollia.app", "Accept-Encoding": "gzip, deflate", "Host": "data.sec.gov"}
+
+# ── EDGAR backup-source reality (empirical research, 2026-07-03 Part 1b) ───
+# Tested with NVDA/TSLA/FUBO across recent/3y/10y eras:
+#   * data.sec.gov (submissions API)  — PRIMARY metadata. Own host.
+#   * www.sec.gov browse-edgar Atom   — BEST metadata backup: different host
+#     path, complete history (NVDA 1999→2026 in one response), all form
+#     types, ~200-500ms, 3/3 tickers. No reportDate/primaryDocument fields
+#     (primary doc resolves lazily via index.json when the doc is fetched).
+#   * efts.sec.gov search-index       — THIRD independent host. ciks= +
+#     forms= with EMPTY q returns full filing metadata INCLUDING the primary
+#     document name (_id = "accession:doc"), 2001+ coverage. Observed
+#     intermittent 500s (3 in one research run) → last-resort tier.
+#   * s3://sec-datasets/              — DOES NOT EXIST (NoSuchBucket, both
+#     virtual-host styles + registry.opendata.aws 404). Dead source; do not
+#     re-add without new evidence.
+#   * full-index master.idx           — works back to 1994 but 27MB/quarter
+#     on the SAME host as the Atom feed → adds weight, not independence.
+#   * Documents: NO free cross-host mirror exists (data.sec.gov returns 404
+#     for Archives paths). Backup for documents is the complete-submission
+#     .txt on www.sec.gov; a FULL sec.gov outage serves from disk cache only.
+_BACKUP_ATOM_FORMS = ("10-K", "10-Q", "8-K", "DEF 14A")
+# Which source served the last metadata fetch, per ticker (observability +
+# outage tests): disk-cache | edgar-live | atom-backup | efts-backup |
+# stale-cache | unavailable
+LAST_METADATA_SOURCE: Dict[str, str] = {}
+# WHY a ticker produced zero usable filings (set alongside an empty
+# get_all_filings result). Agents use it for accurate degradation messages —
+# "foreign private issuer" is actionable; "No filings available" is not.
+NO_FILINGS_REASON: Dict[str, str] = {}
+
+
+def no_filings_reason(ticker: str) -> str:
+    """Human-readable reason the last get_all_filings(ticker) was empty."""
+    return NO_FILINGS_REASON.get(
+        ticker.strip().upper().replace(".", "-"),
+        f"No filings available for {ticker}")
 
 
 
@@ -191,15 +229,25 @@ class SECEdgarProvider:
     def get_all_filings(self, ticker: str) -> List[dict]:
         """Get ALL 10-K and 10-Q filings (no year filter).
 
-        Cache-first against the SHARED .cache/filings/{TICKER}_filings.json
-        (raw SEC submissions schema — the same file Agents 1 & 3 read/write).
-        Fresh cache (<24h) skips the network entirely; a stale cache is still
-        used if SEC is throttling us, so a transient 429 can never turn into
-        "No filings available" (that broke Agent 2 on TSLA)."""
+        FALLBACK CHAIN (Part 1c, 2026-07-03 — empirical priorities inline):
+          1. Fresh disk cache (<24h, .cache/filings/) — no network at all.
+             A backup-sourced cache entry is treated as ALWAYS stale so the
+             primary is re-tried on the next call (self-healing after outage).
+          2. data.sec.gov submissions API — richest schema (primary).
+          3. www.sec.gov browse-edgar Atom — different host, complete history,
+             best measured backup (3/3 tickers, 1999+ coverage).
+          4. efts.sec.gov search-index — third independent host, 2001+,
+             carries primary-doc names; intermittent 500s → last resort.
+          5. Stale disk cache (any age) — a transient 429/outage can never
+             turn into "No filings available" (that broke Agent 2 on TSLA).
+          6. [] + LAST_METADATA_SOURCE[ticker] = "unavailable" (graceful).
+        """
+        key = ticker.strip().upper().replace(".", "-")
         cik = self.get_cik(ticker)
         if not cik:
+            LAST_METADATA_SOURCE[key] = "unavailable"
             return []
-        path = _os.path.join(_FILINGS_CACHE_DIR, f'{ticker.strip().upper().replace(".", "-")}_filings.json')
+        path = _os.path.join(_FILINGS_CACHE_DIR, f'{key}_filings.json')
         cached = _load_json(path)
         if not (isinstance(cached, dict) and cached.get("filings", {}).get("recent")):
             cached = None  # wrong schema (e.g. old keyed-by-accession writes) — refetch
@@ -208,16 +256,46 @@ class SECEdgarProvider:
                 fresh = (time.time() - _os.path.getmtime(path)) < _FILINGS_TTL_SECONDS
             except OSError:
                 fresh = False
-            if fresh:
-                return self._filings_from_submissions(cik, cached)
+            if fresh and not cached.get("_backup_source"):
+                LAST_METADATA_SOURCE[key] = "disk-cache"
+                return self._filings_from_submissions(cik, cached, key)
+            # Backup-sourced caches stay fresh for a SHORTER window (1h vs
+            # 24h): long enough that the 6 agents of an outage run share one
+            # backup fetch instead of each re-trying the dead primary, short
+            # enough that the primary is revalidated soon after recovery.
+            if cached.get("_backup_source"):
+                try:
+                    age = time.time() - _os.path.getmtime(path)
+                except OSError:
+                    age = float("inf")
+                if age < _BACKUP_TTL_SECONDS:
+                    LAST_METADATA_SOURCE[key] = str(cached["_backup_source"])
+                    return self._filings_from_submissions(cik, cached, key)
 
         data = self._fetch_submissions(cik, ticker)
+        source = "edgar-live"
+        if data is None:
+            data = self._fetch_filings_atom(cik, ticker)
+            source = "atom-backup"
+        if data is None:
+            data = self._fetch_filings_efts(cik, ticker)
+            source = "efts-backup"
         if data is not None:
+            if source != "edgar-live":
+                data["_backup_source"] = source
+                logger.warning("EDGAR primary unreachable for %s — metadata served "
+                               "by %s", ticker, source)
             _save_json(path, data)  # raw submissions schema, per the shared contract
-            return self._filings_from_submissions(cik, data)
+            LAST_METADATA_SOURCE[key] = source
+            return self._filings_from_submissions(cik, data, key)
         if cached is not None:
-            logger.warning("SEC unreachable for %s — serving stale filings cache", ticker)
-            return self._filings_from_submissions(cik, cached)
+            logger.warning("All SEC metadata sources unreachable for %s — serving "
+                           "stale filings cache", ticker)
+            LAST_METADATA_SOURCE[key] = "stale-cache"
+            return self._filings_from_submissions(cik, cached, key)
+        LAST_METADATA_SOURCE[key] = "unavailable"
+        logger.error("No filing metadata available for %s: EDGAR, Atom and EFTS "
+                     "all failed and no cache exists.", ticker)
         return []
 
     def _fetch_submissions(self, cik: str, ticker: str) -> Optional[dict]:
@@ -247,9 +325,111 @@ class SECEdgarProvider:
                 pass
         return data
 
-    def _filings_from_submissions(self, cik: str, data: dict) -> List[dict]:
-        all_filings = self._parse_filing_block(cik, data.get("filings", {}).get("recent", {}))
+    @staticmethod
+    def _synth_submissions(rows: List[Tuple[str, str, str, str, str]]) -> dict:
+        """Build a submissions-schema dict from (form, accession_dash,
+        filing_date, report_date, primary_doc) rows so backup sources flow
+        through the SAME parser (_filings_from_submissions) as the primary."""
+        block = {"form": [], "accessionNumber": [], "filingDate": [],
+                 "reportDate": [], "primaryDocument": [], "items": []}
+        seen = set()
+        for form, acc, fdate, rdate, pdoc in rows:
+            if not acc or acc in seen:
+                continue
+            seen.add(acc)
+            block["form"].append(form)
+            block["accessionNumber"].append(acc)
+            block["filingDate"].append(fdate)
+            block["reportDate"].append(rdate)
+            block["primaryDocument"].append(pdoc)
+            block["items"].append("")
+        return {"filings": {"recent": block}}
+
+    def _fetch_filings_atom(self, cik: str, ticker: str) -> Optional[dict]:
+        """BACKUP metadata source #1 — www.sec.gov browse-edgar Atom feed.
+        Complete filing history per form type in one request each (measured:
+        NVDA 10-K span 1999→2026). Carries form/accession/filing-date but NOT
+        reportDate/primaryDocument — the primary doc resolves lazily via
+        _find_primary_doc (index.json) when a document is actually fetched."""
+        rows: List[Tuple[str, str, str, str, str]] = []
+        got_any = False
+        for form in _BACKUP_ATOM_FORMS:
+            url = (f"{EDGAR_BASE}/cgi-bin/browse-edgar?action=getcompany"
+                   f"&CIK={cik}&type={form.replace(' ', '+')}&dateb=&owner=include"
+                   f"&count=100&output=atom")
+            try:
+                time.sleep(0.12)
+                resp = requests.get(url, headers=_HEADERS, timeout=15)
+                if resp.status_code != 200:
+                    continue
+                got_any = True
+                for m in re.finditer(r"<entry>(.*?)</entry>", resp.text, re.DOTALL):
+                    e = m.group(1)
+                    def _tag(name, _e=e):
+                        t = re.search(rf"<{name}>\s*([^<]+?)\s*</{name}>", _e)
+                        return t.group(1) if t else ""
+                    ftype = _tag("filing-type")
+                    acc = _tag("accession-nu?mber")
+                    fdate = _tag("filing-date")
+                    if ftype and acc:
+                        rows.append((ftype, acc, fdate, "", ""))
+            except Exception as exc:
+                logger.debug("Atom backup fetch failed for %s %s: %s", ticker, form, exc)
+        if not rows:
+            return None  # nothing usable — let the chain try the next source
+        return self._synth_submissions(rows)
+
+    def _fetch_filings_efts(self, cik: str, ticker: str) -> Optional[dict]:
+        """BACKUP metadata source #2 (last resort) — efts.sec.gov full-text
+        search API, a THIRD independent sec.gov host. Query shape verified
+        2026-07-03: ciks=<padded>&forms=... with EMPTY q returns filing hits
+        whose _id is "accession:primary_doc" (doc name included, 2001+).
+        10 hits/page; pages are bounded to keep the fallback cheap."""
+        rows: List[Tuple[str, str, str, str, str]] = []
+        got_any = False
+        for forms in ("10-K,10-Q", "8-K,DEF 14A"):
+            for page in range(5):  # ≤50 filings per form group — outage mode
+                url = (f"{EFTS_BASE}/LATEST/search-index?q=&ciks={cik}"
+                       f"&forms={forms}&from={page * 10}")
+                try:
+                    time.sleep(0.12)
+                    resp = requests.get(url, headers=_HEADERS, timeout=15)
+                    if resp.status_code != 200:
+                        break
+                    hits = (resp.json().get("hits", {}) or {}).get("hits", [])
+                except Exception as exc:
+                    logger.debug("EFTS backup fetch failed for %s: %s", ticker, exc)
+                    break
+                got_any = True
+                if not hits:
+                    break
+                for h in hits:
+                    src = h.get("_source", {}) or {}
+                    _id = h.get("_id", "") or ""
+                    acc, _, pdoc = _id.partition(":")
+                    form = src.get("file_type") or (src.get("root_forms") or [""])[0]
+                    rows.append((form, acc, src.get("file_date", ""),
+                                 src.get("period_ending", ""), pdoc))
+        if not rows:
+            return None
+        return self._synth_submissions(rows)
+
+    def _filings_from_submissions(self, cik: str, data: dict,
+                                  ticker_key: str = "") -> List[dict]:
+        block = data.get("filings", {}).get("recent", {})
+        all_filings = self._parse_filing_block(cik, block)
         all_filings.sort(key=lambda x: x.get("filing_date", ""), reverse=True)
+        if not all_filings and ticker_key:
+            # Diagnose the empty result so agents can degrade with an accurate
+            # message (SPOT/BABA-class: foreign private issuers file 20-F/40-F/
+            # 6-K, which the domestic-form pipeline deliberately skips).
+            forms = set(block.get("form", []) or [])
+            foreign = sorted(forms & {"20-F", "40-F", "6-K"})
+            if foreign:
+                NO_FILINGS_REASON[ticker_key] = (
+                    f"{ticker_key} is a foreign private issuer (files "
+                    f"{'/'.join(f for f in foreign if f != '6-K') or '6-K'}, "
+                    "not 10-K/10-Q). Foreign filers are not yet supported.")
         return all_filings
 
     def _parse_filing_block(self, cik: str, block: dict) -> List[dict]:
@@ -278,42 +458,124 @@ class SECEdgarProvider:
         return out
 
     def fetch_html(self, cik: str, acc_nd: str, doc: str, ticker: str = "") -> str:
-        """Fetch filing HTML with 3-tier fallback: SEC .htm -> SEC retry -> EDGAR full-text."""
-        # Source 1: SEC EDGAR direct .htm (primary, ~0.2s)
+        """Fetch filing HTML with the DOCUMENT fallback chain (Part 1, 2026-07-03):
+
+          1. Primary .htm on www.sec.gov (+ one retry — absorbs blips).
+          2. Complete-submission .txt on www.sec.gov — every filing exists as
+             {accession}.txt containing all exhibits in SGML <DOCUMENT> blocks;
+             the primary document is extracted from it. Recovers missing or
+             renamed primary docs and .htm-path 404s.
+          3. Graceful "" — there is NO free cross-host mirror of EDGAR
+             documents (verified 2026-07-03: data.sec.gov 404s Archives paths;
+             efts.sec.gov serves search metadata, not documents; the AWS
+             bucket in the old comment does not exist). During a full
+             www.sec.gov outage, documents come from .cache/texts/ or not at
+             all — callers already degrade per-document.
+
+        Always uses the compliant SEC User-Agent — SEC's fair-access policy
+        requires a descriptive UA with contact info on EVERY request."""
+        # Source 1: SEC EDGAR direct .htm (primary, ~0.2s) + one retry
         url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
-        try:
-            time.sleep(0.15)
-            resp = requests.get(url, headers=_HEADERS, timeout=30)
-            resp.raise_for_status()
-            if len(resp.text) > 5000:
-                return resp.text
-        except Exception as exc:
-            logger.debug("SEC .htm failed: %s", exc)
-
-        # Source 2: SEC direct retry. Always use the compliant SEC User-Agent —
-        # SEC's fair-access policy requires a descriptive UA with contact info on
-        # EVERY request, so a generic browser UA is never used.
-        if ticker:
-            retry_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{doc}"
+        for attempt in range(2):
             try:
-                resp = requests.get(retry_url, headers=_HEADERS, timeout=30)
-                if resp.status_code == 200 and len(resp.text) > 5000:
+                time.sleep(0.15)
+                resp = requests.get(url, headers=_HEADERS, timeout=30)
+                resp.raise_for_status()
+                if len(resp.text) > 5000:
                     return resp.text
+                break  # a 200 that is too small won't improve on retry
             except Exception as exc:
-                logger.debug("SEC retry failed: %s", exc)
+                logger.debug("SEC .htm attempt %d failed: %s", attempt + 1, exc)
 
-        # Source 3: EDGAR full-text search (SEC-approved, 2016+)
-        efts_url = f"https://efts.sec.gov/LATEST/search-index?q={ticker}&dateRange=custom&startdt=2002-01-01&enddt=2026-12-31&forms=10-K,10-Q"
-        try:
-            resp = requests.get(efts_url, headers=_HEADERS, timeout=15)
-            if resp.status_code == 200 and len(resp.text) > 5000:
-                return self._strip_html(resp.text)
-        except Exception as exc:
-            logger.debug("EDGAR full-text search failed: %s", exc)
-
+        # Source 2: complete-submission .txt (same host, different artifact)
+        txt = self._fetch_from_complete_submission(cik, acc_nd, doc)
+        if txt:
+            logger.warning("Primary .htm unavailable for %s/%s — served from "
+                           "complete-submission .txt", acc_nd, doc or "?")
+            return txt
         return ""
 
+    # Read at most this much of a complete-submission .txt: the primary
+    # document is the FIRST <DOCUMENT> block; reading past it only pulls
+    # exhibits and uuencoded graphics (some filings exceed 100MB).
+    _TXT_FETCH_CAP = 12 * 1024 * 1024
+
+    def _fetch_from_complete_submission(self, cik: str, acc_nd: str, doc: str) -> str:
+        """DOCUMENT backup: stream {accession}.txt and extract the primary
+        document's <TEXT> payload. Returns "" when unavailable."""
+        acc_dash = f"{acc_nd[:10]}-{acc_nd[10:12]}-{acc_nd[12:]}" if len(acc_nd) == 18 else acc_nd
+        url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{acc_dash}.txt"
+        try:
+            time.sleep(0.15)
+            resp = requests.get(url, headers=_HEADERS, timeout=60, stream=True)
+            if resp.status_code != 200:
+                return ""
+            chunks: List[bytes] = []
+            read = 0
+            doc_b = (doc or "").encode()
+            seen_doc = not doc_b  # no specific doc requested -> first block wins
+            for chunk in resp.iter_content(chunk_size=256 * 1024):
+                chunks.append(chunk)
+                read += len(chunk)
+                if doc_b and not seen_doc and doc_b in chunk:
+                    seen_doc = True
+                # stop once a block END arrives after the target was seen —
+                # everything past the primary document is exhibits/graphics
+                if seen_doc and b"</DOCUMENT>" in chunk:
+                    break
+                if read >= self._TXT_FETCH_CAP:
+                    break
+            resp.close()
+            body = b"".join(chunks).decode("utf-8", errors="replace")
+        except Exception as exc:
+            logger.debug("complete-submission fetch failed: %s", exc)
+            return ""
+
+        # Prefer the <DOCUMENT> whose <FILENAME> matches the requested doc;
+        # fall back to the first block (SEQUENCE 1 = the primary document).
+        best = ""
+        for m in re.finditer(r"<DOCUMENT>(.*?)(?:</DOCUMENT>|\Z)", body, re.DOTALL):
+            block = m.group(1)
+            fname = re.search(r"<FILENAME>([^\r\n<]+)", block)
+            text = re.search(r"<TEXT>(.*?)(?:</TEXT>|\Z)", block, re.DOTALL)
+            if not text:
+                continue
+            payload = text.group(1).strip()
+            if len(payload) <= 5000:
+                continue
+            if doc and fname and fname.group(1).strip() == doc:
+                return payload  # exact match wins immediately
+            if not best:
+                best = payload
+        return best
+
     def _find_primary_doc(self, cik: str, acc_nd: str, acc_dash: str) -> str:
+        """Resolve a filing's primary document name. Structured index.json
+        first (2026-07-03 — also serves the Atom backup path, whose metadata
+        carries no primaryDocument); legacy -index.htm regex as fallback."""
+        try:
+            time.sleep(0.12)
+            resp = requests.get(
+                f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/index.json",
+                headers=_HEADERS, timeout=15)
+            if resp.status_code == 200:
+                items = (resp.json().get("directory", {}) or {}).get("item", []) or []
+                htms = [i.get("name", "") for i in items
+                        if isinstance(i, dict) and str(i.get("name", "")).endswith((".htm", ".html"))]
+                # primary docs are conventionally <ticker>-<date>.htm or the
+                # largest non-exhibit .htm; exhibits carry ex/exhibit in the name
+                non_exhibit = [n for n in htms
+                               if not re.search(r"(^|[^a-z])ex(hibit)?[-_0-9]", n, re.IGNORECASE)
+                               and "index" not in n.lower()]
+                if non_exhibit:
+                    for n in non_exhibit:  # prefer the conventional dated name
+                        if re.search(r"-20\d{6}\.htm", n):
+                            return n
+                    return non_exhibit[0]
+                if htms:
+                    return htms[0]
+        except Exception:
+            pass
         idx_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{acc_dash}-index.htm"
         try:
             time.sleep(0.12)

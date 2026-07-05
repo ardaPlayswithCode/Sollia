@@ -50,36 +50,47 @@ def get_fetch_count() -> int:
         return _count
 
 
-# ── EDGAR-resilience layer (Part 5b, 2026-07-01) ────────────────────────────
+# ── EDGAR-resilience layer (Part 5b, 2026-07-01; per-HOST 2026-07-03) ───────
 # All sec.gov traffic flows through this wrapper, so EDGAR-outage handling
 # lives here too:
 #   * one automatic retry (2 s) on 502/503/504 — absorbs EDGAR's transient
 #     maintenance blips without every call site needing retry logic;
-#   * an outage breaker: after SEC_DOWN_THRESHOLD consecutive sec.gov
-#     failures, further sec.gov requests fail FAST for SEC_DOWN_COOLDOWN
-#     seconds instead of each burning a 15-30 s timeout. Agents already treat
-#     fetch failures gracefully (skip/degrade), and their caches are checked
-#     BEFORE any network request, so a warm ticker keeps working from stale
-#     cache through a full EDGAR outage.
+#   * an outage breaker: after SEC_DOWN_THRESHOLD consecutive failures,
+#     further requests fail FAST for SEC_DOWN_COOLDOWN seconds instead of
+#     each burning a 15-30 s timeout.
+# The breaker is PER-HOST (2026-07-03 bulletproofing): sec.gov runs three
+# separate services — data.sec.gov (submissions API), www.sec.gov (Archives +
+# Atom), efts.sec.gov (full-text search) — and the Part-1 backup chain falls
+# from one host to the next. A global breaker defeated that chain: 5 failures
+# on data.sec.gov+www.sec.gov opened it for efts.sec.gov too, fast-failing
+# exactly the backup the outage needed.
 SEC_DOWN_THRESHOLD = int(os.environ.get("SOLLIA_SEC_DOWN_THRESHOLD", "5"))
 SEC_DOWN_COOLDOWN = float(os.environ.get("SOLLIA_SEC_DOWN_COOLDOWN", "60"))
-_sec_consecutive_failures = 0
-_sec_down_until = 0.0
+_sec_consecutive_failures: dict = {}   # host -> consecutive failure count
+_sec_down_until: dict = {}             # host -> fail-fast deadline
 
 
 class SECUnavailable(RuntimeError):
-    """EDGAR looks down (consecutive failures); failing fast until cooldown."""
+    """An SEC host looks down (consecutive failures); failing fast until cooldown."""
 
 
-def _note_sec_result(ok: bool) -> None:
-    global _sec_consecutive_failures, _sec_down_until
+def _sec_host(url) -> str:
+    try:
+        from urllib.parse import urlparse
+        return urlparse(str(url)).netloc.lower() or "sec.gov"
+    except Exception:
+        return "sec.gov"
+
+
+def _note_sec_result(host: str, ok: bool) -> None:
     with _lock:
         if ok:
-            _sec_consecutive_failures = 0
+            _sec_consecutive_failures[host] = 0
         else:
-            _sec_consecutive_failures += 1
-            if _sec_consecutive_failures >= SEC_DOWN_THRESHOLD:
-                _sec_down_until = _time.time() + SEC_DOWN_COOLDOWN
+            n = _sec_consecutive_failures.get(host, 0) + 1
+            _sec_consecutive_failures[host] = n
+            if n >= SEC_DOWN_THRESHOLD:
+                _sec_down_until[host] = _time.time() + SEC_DOWN_COOLDOWN
 
 
 def _counting_request(self, method, url, *args, **kwargs):
@@ -91,13 +102,15 @@ def _counting_request(self, method, url, *args, **kwargs):
     if not is_sec:
         return _orig_request(self, method, url, *args, **kwargs)
 
+    host = _sec_host(url)
     with _lock:
-        if _time.time() < _sec_down_until:
+        if _time.time() < _sec_down_until.get(host, 0.0):
             raise SECUnavailable(
-                "SEC EDGAR appears to be down (%d consecutive failures); serving "
-                "from cache only for %.0fs. Cached tickers keep working; fresh "
-                "fetches resume after the cooldown." % (
-                    _sec_consecutive_failures, _sec_down_until - _time.time()))
+                "%s appears to be down (%d consecutive failures); failing fast "
+                "for %.0fs. Other SEC hosts and cached tickers keep working; "
+                "fresh fetches to this host resume after the cooldown." % (
+                    host, _sec_consecutive_failures.get(host, 0),
+                    _sec_down_until[host] - _time.time()))
         _count += 1
         if _count > MAX_SEC_FETCHES_PER_RUN:
             raise SECFetchBudgetExceeded(
@@ -108,16 +121,16 @@ def _counting_request(self, method, url, *args, **kwargs):
     try:
         resp = _orig_request(self, method, url, *args, **kwargs)
     except Exception:
-        _note_sec_result(False)
+        _note_sec_result(host, False)
         raise
     if resp.status_code in (502, 503, 504):
         _time.sleep(2.0)  # one retry absorbs EDGAR's transient 5xx blips
         try:
             resp = _orig_request(self, method, url, *args, **kwargs)
         except Exception:
-            _note_sec_result(False)
+            _note_sec_result(host, False)
             raise
-    _note_sec_result(resp.status_code < 500)
+    _note_sec_result(host, resp.status_code < 500)
     return resp
 
 

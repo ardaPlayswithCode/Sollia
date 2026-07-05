@@ -58,6 +58,67 @@ export function severityCounts(agentId, data) {
   return counts
 }
 
+// ── Part 3b (2026-07-03 bulletproofing): header severity/urgency counts for
+// ALL 6 agents, not just the 4 scoring ones. The audit agents count their own
+// native buckets:
+//   Constraint — BINDING NOW (urgency immediate) / crosses ≤2yr (urgency
+//                high) / partial (status partial_data) / unavailable
+//                (data_unavailable | insufficient_data)  [backend vocab]
+//   Moat       — direct threats / watch / no threat  [verdict vocab]
+export const ALL_AGENTS = [...SCORING_AGENTS, 'constraint_auditor', 'moat_auditor']
+
+const BUCKET_COLORS = {
+  high: '#EF4444', medium: '#F59E0B', low: '#22C55E',
+  info: '#94A3B8', gray: '#64748B',
+}
+
+// Ordered [{key, label, count, color}] for an agent's header. Callers decide
+// which zero-count buckets to keep (headerText below implements the spec).
+export function headerCounts(agentId, data) {
+  if (agentId === 'constraint_auditor') {
+    const cs = data?.constraints || []
+    const n = (fn) => cs.filter(fn).length
+    return [
+      { key: 'binding', label: 'BINDING NOW', color: BUCKET_COLORS.high,
+        count: n(c => c.urgency === 'immediate') },
+      { key: 'near', label: 'crosses ≤2yr', color: BUCKET_COLORS.medium,
+        count: n(c => c.urgency === 'high') },
+      { key: 'partial', label: 'partial', color: BUCKET_COLORS.info,
+        count: n(c => c.status === 'partial_data') },
+      { key: 'unavailable', label: 'unavailable', color: BUCKET_COLORS.gray,
+        count: n(c => ['data_unavailable', 'insufficient_data'].includes(c.status)) },
+    ]
+  }
+  if (agentId === 'moat_auditor') {
+    const ms = data?.moats_audited || []
+    const n = (v) => ms.filter(m => m.verdict === v).length
+    const threats = n('DIRECT THREAT')
+    return [
+      { key: 'threat', label: threats === 1 ? 'direct threat' : 'direct threats',
+        count: threats, color: threats > 0 ? BUCKET_COLORS.high : BUCKET_COLORS.gray },
+      { key: 'watch', label: 'watch', count: n('WATCH'), color: BUCKET_COLORS.medium },
+      { key: 'clear', label: 'no threat', count: n('NO THREAT'), color: BUCKET_COLORS.low },
+    ]
+  }
+  const counts = severityCounts(agentId, data)
+  return ['high', 'medium', 'low'].map(s => (
+    { key: s, label: s, count: counts[s] || 0, color: BUCKET_COLORS[s] }))
+}
+
+// Header line per the Part-3b spec: zero buckets dropped, EXCEPT Moat keeps
+// "0 direct threats" (the zero IS the signal). Legal's empty state reads
+// "No material changes"; other agents read "no findings".
+export function headerText(agentId, data) {
+  const buckets = headerCounts(agentId, data)
+  const total = buckets.reduce((s, b) => s + b.count, 0)
+  if (total === 0) {
+    return agentId === 'legal_proceedings' ? 'No material changes' : 'no findings'
+  }
+  const keep = buckets.filter(b => b.count > 0 ||
+    (agentId === 'moat_auditor' && b.key === 'threat'))
+  return keep.map(b => `${b.count} ${b.label}`).join(' · ')
+}
+
 // Part 4d finding sort: severity first; the tie-break preserves the backend's
 // ordering, which is already importance-ranked. getSeverity maps an item to
 // 'high'|'medium'|'low'; getRecency (optional) returns a sortable value where

@@ -1,7 +1,7 @@
 // Draggable / resizable agent-card grid (production polish Part 7f).
 // react-grid-layout: drag via the card header handle, resize from the corner,
 // layout persists to localStorage, "Reset Layout" restores the defaults.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 // v2 ships the v1-compatible API (WidthProvider/Responsive/draggableHandle)
 // under the /legacy entry; the modern entry is hook-based.
 import { Responsive, WidthProvider } from 'react-grid-layout/legacy'
@@ -15,7 +15,7 @@ const STORAGE_KEY = 'sollia-layout-v1'
 const DEFAULT_H = 14
 const MIN_H = 6
 
-export function defaultLayoutFor(ids) {
+function defaultLayoutFor(ids) {
   return ids.map((id, i) => ({
     i: id,
     x: (i % 2) * 6,
@@ -39,13 +39,15 @@ function loadSaved() {
 export default function AgentGrid({ ids, renderCard, resetToken = 0 }) {
   const [layouts, setLayouts] = useState(() => loadSaved() || {})
 
-  // Reset Layout: parent bumps resetToken; wipe storage and re-derive defaults.
-  useEffect(() => {
-    if (resetToken > 0) {
-      try { localStorage.removeItem(STORAGE_KEY) } catch { /* private mode */ }
-      setLayouts({})
-    }
-  }, [resetToken])
+  // Reset Layout: parent bumps resetToken; wipe storage and re-derive
+  // defaults. Adjust-state-during-render pattern (no effect → no cascading
+  // re-render; React re-runs this render with the fresh state immediately).
+  const [lastReset, setLastReset] = useState(resetToken)
+  if (resetToken !== lastReset) {
+    setLastReset(resetToken)
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* private mode */ }
+    setLayouts({})
+  }
 
   // Merge defaults for any agent ids the saved layout doesn't know yet.
   const merged = useMemo(() => {
@@ -76,7 +78,7 @@ export default function AgentGrid({ ids, renderCard, resetToken = 0 }) {
       rowHeight={30}
       margin={[16, 16]}
       draggableHandle=".drag-handle"
-      resizeHandles={['se']}
+      resizeHandles={['se', 'sw', 'e', 's']}
       onLayoutChange={onLayoutChange}
       useCSSTransforms
       compactType="vertical"

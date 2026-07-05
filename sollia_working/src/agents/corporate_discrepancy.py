@@ -101,6 +101,20 @@ class SECFilingFetcher:
         ticker = getattr(self, '_current_ticker', None)
         if ticker:
             cached = get_cached_filings(ticker)
+            # BACKUP-schema caches lack reportDate (Atom feed doesn't carry
+            # it), and the rolling window selects 10-Ks BY report period —
+            # reduced-fidelity data here silently yields "No 10-K found"
+            # (FUBO, 2026-07-05). Treat as a miss and refetch the primary;
+            # if the refetch fails (real outage), fall back to the backup
+            # cache after all — degraded beats empty.
+            if cached and cached.get("_backup_source"):
+                fresh = self._fetch_filings_from_sec(cik, ticker)
+                if fresh:
+                    return fresh
+                logger.warning("Primary refetch failed for %s — using %s "
+                               "backup metadata (reportDate missing; year "
+                               "alignment may degrade)", ticker,
+                               cached.get("_backup_source"))
             if cached:
                 recent = cached.get("filings", {}).get("recent", {})
                 all_forms = list(recent.get("form", []))
@@ -141,7 +155,14 @@ class SECFilingFetcher:
 
     def _fetch_filings_from_sec(self, cik: str, ticker: str = None) -> List[dict]:
         """Fetch all filings from SEC (fresh, no cache)."""
-        data = self._get_json(cik)
+        try:
+            data = self._get_json(cik)
+        except Exception as e:
+            # Includes SECUnavailable from the outage breaker — degrade to
+            # "no filings" (callers report the missing window) instead of
+            # letting an open breaker kill the whole agent (2026-07-04).
+            logger.warning("Submissions fetch failed for CIK %s: %s", cik, str(e)[:120])
+            return []
         if ticker:
             import json as _json
             cache_file = os.path.join(CACHE_DIR, "filings", f"{ticker}_filings.json")
@@ -194,8 +215,15 @@ class SECFilingFetcher:
         
         acc_clean = acc.replace("-", "")
         url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_clean}/{doc}"
-        self._rate_limit()
-        r = requests.get(url, headers=HEADERS, timeout=30)
+        try:
+            self._rate_limit()
+            r = requests.get(url, headers=HEADERS, timeout=30)
+        except Exception as e:
+            # Includes SECUnavailable from the outage breaker: the contract is
+            # that fetch failures DEGRADE (callers all handle html="") — an
+            # open breaker must skip this document, not kill the agent.
+            logger.warning("Filing fetch failed (%s): %s", doc, str(e)[:120])
+            return ""
         if r.status_code == 200 and len(r.text) > 5000:
             text = r.text
             # Cache the fetched text
@@ -400,25 +428,62 @@ class SECFilingFetcher:
         return assigned
 
     def _fetch_ex99(self, cik: str, acc: str) -> str:
-        idx_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc}/{acc}-index.htm"
+        # URL-format fix (2026-07-04 bulletproofing): the index FILENAME must
+        # be the DASHED accession — EDGAR answers "{nodash}-index.htm" with
+        # 503, which silently killed ex99 discovery on every call AND, five
+        # in a row (warm text cache = no interleaved successes), opened the
+        # SEC outage breaker and took down concurrently-running agents.
+        acc_nd = acc.replace("-", "")
+        acc_dash = acc if "-" in acc else f"{acc_nd[:10]}-{acc_nd[10:12]}-{acc_nd[12:]}"
+        # Cache (2026-07-04): ex99 discovery needs 2 live fetches per 8-K —
+        # uncached, a transcript-heavy ticker pays 10+ minutes EVERY run (the
+        # old 503 bug fast-failed, so the missing cache was invisible).
+        # Namespaced '::ex99' in the shared texts cache; "" (no exhibit) is a
+        # cacheable answer too — absence is as stable as presence.
+        ticker = getattr(self, '_current_ticker', None)
+        if ticker:
+            cached = get_cached_text(ticker, acc_dash, content_type="ex99")
+            if cached is not None:
+                return cached
+        idx_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{acc_dash}-index.htm"
+        content = ""
+        fetched = False
         try:
             self._rate_limit()
             r = requests.get(idx_url, headers=HEADERS, timeout=15)
             if r.status_code != 200:
                 return ""
-            ex99 = re.findall(r'href="([^"]*ex-?99[^"]*\.(?:htm|html))"', r.text, re.IGNORECASE)
+            fetched = True
+            # The reliable EX-99 signal is the index table's TYPE column, not
+            # the filename — real names vary wildly (snap: "…xexx991pressr.htm",
+            # others: "dex991.htm", "a52765989ex99_1.htm"). Take the .htm href
+            # from any row whose text mentions EX-99; keep the old filename
+            # pattern as a fallback for index pages with unexpected markup.
+            ex99 = []
+            for row in re.findall(r"<tr[^>]*>(.*?)</tr>", r.text, re.IGNORECASE | re.DOTALL):
+                if re.search(r">\s*EX-99", row, re.IGNORECASE):
+                    ex99 += re.findall(r'href="([^"]+\.htm[l]?)"', row, re.IGNORECASE)
             if not ex99:
-                return ""
-            ex99_url = ex99[0]
-            if not ex99_url.startswith("http"):
-                ex99_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc}/{ex99_url.split('/')[-1]}"
-            self._rate_limit()
-            r_ex = requests.get(ex99_url, headers=HEADERS, timeout=15)
-            if r_ex.status_code == 200 and len(r_ex.text) > 2000:
-                return _strip_html(r_ex.text)
+                ex99 = re.findall(r'href="([^"]*ex[-_x]?-?99[^"]*\.(?:htm|html))"',
+                                  r.text, re.IGNORECASE)
+            if ex99:
+                ex99_url = ex99[0]
+                if not ex99_url.startswith("http"):
+                    ex99_url = f"{EDGAR_BASE}/Archives/edgar/data/{int(cik)}/{acc_nd}/{ex99_url.split('/')[-1]}"
+                self._rate_limit()
+                r_ex = requests.get(ex99_url, headers=HEADERS, timeout=15)
+                if r_ex.status_code == 200 and len(r_ex.text) > 2000:
+                    content = _strip_html(r_ex.text)
+                elif r_ex.status_code != 200:
+                    fetched = False  # don't cache a transient doc failure
         except Exception as e:
             logger.debug("EX-99.1 failed: %s", e)
-        return ""
+            fetched = False
+        # Cache the answer — including a confirmed "no exhibit" (""), which is
+        # as permanent as the filing itself. Transient failures skip the write.
+        if ticker and fetched:
+            cache_text(ticker, acc_dash, content, content_type="ex99")
+        return content
 
 
 
@@ -1225,7 +1290,11 @@ def _parse_discrepancy_array(text):
         return []
     if isinstance(data, dict):
         data = [data]
-    return data if isinstance(data, list) else []
+    if not isinstance(data, list):
+        return []
+    # Type guard (2026-07-03 OPEN-class fix): models occasionally return bare
+    # indices/strings in the array — every consumer assumes dict items.
+    return [d for d in data if isinstance(d, dict)]
 
 
 def _call_llm(prompt, provider_idx=None, max_tokens=400):
@@ -1736,6 +1805,8 @@ def _audit_high_severity(findings: List[dict]) -> None:
             verdicts = [verdicts]
         drop_ids = set()
         for v in verdicts:
+            if not isinstance(v, dict):  # type guard (2026-07-03 OPEN-class fix)
+                continue
             i = v.get("id")
             sev = str(v.get("severity", "")).lower()
             if not isinstance(i, int) or not (0 <= i < len(highs)):

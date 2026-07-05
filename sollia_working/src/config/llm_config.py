@@ -74,23 +74,67 @@ _load_dotenv()
 # hardest analytical tasks via AGENT_START_TIER. Selected by benchmarking against
 # the 5 REAL Sollia pipeline prompts (tools/model_benchmark.py).
 #
-# MULTI-KEY REALITY (2026-07-03 empirical audit — LLM_ROUTING_REPORT.md):
-# All 11 Groq keys belong to ONE organization and Groq enforces limits at the
-# ORG level (verified: 3 keys hammered in parallel 429 together; one key alone
-# gets the same 30 RPM). All 8 OpenRouter keys belong to ONE account (identical
-# credits/usage) and OpenRouter limits are per-ACCOUNT. So key rotation buys
-# ZERO extra throughput today — it exists for (a) resilience if a key is
-# revoked, and (b) automatic N× scaling the day the keys are re-issued from
-# separate accounts. _KEY_429_CUTOFF stops the doomed try-every-key cascade.
-# Measured org limits: 70B = 30 RPM / 1k RPD / 12k TPM / 100k TPD;
+# MULTI-KEY / MULTI-ORG REALITY (2026-07-03 empirical audits):
+# Groq enforces limits at the ORG level (verified twice: 3 same-org keys
+# hammered in parallel 429 together; same-org keys decrement one shared daily
+# counter while cross-org counters are independent). THREE orgs are now wired
+# (mac_studio × 11 keys, berkeley × 3, heysollia × 3 — see GROQ_ORG_KEYS), so
+# Groq capacity is genuinely 3×: each org has its own 30 RPM and per-MODEL
+# TPM/RPD buckets. Key order is org-INTERLEAVED so cycling hops buckets.
+# All 8 OpenRouter keys belong to ONE account (identical credits/usage) and
+# OpenRouter limits are per-ACCOUNT: their rotation is revocation-resilience
+# only, and one 429 condemns the rest (org-aware cutoff handles both cases).
+# Measured per-ORG Groq limits: 70B = 30 RPM / 1k RPD / 12k TPM / 100k TPD;
 # 8B = 30 RPM / 14.4k RPD / 6k TPM / 500k TPD (per-MODEL buckets, so the two
-# Groq tiers add up to ~18k TPM). OpenRouter :free = 20 RPM + 1000 req/DAY
-# account-wide (the funded account's "high-balance" tier); paid models have no
-# daily cap and every key can bill the one funded balance.
-_GROQ_KEYS = ["GROQ_API_KEY"] + [f"GROQ_API_KEY_{i}" for i in range(2, 12)]
+# Groq tiers add up to ~18k TPM per org → ~54k TPM across 3 orgs). OpenRouter
+# :free = 20 RPM + 1000 req/DAY account-wide (the funded account's
+# "high-balance" tier); paid models have no daily cap and every key can bill
+# the one funded balance.
+# GROQ ORGS (2026-07-03 bulletproofing pass): Groq enforces limits per
+# ORGANIZATION, so the unit of rate-limit isolation is the ORG, not the key.
+# THREE separate orgs are now wired — verified live 2026-07-03 with 1-token
+# pings: each org shows an INDEPENDENT x-ratelimit-remaining-requests counter
+# (berkeley keys decremented one shared counter 14399→14398→14397 while
+# heysollia's and mac_studio's counters were untouched). Effective Groq
+# capacity: 3× per-model buckets (90 RPM, 36k TPM on 70B, 18k TPM on 8B).
+GROQ_ORG_KEYS: Dict[str, List[str]] = {
+    "mac_studio": ["GROQ_API_KEY"] + [f"GROQ_API_KEY_{i}" for i in range(2, 12)],
+    "berkeley":   [f"GROQ_API_KEY_BERKELEY_{i}" for i in (1, 2, 3)],
+    "heysollia":  [f"GROQ_API_KEY_HEYSOLLIA_{i}" for i in (1, 2, 3)],
+}
+GROQ_ORG_OF_ENV: Dict[str, str] = {
+    env: org for org, envs in GROQ_ORG_KEYS.items() for env in envs
+}
+
+
+def _interleave_org_keys(org_keys: Dict[str, List[str]]) -> List[str]:
+    """Order key envs so CONSECUTIVE entries belong to DIFFERENT orgs.
+    Key cycling then hops rate-limit buckets on every step — a 429 on one org
+    lands the next attempt on a fresh org's 30-RPM window instead of burning
+    another key from the same dry bucket."""
+    cols = [list(envs) for envs in org_keys.values()]
+    out: List[str] = []
+    for i in range(max(len(c) for c in cols)):
+        for c in cols:
+            if i < len(c):
+                out.append(c[i])
+    return out
+
+
+_GROQ_KEYS = _interleave_org_keys(GROQ_ORG_KEYS)
 _OPENROUTER_KEYS = ["OPENROUTER_API_KEY"] + [
     f"OPENROUTER_API_KEY_{i}" for i in (2, 3, 4, 5, 6, 8, 9)  # no _7 (never issued)
 ]
+
+
+def _org_of_key(provider_name: str, api_key: str) -> str:
+    """Resolve the rate-limit ORG a live key value belongs to. Groq keys map to
+    their tagged org; every other provider's keys share one account bucket."""
+    if provider_name.startswith("Groq"):
+        for env, org in GROQ_ORG_OF_ENV.items():
+            if os.environ.get(env, "") == api_key:
+                return org
+    return "account"
 LLM_PROVIDERS: List[Dict[str, Any]] = [
     # ── #1 PRIMARY — Claude Fable 5 (ACTIVE 2026-07-01; the former geoblock is lifted,
     #    OpenRouter resolves it to anthropic/claude-5-fable-20260609). Reasoning is
@@ -263,6 +307,27 @@ def select_tier_for_prompt(prompt: str, default_tier: int = 0) -> int:
 # clean = raw response parses as JSON; recoverable = extract_json() parses it;
 # valid = task-specific schema/index/category checks pass.
 # The router's decisions DERIVE from these numbers — see select_best_tier.
+
+# Official per-ORG Groq limits (console.groq.com/docs/rate-limits, fetched
+# 2026-07-03; RPM=30 empirically confirmed to the request — #31 in the
+# hammer test 429'd). "Rate limits apply at the organization level, not
+# individual users" (verbatim). No concurrent-request cap documented or
+# observed below the RPM ceiling. Multiply by len(GROQ_ORG_KEYS)=3 for
+# effective chain capacity.
+GROQ_ORG_LIMITS: Dict[str, Dict[str, int]] = {
+    "llama-3.3-70b-versatile": {"rpm": 30, "rpd": 1_000, "tpm": 12_000, "tpd": 100_000},
+    "llama-3.1-8b-instant":    {"rpm": 30, "rpd": 14_400, "tpm": 6_000, "tpd": 500_000},
+}
+# Official OpenRouter account-level limits (openrouter.ai/docs/api/reference/
+# limits, fetched 2026-07-03): ":free" = 20 RPM; 1,000 req/day with >=$10
+# purchased (50/day below). "Making additional accounts or API keys will not
+# affect your rate limits, as we govern capacity globally" (verbatim) —
+# empirically confirmed: all 8 keys 429 together on the shared daily pool.
+# Paid models: no documented cap; Cloudflare DDoS layer; 402 when balance<0.
+OPENROUTER_LIMITS: Dict[str, Any] = {
+    "free_rpm": 20, "free_rpd_high_balance": 1_000, "free_rpd_low_balance": 50,
+    "scope": "account", "paid_cap": None,
+}
 MODEL_PROFILES: Dict[int, Dict[str, Any]] = {
     0: {  # Fable 5 (paid, via OpenRouter; reasoning mandatory on this endpoint)
         "clean_json_rate": {"A": 0.0, "B": 1.0, "C": 0.0},
@@ -286,13 +351,19 @@ MODEL_PROFILES: Dict[int, Dict[str, Any]] = {
         "avg_latency_ms": {"A": 3887, "B": 964, "C": 1469},
         "deterministic": {"A": False, "B": False, "C": False},
         "max_context": 128_000, "tpm_free_tier": 12_000,
+        "orgs": 3,  # mac_studio + berkeley + heysollia — independent buckets
+        "effective_capacity": "3 orgs × (30 RPM / 12k TPM) = 90 RPM / 36k TPM",
+        "survives_429_storm": "YES — org-hop rescued a mid-storm call in 0.5s "
+                              "(2026-07-03 live test: mac org saturated at "
+                              "req #31, berkeley/heysollia served 200)",
         "best_for": ["strict-JSON comparison (Agent 4: 3/3 clean+valid at ~4s "
                       "— vs Fable 5's 0/3 at 41s)", "classify with indices",
                       "medium/long extraction"],
-        "notes": "12k tokens/min free TPM = ONE jumbo call per minute — the "
-                 "TSLA 'Could not parse' failures were 429 fallthrough to "
-                 "weaker tiers, not 70B quality. The LLM semaphore + key "
-                 "cycling keep it inside its TPM window.",
+        "notes": "12k tokens/min free TPM per ORG = one jumbo call per minute "
+                 "per org (3/min across orgs) — the TSLA 'Could not parse' "
+                 "failures were 429 fallthrough to weaker tiers, not 70B "
+                 "quality. The LLM semaphore + ORG-hopping key cycle keep it "
+                 "inside its TPM windows.",
     },
     2: {  # Groq llama-3.1-8b (free, fastest)
         "clean_json_rate": {"A": 1.0, "B": 0.0, "C": 0.0},
@@ -300,6 +371,11 @@ MODEL_PROFILES: Dict[int, Dict[str, Any]] = {
         "valid_rate": {"A": 1.0, "B": 0.0, "C": 1.0},
         "avg_latency_ms": {"A": 2407, "B": 1469, "C": 1270},
         "max_context": 128_000, "tpm_free_tier": 6_000,
+        "orgs": 3,
+        "effective_capacity": "3 orgs × (30 RPM / 6k TPM / 14.4k RPD) — "
+                              "measured ~230-300ms/call",
+        "survives_429_storm": "YES — same org-hop path as 70B (separate "
+                              "per-model TPM bucket)",
         "best_for": ["trivial/high-volume classification (Stage 1, Agent 5)"],
         "notes": "Answers sentence-index tasks with PROSE (0/3 on B) — never "
                  "route classify there. Fine on category extraction (C 3/3).",
@@ -358,54 +434,219 @@ STRESS_PROFILES: Dict[str, str] = {
 }
 
 
+# ===========================================================================
+# NETWORK STATE DETECTOR (Part 4e, 2026-07-03 bulletproofing pass)
+# ===========================================================================
+# One live monitor feeds routing decisions. The unit of tracking is the
+# RATE-LIMIT DOMAIN — (provider_family, org) — because that is where limits
+# are actually enforced (Groq per-org, OpenRouter/Gemini per-account):
+#   ("groq", "mac_studio") / ("groq", "berkeley") / ("groq", "heysollia")
+#   ("openrouter", "account")      — all 8 keys share one account
+#   ("gemini", "account")
+# States and their triggers (empirically calibrated):
+#   normal    — default; any clean fast 200 resets the domain.
+#   congested — >=3 consecutive 429s. Expires after CONGESTED_TTL (75s: one
+#               RPM window + slack — Groq org windows reset per minute) or a
+#               huge Retry-After (OpenRouter's daily :free pool) up to 1h.
+#   degraded  — >=3 consecutive 200s slower than DEGRADED_LATENCY_MS (10s).
+#               Expires after DEGRADED_TTL or on one fast success.
+#   down      — >=2 consecutive connection errors / hard timeouts (a wall-
+#               clock hang marks it down on ONE strike, matching the hang
+#               memo). Expires after DOWN_TTL (120s) so recovery is retried.
+# Consumers: select_best_tier (start-tier overrides), _rotated (healthy orgs
+# first), _call_llm_chain (skip down providers, skip 429'd orgs in-pass).
+CONGESTED_429_THRESHOLD = 3
+DEGRADED_LATENCY_MS = 10_000.0
+DEGRADED_SLOW_THRESHOLD = 3
+DOWN_ERROR_THRESHOLD = 2
+CONGESTED_TTL = float(os.environ.get("SOLLIA_NET_CONGESTED_TTL", "75"))
+# Ceiling for Retry-After-driven congestion memos (2026-07-04 field fix).
+# Groq's RPD is a ROLLING window: an exhausted org can send Retry-After in
+# the hours, but replenishes gradually — honoring it verbatim (the old 3600s
+# cap) parked every call on Gemini/OR-:free starts for up to an hour AFTER
+# Groq had already recovered (observed live: 39s Gemma-26B calls while all 3
+# Groq orgs pinged 200 with full buckets). A wrong re-probe costs one ~200ms
+# 429; a wrong hour-long avoidance costs minutes per call. 300s balances the
+# two: congested orgs rest a few RPM windows, then get probed again.
+CONGESTED_TTL_MAX = float(os.environ.get("SOLLIA_NET_CONGESTED_TTL_MAX", "300"))
+DEGRADED_TTL = float(os.environ.get("SOLLIA_NET_DEGRADED_TTL", "300"))
+DOWN_TTL = float(os.environ.get("SOLLIA_NET_DOWN_TTL", "120"))
+
+
+def _provider_family(provider_name: str) -> str:
+    """Map a chain tier name to its rate-limit provider family."""
+    if provider_name.startswith("Groq"):
+        return "groq"
+    if provider_name.startswith("Gemini"):
+        return "gemini"
+    return "openrouter"  # Fable5 + every OR-* tier ride the OpenRouter account
+
+
+class NetworkMonitor:
+    """Thread-safe live tracker of per-domain network/rate-limit state."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        # domain -> {"state": str, "until": float, "c429": int, "slow": int,
+        #            "err": int, "last_latency_ms": float}
+        self._domains: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _d(self, family: str, org: str) -> Dict[str, Any]:
+        return self._domains.setdefault((family, org), {
+            "state": "normal", "until": 0.0, "c429": 0, "slow": 0, "err": 0,
+            "last_latency_ms": 0.0})
+
+    def record_result(self, provider: str, org: str, status_code: Optional[int],
+                      latency_ms: float, retry_after: Optional[float] = None,
+                      hard_timeout: bool = False) -> None:
+        """Feed one call outcome. status_code None = transport failure."""
+        family = _provider_family(provider)
+        now = time.time()
+        with self._lock:
+            d = self._d(family, org)
+            d["last_latency_ms"] = latency_ms
+            if status_code == 429:
+                d["c429"] += 1
+                d["err"] = 0
+                if d["c429"] >= CONGESTED_429_THRESHOLD or (retry_after or 0) > CONGESTED_TTL:
+                    ttl = CONGESTED_TTL
+                    if retry_after:
+                        ttl = max(ttl, min(float(retry_after), CONGESTED_TTL_MAX))
+                    d["state"], d["until"] = "congested", now + ttl
+            elif status_code is None:
+                d["err"] += 1
+                if d["err"] >= DOWN_ERROR_THRESHOLD or hard_timeout:
+                    d["state"], d["until"] = "down", now + DOWN_TTL
+            elif 200 <= (status_code or 0) < 300:
+                d["c429"] = 0
+                d["err"] = 0
+                if latency_ms > DEGRADED_LATENCY_MS:
+                    d["slow"] += 1
+                    if d["slow"] >= DEGRADED_SLOW_THRESHOLD:
+                        d["state"], d["until"] = "degraded", now + DEGRADED_TTL
+                else:
+                    d["slow"] = 0
+                    d["state"], d["until"] = "normal", 0.0
+            # other statuses (4xx/5xx) don't move the needle: they are request-
+            # level errors, not network-state signals (the chain handles them).
+
+    def state_of(self, provider: str, org: str = "account") -> str:
+        family = _provider_family(provider)
+        now = time.time()
+        with self._lock:
+            d = self._domains.get((family, org))
+            if not d:
+                return "normal"
+            if d["state"] != "normal" and now >= d["until"]:
+                d["state"], d["c429"], d["slow"], d["err"] = "normal", 0, 0, 0
+            return d["state"]
+
+    def groq_org_states(self) -> Dict[str, str]:
+        return {org: self.state_of("Groq-70B", org) for org in GROQ_ORG_KEYS}
+
+    def snapshot(self) -> Dict[str, str]:
+        """{'groq:mac_studio': 'normal', 'openrouter:account': 'congested', ...}
+        — injectable into select_best_tier for tests and dashboards."""
+        out = {f"groq:{org}": st for org, st in self.groq_org_states().items()}
+        out["openrouter:account"] = self.state_of("Fable5")
+        out["gemini:account"] = self.state_of("Gemini-2.5-flash")
+        return out
+
+    def reset(self) -> None:
+        with self._lock:
+            self._domains.clear()
+
+
+NETWORK_MONITOR = NetworkMonitor()
+
+
+# Soft cost gate (Part 4f): once a run has SPENT this fraction of the hard cap,
+# routed calls stop considering paid tiers entirely — only the pinned severity
+# audit (pin_tier) may still bill, and the $1.00 hard cap binds even that.
+COST_SOFT_GATE_FRACTION = float(os.environ.get("SOLLIA_COST_SOFT_GATE", "0.8"))
+
+
 def select_best_tier(prompt_word_count: int,
                      requires_strict_json: bool = False,
                      requires_long_context: bool = False,
-                     max_cost_cents: float = 40.0) -> int:
-    """Route to the BEST tier for the task, derived from MODEL_PROFILES.
+                     max_cost_cents: float = 40.0,
+                     agent_id: str = "",
+                     stage: str = "",
+                     network: Optional[Dict[str, str]] = None,
+                     remaining_budget_cents: Optional[float] = None) -> int:
+    """Route to the BEST start tier for the task — the decision engine adapts
+    to SIX dimensions: prompt shape, measured model strengths (MODEL_PROFILES),
+    live network state (NETWORK_MONITOR), rate-limit state per Groq org /
+    OpenRouter account, remaining run budget, and the calling agent/stage.
 
-    Decision logic (ordered by priority; empirical justification inline):
+    `network` is a snapshot dict ({'groq:berkeley': 'congested', ...});
+    defaults to the live monitor — injectable for tests. Backwards compatible:
+    the first four parameters are unchanged.
 
-    1. requires_strict_json AND prompt > 4000 words -> Groq-70B (tier 1).
-       The original plan sent these to Fable 5, but measured behavior on the
-       REAL Agent-4 prompt was 0/3 clean JSON (one empty response — the
-       reasoning budget starved the completion — one truncated) at 41s/call.
-       Groq-70B + the shared tolerant extractor is the reliable pairing; its
-       128k context fits any strict-JSON prompt this pipeline builds.
-    2. requires_long_context -> Groq-70B up to ~90k words (fits 128k with
-       output margin); ONLY beyond that is Fable 5's 200k context genuinely
-       needed (cost-gated; the per-run cap still applies).
-    3. prompt > 1500 words -> Groq-70B: fast, free, measured 100/100 quality.
-    4. otherwise -> Groq-8B: fastest; valid 1.0 on the Stage-1 shape.
+    NETWORK-STATE OVERRIDES (checked first — empirical calibration inline):
+    1. OpenRouter down → never START at an OpenRouter-transported tier
+       (Fable 5 + all OR-* ride the same account/Cloudflare front). Groq and
+       Gemini serve; the chain also fast-skips down providers on fallthrough.
+    2. All 3 Groq orgs congested (org-wide 429 storm) → start at Gemini: an
+       INDEPENDENT Google account is the only real refuge measured during
+       total Groq saturation (Part-2d burst). Strict-JSON stays safe there
+       post reasoning_effort:none fix (5/5 clean live).
+    3. Degraded (slow) network → prefer Groq: lowest measured variance
+       (~1-4s; Fable 5 = 8-41s and the only tier that ever HUNG).
 
-    Fable 5's measured sweet spot — short/medium strict judgment calls (test
-    B: clean 1.0, valid 1.0, byte-deterministic) — is reached via pin_tier
-    (Agent 1's severity audit), a deliberate opt-in, not a size rule.
-    Tiers 3-7 stay BACKUP-ONLY — the chain falls through on 429/failure.
+    TASK ROUTING (normal network; measured in MODEL_PROFILES):
+    4. >90k words + long context → Fable 5 (200k ctx) — UNLESS it recently
+       hung, budget-gated, or OpenRouter is down/congested; then Gemini
+       (1M-token ctx, free) beats Groq-70B (128k would truncate).
+    5. Strict JSON → Groq-70B (A-shape 3/3 clean at ~4s vs Fable 5's 0/3 at
+       41s; NEVER below 70B — Groq-8B answered classify-with-indices with
+       prose 0/3).
+    6. promise_audit:stage1 / constraint sector-select (high-volume simple
+       extraction) reach Groq-8B via AGENT_START_TIER before this router.
+    7. severity_audit reaches Fable 5 via pin_tier (deliberate opt-in).
+    8. >1500 words → Groq-70B; else Groq-8B. Org cycling inside the Groq
+       tiers spreads load across mac_studio/berkeley/heysollia.
 
-    RELIABILITY UNDER STRESS (network-condition pass, 2026-07-03): clean-JSON
-    rate alone is not fitness. The weighting applied here and in the chain:
-      * a provider that recently HUNG past the wall-clock guard loses its
-        >90k-word promotion (Groq-70B takes the call; a truncated-but-served
-        answer beats a 180s stall — the 2026-07-02 production hang was
-        OpenRouter/Cloudflare, i.e. exactly Fable 5's transport);
-      * `json_weak` providers (Nemotron: prose/empty on strict shapes) are
-        skipped for requires_strict_json calls even on 429 fallthrough;
-      * hung providers also get a clamped read timeout (HUNG_PROVIDER_TIMEOUT)
-        so a repeat stall costs ~35s, not minutes.
+    COST GATE (Part 4f):
+    9. Once the run has spent COST_SOFT_GATE_FRACTION (80%) of the $1.00 cap,
+       paid promotion is off — long-context overflow demotes to Gemini/Groq.
     """
+    net = network if network is not None else NETWORK_MONITOR.snapshot()
+    groq_states = [net.get(f"groq:{org}", "normal") for org in GROQ_ORG_KEYS]
+    groq_usable = any(s not in ("congested", "down") for s in groq_states)
+    or_state = net.get("openrouter:account", "normal")
+    gemini_usable = net.get("gemini:account", "normal") not in ("congested", "down")
+
+    if remaining_budget_cents is None:
+        with _budget_lock:
+            spent = _run_cost_usd
+        remaining_budget_cents = max(0.0, (MAX_COST_PER_RUN_USD - spent) * 100.0)
+    soft_gate_hit = remaining_budget_cents <= (
+        MAX_COST_PER_RUN_USD * 100.0 * (1.0 - COST_SOFT_GATE_FRACTION))
+
     if requires_long_context and prompt_word_count > 90_000:
-        if _recently_hung("Fable5"):
-            return PROVIDER_IDX["GROQ_70B"]  # hang memo: don't promote into a stall
-        if _projected_fable5_cents(prompt_word_count) <= max_cost_cents * 10:
+        fable_blocked = (
+            _recently_hung("Fable5")            # hang memo: don't promote into a stall
+            or or_state in ("down", "congested")  # Fable 5 rides OpenRouter
+            or soft_gate_hit                     # Part 4f: free tiers only
+            or _projected_fable5_cents(prompt_word_count) > max_cost_cents * 10)
+        if not fable_blocked:
             return PROVIDER_IDX["FABLE"]  # beyond Groq's 128k window
-        return PROVIDER_IDX["GROQ_70B"]
+        if gemini_usable:
+            return PROVIDER_IDX["GEMINI"]  # 1M-token context, free, independent
+        return PROVIDER_IDX["GROQ_70B"]    # last resort; chain falls through on 400
     if requires_strict_json or requires_long_context:
         # Strict tasks NEVER go below Groq-70B: Groq-8B measured 0/3 on the
         # sentence-index classify shape (MODEL_PROFILES[2], test B).
-        return PROVIDER_IDX["GROQ_70B"]
+        if groq_usable or not gemini_usable:
+            return PROVIDER_IDX["GROQ_70B"]
+        return PROVIDER_IDX["GEMINI"]  # total Groq org saturation → 429 refuge
     if prompt_word_count > 1500:
-        return PROVIDER_IDX["GROQ_70B"]
+        if groq_usable or not gemini_usable:
+            return PROVIDER_IDX["GROQ_70B"]
+        return PROVIDER_IDX["GEMINI"]
+    if not groq_usable and gemini_usable:
+        return PROVIDER_IDX["GEMINI"]
     return PROVIDER_IDX["GROQ_8B"]
 
 
@@ -448,9 +689,9 @@ BACKOFF_BASE = 1.0         # exponential backoff base seconds
 BACKOFF_MAX = 16.0         # exponential backoff ceiling seconds
 BACKOFF_JITTER = 0.25      # +/- jitter fraction to avoid thundering herd
 RATE_LIMIT_COOLDOWN = float(os.environ.get("SOLLIA_LLM_COOLDOWN", "30"))  # global pause after a 429
-# Stop cycling a provider's keys after this many CONSECUTIVE 429s: today's keys
-# share one org/account bucket per provider (2026-07-03 audit), so a second 429
-# proves the bucket is dry for every remaining key.
+# DEPRECATED (2026-07-03 bulletproofing): key cycling is now ORG-aware — a 429
+# condemns only that ORG's keys for the pass, and the provider is abandoned
+# when every distinct org has 429'd. Kept for external references/env compat.
 _KEY_429_CUTOFF = int(os.environ.get("SOLLIA_LLM_KEY_429_CUTOFF", "2"))
 MAX_CHAIN_RETRIES = int(os.environ.get("SOLLIA_LLM_MAX_CHAIN_RETRIES", "3"))  # full-chain 429 passes before raising
 REQUEST_TIMEOUT = int(os.environ.get("SOLLIA_LLM_TIMEOUT", "60"))
@@ -1082,14 +1323,25 @@ _key_rotation_counters: Dict[str, int] = {}
 
 def _rotated(keys: List[str], provider_name: str) -> List[str]:
     """Round-robin the key list per provider so concurrent calls spread across
-    rate-limit buckets instead of all hitting the first key."""
+    rate-limit buckets instead of all hitting the first key.
+
+    Health-aware (Part 4e): keys whose ORG is currently congested/down sink to
+    the back so the first attempt lands on a healthy bucket. The key list is
+    org-INTERLEAVED (_interleave_org_keys), so rotation naturally hops orgs;
+    the stable partition preserves that order within each health group."""
     if len(keys) <= 1:
         return keys
     with _key_rotation_lock:
         n = _key_rotation_counters.get(provider_name, 0)
         _key_rotation_counters[provider_name] = n + 1
     off = n % len(keys)
-    return keys[off:] + keys[:off]
+    ordered = keys[off:] + keys[:off]
+    if provider_name.startswith("Groq"):
+        healthy = [k for k in ordered if NETWORK_MONITOR.state_of(
+            provider_name, _org_of_key(provider_name, k)) == "normal"]
+        if healthy and len(healthy) < len(ordered):
+            ordered = healthy + [k for k in ordered if k not in healthy]
+    return ordered
 
 
 def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
@@ -1113,6 +1365,20 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
             # prose/truncation/empty arrays; skipping beats parsing garbage).
             if requires_strict_json and provider.get("json_weak"):
                 continue
+            # NETWORK-AWARE SKIP (Part 4e): a provider whose transport domain
+            # is marked DOWN is skipped while the memo is fresh — a doomed
+            # connect attempt costs CONNECT_TIMEOUT seconds each. The LAST
+            # tier of the chain is always tried (fail-open beats fail-closed),
+            # and the memo expires after DOWN_TTL so recovery is re-probed.
+            if idx < len(LLM_PROVIDERS) - 1:
+                if provider["name"].startswith("Groq"):
+                    if all(NETWORK_MONITOR.state_of(provider["name"], o) == "down"
+                           for o in GROQ_ORG_KEYS):
+                        prev_errors.append(f"{provider['name']}: skipped (all orgs down)")
+                        continue
+                elif NETWORK_MONITOR.state_of(provider["name"]) == "down":
+                    prev_errors.append(f"{provider['name']}: skipped (provider down)")
+                    continue
             api_keys = _rotated(_provider_keys(provider), provider["name"])
             if not api_keys:
                 continue
@@ -1145,18 +1411,23 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                 payload["max_tokens"] = max_tokens + int(provider.get("max_tokens_pad", 0))
 
             resp = None
-            # Key cycling (Part 3b, recalibrated 2026-07-03): a 429 on one key
-            # tries the provider's NEXT key — but only until _KEY_429_CUTOFF
-            # consecutive 429s. Measured: today's keys share ONE bucket per
-            # provider (org/account-level limits), so after two keys 429 the
-            # rest are guaranteed to as well; cycling through all 11 would burn
-            # ~5s of doomed round-trips per chain pass. Two consecutive 429s
-            # also stays correct if the keys are later re-issued from separate
-            # accounts (independent buckets rarely 429 in the same instant).
-            # Auth failures (401/403 revoked key, 402 out of credits) always
-            # advance to the next key — one dead key must not kill the tier.
-            consecutive_429 = 0
+            # ORG-AWARE key cycling (Part 4e/5, 2026-07-03 bulletproofing):
+            # rate limits live at the ORG level, so a 429 condemns every key
+            # in that org's bucket for this pass — but keys from OTHER orgs
+            # have independent buckets and are genuinely worth trying. The
+            # key list is org-interleaved, so "next key" usually means "next
+            # org". The provider is abandoned only when every DISTINCT org it
+            # has keys for has 429'd (single-account providers — OpenRouter,
+            # Gemini — abandon on the first 429: measured, their keys 429
+            # together). Auth failures (401/403 revoked, 402 out of credits)
+            # always advance to the next key — one dead key must not kill a
+            # tier. Every outcome feeds NETWORK_MONITOR for routing.
+            orgs_429: set = set()
+            n_orgs = len({_org_of_key(provider["name"], k) for k in api_keys})
             for k_i, api_key in enumerate(api_keys):
+                org = _org_of_key(provider["name"], api_key)
+                if org in orgs_429:
+                    continue  # this org's shared bucket already proved dry
                 headers = {"Content-Type": "application/json",
                            "Authorization": f"Bearer {api_key}"}
                 if "openrouter.ai" in provider["url"]:
@@ -1175,22 +1446,31 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                     resp = _post_with_wallclock(provider["url"], headers, payload,
                                                 read_timeout)
                 except Exception as exc:  # network/timeout/hang -> try next provider
-                    if isinstance(exc, LLMHardTimeout):
+                    hard = isinstance(exc, LLMHardTimeout)
+                    if hard:
                         _note_hard_timeout(provider["name"])
+                    NETWORK_MONITOR.record_result(provider["name"], org, None,
+                                                  (time.time() - t0) * 1000.0,
+                                                  hard_timeout=hard)
                     prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
                     resp = None
                     break
-                if resp.status_code == 429 and k_i < len(api_keys) - 1:
-                    consecutive_429 += 1
-                    if consecutive_429 >= _KEY_429_CUTOFF:
-                        prev_errors.append(
-                            f"{provider['name']}: {consecutive_429} keys 429 in a row "
-                            "— shared rate bucket, skipping remaining keys")
-                        break
-                    prev_errors.append(f"{provider['name']} key#{k_i + 1}: 429 — rotating key")
+                _latency_ms = (time.time() - t0) * 1000.0
+                NETWORK_MONITOR.record_result(
+                    provider["name"], org, resp.status_code, _latency_ms,
+                    retry_after=_parse_retry_after(resp) if resp.status_code == 429 else None)
+                if resp.status_code == 429:
+                    orgs_429.add(org)
+                    if len(orgs_429) >= n_orgs:
+                        if n_orgs > 1:
+                            prev_errors.append(
+                                f"{provider['name']}: all {n_orgs} orgs 429 — "
+                                "every rate bucket dry, moving down the chain")
+                        break  # resp stays the 429 → outer handler records it
+                    prev_errors.append(f"{provider['name']} key#{k_i + 1} "
+                                       f"(org {org}): 429 — hopping to next org")
                     continue
                 if resp.status_code in (401, 402, 403) and k_i < len(api_keys) - 1:
-                    consecutive_429 = 0
                     prev_errors.append(f"{provider['name']} key#{k_i + 1}: "
                                        f"HTTP {resp.status_code} — trying next key")
                     continue

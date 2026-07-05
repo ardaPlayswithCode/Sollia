@@ -208,16 +208,33 @@ def main():
         [mock_provider("Trickler", port, "trickle", timeout=3), fallback()],
         expect_provider="Fallback", expect_wall=8.3, tolerance=2.5))
 
+    # 5b. COMBINED STRESS (Test F, 2026-07-03 bulletproofing) — the primary
+    #    is in a 429 storm, the second tier is DOWN (connection refused), the
+    #    third is degraded-but-alive (5s), the last is healthy. The router
+    #    must not wedge: it should walk the chain in one bounded pass and
+    #    serve from the FIRST tier that answers (the degraded one) — high
+    #    latency beats fallthrough when the response is valid.
+    results.append(run_scenario(
+        "combined-stress",
+        [mock_provider("StormPrimary", port, "storm", n_keys=2),
+         mock_provider("DeadSecond", dead_port, "normal"),
+         mock_provider("Slow3rd", port, "slow5"),
+         fallback()],
+        expect_provider="Slow3rd", expect_wall=5.4, tolerance=2.5))
+
     # 6. HANG MEMO — the trickler breached the wall clock above, so (a) its
     #    read timeout is clamped for the next call, (b) select_best_tier stops
     #    promoting >90k-word long-context calls to a hung "Fable5".
     memo_ok = lc._recently_hung("Trickler")
     lc._note_hard_timeout("Fable5")
     tier = lc.select_best_tier(prompt_word_count=95_000, requires_long_context=True)
-    memo_routes = tier == lc.PROVIDER_IDX["GROQ_70B"]
+    # 2026-07-03 bulletproofing: the reroute target is now GEMINI (1M-token
+    # context actually FITS a >90k-word prompt; Groq's 128k would truncate).
+    # Groq-70B remains the accepted fail-open answer when Gemini is also out.
+    memo_routes = tier in (lc.PROVIDER_IDX["GEMINI"], lc.PROVIDER_IDX["GROQ_70B"])
     print(f"{'PASS' if memo_ok else 'FAIL'} hang-memo        Trickler remembered as hung")
-    print(f"{'PASS' if memo_routes else 'FAIL'} hang-reroute     >90k-word call routed to "
-          f"Groq-70B while Fable5 memo is fresh (tier={tier})")
+    print(f"{'PASS' if memo_routes else 'FAIL'} hang-reroute     >90k-word call avoids hung "
+          f"Fable5 -> Gemini/Groq (tier={tier})")
     results.append({"scenario": "hang-memo", "pass": bool(memo_ok)})
     results.append({"scenario": "hang-reroute", "pass": bool(memo_routes)})
 
