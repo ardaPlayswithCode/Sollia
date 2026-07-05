@@ -124,7 +124,134 @@ EXCLUDE_PATTERNS = [
     # A, represented 14% of total revenue") — a risk-factor fact, never a promise.
     r'(?i)sales to\s+(?:one|two|three|four|a single)\s+(?:direct|indirect)?\s*customers?',
     r'(?i)(?:direct|indirect)\s+customers?\b.{0,60}\b(?:accounted for|represented|purchas(?:ing|ed))',
+    # ── Accounting ESTIMATES (Part 3c, 2026-07-05) — note-disclosure schedules
+    # misread as management promises (NVDA had 3 BROKEN "future amortization
+    # expense" findings). These are bookkeeping projections, not commitments.
+    r'(?i)future amortization expense',
+    r'(?i)\bamortization\b.{0,60}\bintangible assets',
+    r'(?i)future minimum lease obligations',
+    r'(?i)estimated effect of this change',
+    r'(?i)\bwe account for\b',
+    r'(?i)\bwe classify\b',
+    r'(?i)our effective tax rate (?:differs|reflects?|depends?|(?:is|was|has been)\s+(?:affected|impacted|driven|subject|based))',
+    # ── Risk-factor hedges & necessity language (Part-8 audit, 2026-07-05):
+    # "There is no assurance that we will be able to ramp…" is a RISK
+    # DISCLAIMER — the opposite of a commitment — and was surfacing as a
+    # BROKEN promise. "We will (also) need to hire/train/ramp…" is necessity
+    # framing from Item 1A, not a pledge; Agent 4 owns that territory.
+    r'(?i)\b(?:there (?:is|can be) no assurance|no assurance that|'
+    r'we cannot (?:assure|guarantee)|cannot be assured)\b',
+    r'(?i)\bwe may not (?:be able to|have|succeed|realize|achieve)\b',
+    r'(?i)\bwe will (?:also\s+)?need to\b',
+    r'(?i)\bin order to be successful,?\s+we\b',
+    # ── Accounting-adoption / revenue-recognition schedules (Part 3c cont.):
+    # ASU adoption timing and ASC-606 "expect to recognize $X in the next 12
+    # months" remaining-performance-obligation boilerplate are bookkeeping
+    # calendars, not management promises.
+    r'(?i)\b(?:plan|expect|intend)s?\s+to\s+adopt\s+(?:the\s+)?(?:ASU|new accounting)',
+    r'(?i)\badoption of (?:the\s+)?ASU\b',
+    r'(?i)expect to recognize \$?\s*[\d.,]+\s*(?:million|billion)?\s*'
+    r'(?:of|in)\s+(?:revenue\s+)?(?:over\s+|in\s+)?the next (?:twelve|12) months',
+    # ── Document/header artifacts + corporate-action mechanics (Part 8 audit,
+    # 2026-07-05): press-release headers extracted as "promises" ("EX-99.1 2
+    # q1fy21pr.htm … FOR IMMEDIATE RELEASE …"), stock-split trading logistics
+    # ("Trading is expected to commence on a split-adjusted basis…"), and
+    # treasury scheduling ("We plan to make two estimated federal and state
+    # tax payments…") are operations of the calendar, not commitments.
+    r'(?i)\bEX-99\.\d',
+    r'(?i)FOR IMMEDIATE RELEASE',
+    r'(?i)\.htm\b.{0,40}PRESS RELEASE|PRESS RELEASE Document',
+    r'(?i)trading is expected to commence|split-adjusted basis|\brecord date\b',
+    r'(?i)estimated (?:federal|state)(?:\s+and\s+(?:federal|state))?\s+tax payments?',
+    # ── Press-release logistics (Part 3e, 2026-07-05) — earnings-call dates,
+    # webcast pointers and IR-contact blocks are event announcements, never
+    # promises (TSLA had 4 KEPT earnings-call-date findings at severity 3;
+    # NVDA a KEPT severity-10 press-release paragraph).
+    r'(?i)more information at\s+https?://',
+    r'(?i)conference call and webcast',
+    r'(?i)for further information,?\s+(?:please\s+)?contact',
+    r'(?i)will issue a brief advisory',
+    r'(?i)\bwhat\s*:\s*.{0,80}(?:financial results|earnings)',
+    r'(?i)\b(?:when|where)\s*:\s*(?:\d|http|www)',
+    r'(?i)(?:live\s+)?webcast\s+(?:of|will be|can be accessed)',
+    r'(?i)investor relations website|shareholder relations website',
+    r'(?i)replay\s+(?:of\s+the|will\s+be)\s*(?:call|webcast|available)?',
+    r'(?i)(?:earnings|results)\s+(?:conference\s+)?call\s+(?:is\s+)?(?:scheduled|will be held)',
 ]
+
+# ── Quarterly guidance signature (Part 3a, 2026-07-05): a near-term revenue /
+# margin outlook ("Revenue is expected to be $45 billion, plus or minus 2%",
+# "Outlook for the second quarter of fiscal ...") is GUIDANCE — re-issued every
+# quarter, superseded by the next print — not a strategic promise. It is
+# excluded from the candidate set at Stage 1; anything that still slips
+# through must never be auto-marked BROKEN when its short deadline passes.
+QUARTERLY_GUIDANCE_PATTERNS = [
+    r'(?i)(?:revenue|gross margins?|operating expenses?|tax rate)s?\s+(?:is|are)\s+'
+    r'expected to be\s+(?:approximately\s+)?[\$\d]',
+    r'(?i)\boutlook\b.{0,60}(?:first|second|third|fourth)\s+quarter',
+    r'(?i)(?:first|second|third|fourth)\s+quarter\s+(?:of\s+)?fiscal\s+\d{4}.{0,40}\b'
+    r'(?:outlook|guidance)',
+    r'(?i)plus or minus\s+\d+(?:\.\d+)?\s*(?:%|percent)',
+]
+_quarterly_guidance_re = [re.compile(p) for p in QUARTERLY_GUIDANCE_PATTERNS]
+
+
+def is_quarterly_guidance(sentence: str) -> bool:
+    """True for short-horizon quarterly guidance sentences (see above)."""
+    return any(pat.search(sentence or "") for pat in _quarterly_guidance_re)
+
+
+# ── Vague corporate filler (Part 3d, 2026-07-05): "We expect to continue
+# investing in our ecosystem" has no measurable outcome and no deadline —
+# filler, not a promise. A candidate whose only claim is a continue/evaluate/
+# monitor-style verb with NO number, NO date and NO concrete deliverable is
+# dropped before it costs an LLM call.
+_VAGUE_VERB_RE = re.compile(
+    r"(?i)\b(?:continue(?:s)?\s+to|will\s+(?:continue|evaluate|monitor|assess|"
+    r"review|seek|strive|explore)|expect(?:s)?\s+to\s+continue|remain\s+"
+    r"(?:focused|committed)|committed\s+to\s+(?:continuing|maintaining|investing))\b")
+_ANY_DIGIT_RE = re.compile(r"\d")
+_MONTH_RE = re.compile(
+    r"(?i)\b(?:january|february|march|april|may|june|july|august|september|"
+    r"october|november|december)\b")
+
+
+_YEARISH_RE = re.compile(
+    r"(?i)(?:fiscal\s*(?:year\s*)?|FY\s*|calendar\s*)?(?:19|20)\d{2}|Q[1-4]")
+
+# ── Completion language (Part 3b/8, 2026-07-05): a sentence REPORTING an
+# accomplishment. Used two ways: (1) KEPT/PARTIAL from the deterministic net
+# require it; (2) evidence-candidate ranking boosts it, so the sentence that
+# actually confirms a promise ("began shipping", "delivered $11.0 billion of
+# Blackwell architecture revenue") outranks keyword-matched boilerplate.
+_CONFIRM_RE = re.compile(
+    r"(?i)\b(?:achieved|completed|complet(?:ion|ed)|launched|shipped|"
+    r"delivered|reached|exceeded|surpassed|attained|opened|commenced|"
+    r"began\s+(?:production|shipping|deliveries|operations)|"
+    r"started\s+(?:production|shipping|deliveries)|closed\s+the|"
+    r"finalized|fulfilled|now\s+(?:available|shipping|in\s+production)|"
+    r"successfully|met\s+(?:our|the|its)\s+(?:target|goal|commitment))\b")
+
+
+def _evidence_confirms(ev_sentence: str) -> bool:
+    """True when the evidence sentence REPORTS an accomplishment rather than
+    restating the plan."""
+    return bool(_CONFIRM_RE.search(ev_sentence or ""))
+
+
+def is_vague_filler(sentence: str) -> bool:
+    """True when a sentence is future-flavored but carries no measurable
+    target: a vague continuation verb, no digits, no month/date token.
+    Bare year/quarter tokens don't count as measurable ("During fiscal year
+    2024, we will continue a flexible work environment" is still filler —
+    Part-8 audit 2026-07-05)."""
+    s = sentence or ""
+    if not _VAGUE_VERB_RE.search(s):
+        return False
+    stripped = _YEARISH_RE.sub(" ", s)
+    if _ANY_DIGIT_RE.search(stripped) or _MONTH_RE.search(stripped):
+        return False
+    return not any(pat.search(stripped) for pat in _metric_re)
 
 # ── PAST-TENSE RESULT BLOCK (2026-07-01 Part 2b) ────────────────────────────
 # Historical results kept leaking into the candidate set through the
@@ -387,6 +514,14 @@ def filter_candidate_sentences(
             continue
         if is_past_result(text) and not has_future_keyword(text):
             continue
+        # Part 3a: quarterly guidance is re-issued every quarter and superseded
+        # by the next print — track record belongs to guidance-vs-actuals, not
+        # the promise ledger.
+        if is_quarterly_guidance(text):
+            continue
+        # Part 3d: future-flavored filler with no measurable target.
+        if is_vague_filler(text):
+            continue
         if has_future_keyword(text) or has_metric_with_deadline(text):
             candidates.append(s)
     return candidates
@@ -395,7 +530,12 @@ def filter_candidate_sentences(
 def deduplicate_candidates(
     candidates: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """Remove exact duplicate sentences, keeping earliest occurrence."""
+    """Remove duplicate sentences, keeping earliest occurrence.
+
+    Exact-match first, then NEAR-duplicates (Part-8 audit, 2026-07-05): the
+    same disclosure re-filed with a word drifted ("will no longer exclude" vs
+    "no longer exclude") produced twin BROKEN findings. Word-set containment
+    ≥90% on sentences sharing the same first-5 significant words = duplicate."""
     seen = {}
     for c in candidates:
         key = c["text"].lower().strip()
@@ -405,7 +545,27 @@ def deduplicate_candidates(
                 seen[key] = c
         else:
             seen[key] = c
-    return list(seen.values())
+    uniq = list(seen.values())
+
+    def _sig(t):
+        return [w for w in re.findall(r"[a-z0-9]+", (t or "").lower()) if len(w) > 3]
+
+    out = []
+    kept_sigs: List[Tuple[Tuple[str, ...], set, Dict[str, Any]]] = []
+    for c in sorted(uniq, key=lambda x: x.get("filing_date", "")):
+        words = _sig(c["text"])
+        head, wset = tuple(words[:5]), set(words)
+        dup = False
+        for k_head, k_set, _k in kept_sigs:
+            if head == k_head and wset and k_set:
+                inter = len(wset & k_set)
+                if inter >= 0.9 * min(len(wset), len(k_set)):
+                    dup = True
+                    break
+        if not dup:
+            kept_sigs.append((head, wset, c))
+            out.append(c)
+    return out
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,12 +612,17 @@ def _set_llm_cache(prompt_hash: str, prompt: str, response: str, model: str):
 
 
 def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0,
-              requires_long_context: bool = False) -> Tuple[str, str]:
+              requires_long_context: bool = False,
+              requires_strict_json: bool = False) -> Tuple[str, str]:
     """Call LLM using universal config. Returns (response_text, model_used).
 
     provider_idx (PART 4c) selects the chain START tier so Stage 1's high-volume
     batching (Groq-8B) and Stage 2's single quality pass (Groq-70B) hit different
-    per-model token budgets and don't starve each other or the other agents."""
+    per-model token budgets and don't starve each other or the other agents.
+    requires_strict_json (Part-8 audit, 2026-07-05): Stage 2's verdict JSON must
+    never be adjudicated by a json_weak tier — under a Groq-70B drought it fell
+    through to Groq-8B, which returned wrong-period matches and "contradicts"
+    verdicts on CONFIRMING evidence."""
     import hashlib
     import json as _json
     prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
@@ -469,7 +634,8 @@ def _call_llm(prompt: str, max_tokens: int = 2000, provider_idx: int = 0,
     try:
         text, meta = _call_llm_config(prompt, max_tokens=max_tokens, temperature=0.0,
                                       provider_idx=provider_idx,
-                                      requires_long_context=requires_long_context)
+                                      requires_long_context=requires_long_context,
+                                      requires_strict_json=requires_strict_json)
         model = meta.get("model", "unknown")
         if text:
             _set_llm_cache(prompt_hash, prompt, text, model)
@@ -789,9 +955,14 @@ class PromiseAuditAgent:
             try:
                 # requires_long_context: jumbo evidence-matching batches (>8k
                 # words) route to Fable 5's 200K context via the dynamic router.
+                # requires_strict_json (Part-8 audit): the verdict JSON must
+                # skip json_weak tiers on 429 fallthrough — Groq-8B adjudicated
+                # a drought batch with wrong-period matches and inverted
+                # "contradicts" verdicts.
                 resp, model = _call_llm(prompt, max_tokens=4000,
                                         provider_idx=_start_tier("promise_audit:stage2"),
-                                        requires_long_context=True)
+                                        requires_long_context=True,
+                                        requires_strict_json=True)
             except Exception as e:
                 # An LLM failure must NOT crash the agent — defer to the deterministic
                 # net below so every promise still gets an honest verdict.
@@ -822,8 +993,9 @@ class PromiseAuditAgent:
 
         # ── Deterministic safety net (3-tier, honest) ────────────────
         # Runs for any promise the LLM left unmatched (failure, overflow, or no
-        # evidence). NEVER blanket-marks KEPT: tiers by significant-word overlap.
-        #   >= 5 overlap -> KEPT, 3-4 -> PARTIAL, < 3 -> UNRESOLVED.
+        # evidence). NEVER blanket-marks KEPT: overlap selects the candidate
+        # evidence, but KEPT/PARTIAL additionally require CONFIRMATION language
+        # in the evidence itself (Part 3b).
         _STOP = {"will", "that", "this", "with", "from", "have", "been", "were",
                  "into", "your", "their", "would", "shall", "which", "about",
                  "company", "during", "these", "those", "such", "other"}
@@ -831,6 +1003,9 @@ class PromiseAuditAgent:
         def _sig_words(s):
             return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower())
                     if len(w) > 3 and w not in _STOP}
+
+        # (module-level _CONFIRM_RE / _evidence_confirms are used here AND in
+        # the evidence-candidate ranking — see their definitions above.)
 
         resolved_pids = {r.get("promise_id", "") for r in evidence_results}
         unmatched = [p for p in promises if p.get("promise_id", "") not in resolved_pids]
@@ -849,10 +1024,21 @@ class PromiseAuditAgent:
                 # Drop circular self-matches (evidence drawn from the promise's own filing).
                 if best_ev and best_ev.get("htm_url", "") == p.get("promise_url", ""):
                     best_ev, best_score = None, 0
-                if best_ev and best_score >= 5:
-                    status, reason = "KEPT", "Strong keyword overlap with later filing"
+                # Part 3b (2026-07-05): keyword overlap alone NEVER proves a
+                # promise was kept — the same boilerplate re-appearing in a
+                # later filing shares every keyword. KEPT/PARTIAL now require
+                # the evidence to actually REPORT completion (an achievement
+                # verb); overlap without confirmation is honestly UNRESOLVED.
+                if best_ev and best_score >= 5 and _evidence_confirms(best_ev.get("sentence", "")):
+                    status, reason = "KEPT", ("Later filing reports completion "
+                                              "of the promised action")
+                elif best_ev and best_score >= 3 and _evidence_confirms(best_ev.get("sentence", "")):
+                    status, reason = "PARTIAL", ("Later filing reports progress "
+                                                 "on the promised action")
                 elif best_ev and best_score >= 3:
-                    status, reason = "PARTIAL", "Partial keyword overlap with later filing"
+                    status, reason, best_ev = "UNRESOLVED", (
+                        "Same disclosure found in later filing — no independent "
+                        "confirmation."), None
                 else:
                     status, reason, best_ev = "UNRESOLVED", "No corroborating evidence in later filings", None
                 evidence_results.append({
@@ -923,12 +1109,21 @@ class PromiseAuditAgent:
                 p["status"] = "PENDING"
                 p["reasoning"] = "Evidence from same filing as promise — excluded" 
             
-            # Circular self-match: evidence text that is the SAME sentence as the
-            # promise (the disclosure copied verbatim into a later filing) is not
+            # Circular self-match: evidence that is the SAME sentence as the
+            # promise (the disclosure re-printed in a later filing) is not
             # independent confirmation, even when the filing URL differs.
-            _et = re.sub(r"\s+", " ", (p.get("evidence_text") or "")).strip().lower()[:100]
-            _pt = re.sub(r"\s+", " ", (p.get("text") or "")).strip().lower()[:100]
-            if _et and _et == _pt:
+            # Part 3b extension (2026-07-05): NEAR-identical counts too — a
+            # boilerplate restatement with a few words drifted is still the
+            # same disclosure, not proof of completion. Applies to KEPT/PARTIAL
+            # only (a restatement can't confirm; it can still be evidence the
+            # topic is alive for other statuses).
+            _et = re.sub(r"\s+", " ", (p.get("evidence_text") or "")).strip().lower()
+            _pt = re.sub(r"\s+", " ", (p.get("text") or "")).strip().lower()
+            _same = _et and _et[:100] == _pt[:100]
+            if not _same and _et and _pt and p.get("status") in ("KEPT", "PARTIAL"):
+                import difflib
+                _same = difflib.SequenceMatcher(None, _et[:300], _pt[:300]).ratio() >= 0.8
+            if _same:
                 p["status"] = "UNRESOLVED"
                 p["evidence_text"] = ""
                 p["evidence_url"] = ""
@@ -946,9 +1141,27 @@ class PromiseAuditAgent:
                     dl_date = date.fromisoformat(p["deadline_date"])
                     p_filing = p.get("source", {}).get("filing_date", "")
                     is_forward_looking = (not p_filing) or (p["deadline_date"] > p_filing)
+                    # Part 3a: short-horizon quarterly guidance (outlook + $
+                    # figure + <120-day window) is superseded by the next
+                    # earnings print — an expired window is not a broken
+                    # promise. Belt-and-braces: Stage 1 already excludes the
+                    # signature; anything that slips through goes PENDING.
+                    _guidance = is_quarterly_guidance(p.get("text", ""))
+                    if _guidance and p_filing:
+                        try:
+                            _days = (dl_date - date.fromisoformat(p_filing)).days
+                            _guidance = 0 <= _days < 120
+                        except (ValueError, TypeError):
+                            pass
                     if is_forward_looking and dl_date < date.today():
-                        p["status"] = "BROKEN"
-                        p["reasoning"] = f"Deadline {p['deadline_date']} has passed with no evidence of completion"
+                        if _guidance:
+                            p["status"] = "PENDING"
+                            p["reasoning"] = ("Quarterly guidance — resolved by the "
+                                              "subsequent earnings report, not "
+                                              "tracked as a standing promise.")
+                        else:
+                            p["status"] = "BROKEN"
+                            p["reasoning"] = f"Deadline {p['deadline_date']} has passed with no evidence of completion"
                 except (ValueError, TypeError):
                     pass
         
@@ -1364,7 +1577,13 @@ def _search_evidence_fast(
                     "match_count": matches,
                 })
     
-    candidates.sort(key=lambda x: x["match_count"], reverse=True)
+    # Completion-reporting sentences outrank keyword-tied boilerplate (Part 8
+    # audit, 2026-07-05): the sentence that actually CONFIRMS a promise
+    # ("delivered $11.0 billion of Blackwell architecture revenue") was
+    # getting crowded out of the candidate cap by generic re-statements.
+    candidates.sort(key=lambda x: (x["match_count"] +
+                                   (2 if _evidence_confirms(x["sentence"]) else 0)),
+                    reverse=True)
     return candidates[:STAGE2_TOP_N_CANDIDATES]
 
 
@@ -1457,7 +1676,13 @@ def search_evidence_candidates(
                 })
     
     # Sort by match count and take top N
-    candidates.sort(key=lambda x: x["match_count"], reverse=True)
+    # Completion-reporting sentences outrank keyword-tied boilerplate (Part 8
+    # audit, 2026-07-05): the sentence that actually CONFIRMS a promise
+    # ("delivered $11.0 billion of Blackwell architecture revenue") was
+    # getting crowded out of the candidate cap by generic re-statements.
+    candidates.sort(key=lambda x: (x["match_count"] +
+                                   (2 if _evidence_confirms(x["sentence"]) else 0)),
+                    reverse=True)
     return candidates[:STAGE2_TOP_N_CANDIDATES]
 
 

@@ -159,9 +159,15 @@ LLM_PROVIDERS: List[Dict[str, Any]] = [
      "key_envs": _GROQ_KEYS},
     # ── #3 FALLBACK — Groq llama-3.1-8b. Fastest; same account as Groq-70B but a
     #    SEPARATE per-model TPM bucket (6k), so 70B+8B together ≈ 18k TPM.
+    #    json_weak (2026-07-04 speed audit): 950 Agent-1 classify calls landed here
+    #    via 429 fallthrough and 100% answered the strict-JSON array shape with
+    #    PROSE ("After comparing the passages…"), 88% truncated at the token cap —
+    #    every one parsed to [] and silently dropped findings. Strict-JSON calls
+    #    now skip this tier the same way they skip Nemotron; free-form calls
+    #    (promise stage1, constraint sector-select) still start here by design.
     {"name": "Groq-8B", "url": "https://api.groq.com/openai/v1/chat/completions",
      "model": "llama-3.1-8b-instant", "key_env": "GROQ_API_KEY", "tier": "fallback",
-     "key_envs": _GROQ_KEYS},
+     "key_envs": _GROQ_KEYS, "json_weak": True},
     # ── #4 FALLBACK — Gemini 2.5 Flash. INDEPENDENT Google account = real resilience
     #    when Groq's single account rate-limits. OpenAI-compatible endpoint, ~1.3s.
     #    payload_extra (2026-07-03 JSON-format audit): 2.5-flash THINKS by default
@@ -744,17 +750,36 @@ HISTORY_ENABLED = os.environ.get("SOLLIA_LLM_HISTORY", "1") not in ("0", "false"
 # ---------------------------------------------------------------------------
 # Thread-safe shared state
 # ---------------------------------------------------------------------------
-# Part 3a: max concurrent LIVE LLM calls across all agents (cache hits bypass).
-# 6 parallel agents sharing one Groq account used to stampede the per-model TPM
-# and burn wall time on 429 retries; 3-at-a-time takes turns instead.
+# PER-ORG concurrency (2026-07-04 speed audit). Rate limits live per
+# (provider-family, org) BUCKET — Groq's three orgs each have independent
+# 30-RPM/TPM windows, and OpenRouter/Gemini are one account-bucket each. The
+# old design serialized ALL of them behind one global semaphore, one global
+# 0.3s inter-call spacing, and one global 30s 429-cooldown, so a dry
+# mac_studio bucket paused berkeley and heysollia too and the 3-org capacity
+# was never used. Now each bucket gets its own semaphore (LLM_MAX_CONCURRENCY
+# concurrent calls PER ORG), its own inter-call spacing, and its own cooldown;
+# a global cooldown remains ONLY for the "entire chain 429'd" case, which
+# genuinely means every bucket is dry.
 LLM_MAX_CONCURRENCY = int(os.environ.get("SOLLIA_LLM_MAX_CONCURRENCY", "3"))
-_LLM_SEMAPHORE = threading.Semaphore(LLM_MAX_CONCURRENCY)
 
-_rate_lock = threading.Lock()       # guards _last_request_time + _cooldown_until
 _index_lock = threading.Lock()      # guards index.jsonl appends
-_last_request_time = 0.0
-_cooldown_until = 0.0
+_bucket_lock = threading.Lock()     # guards _bucket_last/_bucket_cooldown/_cooldown_until
+_bucket_last: Dict[Tuple[str, str], float] = {}      # (family, org) -> last reserved slot
+_bucket_cooldown: Dict[Tuple[str, str], float] = {}  # (family, org) -> cooldown expiry
+_cooldown_until = 0.0               # global: set only when a FULL chain pass 429'd
+_bucket_sems: Dict[Tuple[str, str], threading.Semaphore] = {}
+_sems_lock = threading.Lock()
 _ctx = threading.local()            # per-thread {agent, ticker, stage} attribution
+
+
+def _bucket_sem(family: str, org: str) -> threading.Semaphore:
+    """Lazily-created semaphore bounding concurrent LIVE calls per rate bucket."""
+    with _sems_lock:
+        sem = _bucket_sems.get((family, org))
+        if sem is None:
+            sem = threading.Semaphore(LLM_MAX_CONCURRENCY)
+            _bucket_sems[(family, org)] = sem
+        return sem
 
 
 # ===========================================================================
@@ -867,6 +892,7 @@ def _record_history(record: Dict[str, Any]) -> None:
             "call_id": record["call_id"], "timestamp": record["timestamp"],
             "agent": record["agent"], "stage": record["stage"], "ticker": record["ticker"],
             "provider": record["provider"], "model": record["model"],
+            "org": record.get("org", ""), "key_env": record.get("key_env", ""),
             "cached": record["response"].get("cached", False),
             "prompt_tokens": record["prompt"]["token_count"],
             "response_tokens": record["response"]["token_count"],
@@ -928,28 +954,42 @@ def _build_record(call_id, agent, stage, ticker, provider, model, temperature,
 # ===========================================================================
 # Rate-limit gate, cooldown, backoff (Part 1c)
 # ===========================================================================
-def _rate_gate() -> None:
-    """Block until it is safe to issue the next request: honors the global 429
-    cooldown, then enforces minimum inter-call spacing. Thread-safe."""
-    global _last_request_time
-    with _rate_lock:
+def _rate_gate(family: str, org: str) -> None:
+    """Block until it is safe to issue the next request AGAINST THIS BUCKET:
+    honors the global full-chain cooldown, the bucket's own 429 cooldown, and
+    the bucket's inter-call spacing. Reservation pattern: the next slot is
+    claimed under the lock, the wait happens OUTSIDE it, so one bucket's
+    cooldown never blocks another bucket's callers."""
+    bucket = (family, org)
+    with _bucket_lock:
         now = time.time()
-        if now < _cooldown_until:
-            time.sleep(_cooldown_until - now)  # deliberate: global pause, all callers wait
-            now = time.time()
-        elapsed = now - _last_request_time
-        if elapsed < RATE_LIMIT:
-            time.sleep(RATE_LIMIT - elapsed)
-        _last_request_time = time.time()
+        start = max(now,
+                    _bucket_last.get(bucket, 0.0) + RATE_LIMIT,
+                    _bucket_cooldown.get(bucket, 0.0),
+                    _cooldown_until)
+        _bucket_last[bucket] = start   # reserve this bucket's next slot
+    if start > now:
+        time.sleep(start - now)
+
+
+def _trigger_bucket_cooldown(family: str, org: str,
+                             retry_after: Optional[float]) -> None:
+    """One bucket returned 429 -> rest THAT bucket only; the other orgs'
+    windows are independent and keep serving."""
+    dur = min(retry_after, RETRY_AFTER_CAP) if retry_after else RATE_LIMIT
+    with _bucket_lock:
+        _bucket_cooldown[(family, org)] = max(
+            _bucket_cooldown.get((family, org), 0.0), time.time() + dur)
 
 
 def _trigger_cooldown(retry_after: Optional[float]) -> None:
-    """A provider returned 429 -> pause ALL calls. Honors Retry-After if larger."""
+    """An ENTIRE chain pass 429'd (every provider, every org) -> only then is
+    a global pause justified. Honors Retry-After if larger."""
     global _cooldown_until
     dur = RATE_LIMIT_COOLDOWN
     if retry_after:
         dur = max(dur, min(retry_after, RETRY_AFTER_CAP))
-    with _rate_lock:
+    with _bucket_lock:
         _cooldown_until = max(_cooldown_until, time.time() + dur)
 
 
@@ -1289,20 +1329,15 @@ def call_llm(prompt: str, max_tokens: int = 400, temperature: float = 0.0,
     prev_errors: List[str] = []
     paid_skipped_by_cap = False
 
-    # LLM CONCURRENCY SEMAPHORE (Part 3a): the pipeline runs 6 agents in
-    # parallel and they share the free tiers' per-model rate limits. Serializing
-    # live calls down to LLM_MAX_CONCURRENCY turns "everyone 429s and retries"
-    # into "calls take turns" — same or better wall time, no wasted retries.
-    # Cache hits return above WITHOUT touching the semaphore.
-    _LLM_SEMAPHORE.acquire()
-    try:
-        return _call_llm_chain(prompt, max_tokens, temperature, effective_idx,
-                               prompt_wc, cache_path, call_id,
-                               r_agent, r_stage, r_ticker,
-                               prev_errors, paid_skipped_by_cap,
-                               requires_strict_json)
-    finally:
-        _LLM_SEMAPHORE.release()
+    # Concurrency is bounded PER RATE BUCKET inside the chain loop (see
+    # _bucket_sem): each Groq org / provider account admits LLM_MAX_CONCURRENCY
+    # concurrent live calls independently, so the three Groq orgs genuinely
+    # serve in parallel. Cache hits return above without touching any gate.
+    return _call_llm_chain(prompt, max_tokens, temperature, effective_idx,
+                           prompt_wc, cache_path, call_id,
+                           r_agent, r_stage, r_ticker,
+                           prev_errors, paid_skipped_by_cap,
+                           requires_strict_json)
 
 
 def _provider_keys(provider: Dict[str, Any]) -> List[str]:
@@ -1316,6 +1351,20 @@ def _provider_keys(provider: Dict[str, Any]) -> List[str]:
             keys.append(v)
     return keys
 
+
+def _env_name_of_key(provider: Dict[str, Any], api_key: str) -> str:
+    """Resolve which env var supplied a live key value (for per-call org/key
+    logging — the NAME is logged, never the value)."""
+    for e in (provider.get("key_envs") or [provider.get("key_env", "")]):
+        if e and os.environ.get(e, "") == api_key:
+            return e
+    return "?"
+
+
+# Per-call serving log (Part-0 speed audit): every live LLM call logs which
+# provider/org/key served it so org distribution is verifiable in the backend
+# log. Disable with SOLLIA_LLM_CALL_LOG=0.
+CALL_LOG = os.environ.get("SOLLIA_LLM_CALL_LOG", "1") not in ("0", "false", "False")
 
 _key_rotation_lock = threading.Lock()
 _key_rotation_counters: Dict[str, int] = {}
@@ -1353,11 +1402,26 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
     total_attempts = 0
     total_attempts_holder = [0]
     chain_pass = 0
+    # PAID LAST-RESORT (2026-07-04 speed audit): the chain historically ran
+    # effective_idx..end, so a call starting at Groq-70B could NEVER reach the
+    # funded tier-0 — under a free-tier 429 storm it burned 3 full passes
+    # (backoffs + cooldowns, minutes of wall time) and FAILED outright (114
+    # such failures on 2026-07-04, each a silently dropped classify batch).
+    # Now, when every free tier is saturated, Fable 5 is tried LAST — gated by
+    # the same per-run cost cap, and only for prompts under 2500 words (the
+    # shape it measured clean on; the 2.8k-word strict-JSON shape is 0/3).
+    tier_order = list(range(effective_idx, len(LLM_PROVIDERS)))
+    if effective_idx > 0 and prompt_wc < 2500 and requires_strict_json:
+        # Strict-JSON calls only: those are the quality-critical classify/
+        # comparison shapes whose failure silently drops findings. High-volume
+        # free-form calls (promise stage1) degrade gracefully instead of
+        # burning the cost cap.
+        tier_order.append(0)
     for chain_pass in range(MAX_CHAIN_RETRIES):
         pass_had_429 = False
         pass_retry_after: Optional[float] = None
 
-        for idx in range(effective_idx, len(LLM_PROVIDERS)):
+        for idx in tier_order:
             provider = LLM_PROVIDERS[idx]
             # A model measured incapable of a strict-JSON shape (json_weak) is
             # never given a strict-JSON task — 429 fallthrough included
@@ -1424,28 +1488,39 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
             # tier. Every outcome feeds NETWORK_MONITOR for routing.
             orgs_429: set = set()
             n_orgs = len({_org_of_key(provider["name"], k) for k in api_keys})
+            family = _provider_family(provider["name"])
             for k_i, api_key in enumerate(api_keys):
                 org = _org_of_key(provider["name"], api_key)
                 if org in orgs_429:
                     continue  # this org's shared bucket already proved dry
+                # PER-ORG concurrency: admit LLM_MAX_CONCURRENCY concurrent
+                # calls per bucket. If this org is at capacity and another key
+                # (usually another org — the list is org-interleaved) remains,
+                # hop instead of queueing; on the final candidate, wait.
+                sem = _bucket_sem(family, org)
+                if not sem.acquire(blocking=False):
+                    if k_i < len(api_keys) - 1:
+                        continue
+                    sem.acquire()
                 headers = {"Content-Type": "application/json",
                            "Authorization": f"Bearer {api_key}"}
                 if "openrouter.ai" in provider["url"]:
                     headers["HTTP-Referer"] = "https://sollia.app"
                     headers["X-Title"] = "Sollia"
-                _rate_gate()
                 total_attempts_holder[0] += 1
-                t0 = time.time()
                 # Reliability-under-stress (network-condition pass): a provider
                 # that recently breached the wall-clock guard gets a clamped
                 # timeout so a repeat stall costs seconds, not minutes.
                 read_timeout = int(provider.get("timeout", REQUEST_TIMEOUT))
                 if _recently_hung(provider["name"]):
                     read_timeout = int(min(read_timeout, HUNG_PROVIDER_TIMEOUT))
+                _rate_gate(family, org)
+                t0 = time.time()
                 try:
                     resp = _post_with_wallclock(provider["url"], headers, payload,
                                                 read_timeout)
                 except Exception as exc:  # network/timeout/hang -> try next provider
+                    sem.release()
                     hard = isinstance(exc, LLMHardTimeout)
                     if hard:
                         _note_hard_timeout(provider["name"])
@@ -1455,11 +1530,14 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                     prev_errors.append(f"{provider['name']}: {type(exc).__name__}: {str(exc)[:120]}")
                     resp = None
                     break
+                sem.release()
                 _latency_ms = (time.time() - t0) * 1000.0
+                _ra_429 = _parse_retry_after(resp) if resp.status_code == 429 else None
                 NETWORK_MONITOR.record_result(
                     provider["name"], org, resp.status_code, _latency_ms,
-                    retry_after=_parse_retry_after(resp) if resp.status_code == 429 else None)
+                    retry_after=_ra_429)
                 if resp.status_code == 429:
+                    _trigger_bucket_cooldown(family, org, _ra_429)
                     orgs_429.add(org)
                     if len(orgs_429) >= n_orgs:
                         if n_orgs > 1:
@@ -1497,6 +1575,12 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                     continue
                 usage = data.get("usage")
                 total_ms = (time.time() - t0) * 1000.0
+                served_env = _env_name_of_key(provider, api_key)
+                if CALL_LOG:
+                    print(f"[LLM] {provider['name']} org={org} key={served_env} "
+                          f"{int(total_ms)}ms agent={r_agent or '-'} stage={r_stage or '-'} "
+                          f"tok={(usage or {}).get('prompt_tokens', '?')}/"
+                          f"{(usage or {}).get('completion_tokens', '?')}", flush=True)
                 # persist byte-identical cache
                 try:
                     with open(cache_path, "w") as f:
@@ -1508,6 +1592,8 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                                     provider["model"], temperature, max_tokens, prompt,
                                     result, usage, False, total_ms,
                                     chain_pass + 1, total_attempts, prev_errors)
+                rec["org"] = org
+                rec["key_env"] = served_env
                 _record_history(rec)
                 _budget_record_outcome(True)
                 cost = estimate_cost(provider["model"], usage)
@@ -1519,6 +1605,7 @@ def _call_llm_chain(prompt, max_tokens, temperature, effective_idx, prompt_wc,
                 return result, {"cached": False, "provider": provider["name"],
                                 "model": provider["model"], "retries": chain_pass,
                                 "attempts": total_attempts,
+                                "org": org, "key_env": served_env,
                                 "cost_usd": cost}
 
             if resp.status_code == 429:
@@ -1601,6 +1688,19 @@ for _env, _status in check_api_keys().items():
     if _status in ("placeholder", "too_short"):
         print(f"[llm_config] WARNING: {_env} appears to be a {_status} value — "
               "check sollia_working/.env.", flush=True)
+
+# Startup org wiring report (Part-0 speed audit): prove which Groq orgs the
+# RUNNING process actually loaded. Env NAMES only — key values never print.
+_org_counts = {org: sum(1 for e in envs if os.environ.get(e))
+               for org, envs in GROQ_ORG_KEYS.items()}
+print("[llm_config] Groq orgs wired: "
+      + ", ".join(f"{o}×{n}" for o, n in _org_counts.items())
+      + f" | key order: {', '.join(_GROQ_KEYS[:6])}…"
+      + f" | OpenRouter keys: {sum(1 for e in _OPENROUTER_KEYS if os.environ.get(e))}"
+      + f" | per-org concurrency: {LLM_MAX_CONCURRENCY}", flush=True)
+if any(n == 0 for n in _org_counts.values()):
+    print("[llm_config] WARNING: a Groq org has NO keys in the environment — "
+          f"{_org_counts} — multi-org throughput is degraded.", flush=True)
 
 
 def verify_llm_client(fatal: bool = False) -> bool:

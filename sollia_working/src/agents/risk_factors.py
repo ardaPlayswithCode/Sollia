@@ -259,10 +259,12 @@ def extract_risk_factors(text: str) -> str:
 
     a_starts = [m.start() for m in re.finditer(r"item\s*1a\b", clean, re.IGNORECASE)]
     if not a_starts:
-        return ""
+        # Part 6: SPAC-era / recent-IPO filings sometimes head the section
+        # with a bare "RISK FACTORS" and no Item-1A label.
+        return _extract_rf_fallback(clean)
     start = _find_genuine_1a_start(clean, a_starts)
     if start is None:
-        return ""
+        return _extract_rf_fallback(clean)
 
     rest = clean[start + 8:]
     end_rel = None
@@ -276,20 +278,90 @@ def extract_risk_factors(text: str) -> str:
     section = clean[start:end]
     section = re.sub(r"item\s*1a[\.\:\)\s]*risk\s*factors\s*\(continued\)", " ",
                      section, flags=re.IGNORECASE)
+    # Inline page-break artifacts (Part 1 quote-verification fix, 2026-07-04):
+    # PDF-style pagination survives HTML stripping as "… subject 14 Table of
+    # Contents to a number …" INSIDE sentences. The LLM (correctly) quotes the
+    # sentence without the junk, then verification fails against the polluted
+    # source. Never legitimate prose: real crossrefs say "the Table of
+    # Contents", never "<number> Table of Contents".
+    section = re.sub(r"\b\d{1,4}\s+table\s+of\s+contents\b", " ", section,
+                     flags=re.IGNORECASE)
     section = re.sub(r"\s+", " ", section).strip()
+    # TINY-SECTION FALL-THROUGH (Part-8 audit, 2026-07-05): GE's primary doc
+    # carries only a cross-reference INDEX row ("Item 1A. Risk Factors 24-31")
+    # and heads the real section "RISK FACTORS. The following discussion…" —
+    # the Item-1A path then "succeeds" with a 27-char stub and the comparison
+    # reports a false "no material changes". No genuine Item 1A is this short.
+    if len(section) < 2000:
+        fb = _extract_rf_fallback(clean)
+        if len(fb) > len(section):
+            return fb
     # Defang injection directives in this UNTRUSTED section before it feeds the
     # comparison prompt or is surfaced as a change quote (Part 3a, 2026-07-02).
     # No-op on genuine filing text (verified across 948 real docs).
     return neutralize_injections(section)
 
 
+_SEC_ERROR_MARKERS = ("Request Rate Threshold Exceeded", "Undeclared Automated Tool",
+                      "For security purposes, and to ensure that the public service remains available")
+
+
+def _is_sec_error_page(html: Optional[str]) -> bool:
+    """True when the 'filing text' is actually SEC EDGAR's HTTP-200 throttle /
+    block page — must never be cached or parsed as a filing."""
+    return bool(html) and any(m in html for m in _SEC_ERROR_MARKERS)
+
+
+def _extract_rf_fallback(clean: str) -> str:
+    """Fallback Item 1A extraction for filings that label the section without
+    the standard 'Item 1A' header (SPAC-era / recent-IPO documents): anchor on
+    a standalone 'RISK FACTORS' heading followed by risk prose, ending at the
+    next Item/section marker (Part 6, 2026-07-04)."""
+    if not clean:
+        return ""
+    for m in re.finditer(r"RISK\s+FACTORS", clean):
+        after = clean[m.end():m.end() + 400].lower()
+        # A real section start is followed by risk prose, not a page number
+        # (TOC row) or another heading. GE-style integrated reports open with
+        # "RISK FACTORS. The following discussion of the material factors,
+        # events and uncertainties…".
+        if not re.search(r"(summary of|carefully consider|principal risks|"
+                         r"following risks|following discussion|material factors|"
+                         r"events and uncertainties|our business|investing in)", after):
+            continue
+        rest = clean[m.end():]
+        end_rel = None
+        for pat in (r"item\s*1b\b", r"unresolved\s+staff\s+comments",
+                    r"item\s*1c\b", r"item\s*2\b\s*[\.\:]?\s*propert",
+                    # Integrated-report body headings (no Item labels):
+                    r"\bLEGAL PROCEEDINGS\b", r"\bMINE SAFETY\b",
+                    r"\bMANAGEMENT[’']S DISCUSSION\b",
+                    r"\bQUANTITATIVE AND QUALITATIVE\b"):
+            em = re.search(pat, rest) if pat.startswith(r"\b") else \
+                 re.search(pat, rest, re.IGNORECASE)
+            if em and em.start() > 500:
+                end_rel = em.start() if end_rel is None else min(end_rel, em.start())
+        end = m.end() + end_rel if end_rel is not None else min(len(clean), m.end() + 250000)
+        section = clean[m.start():end]
+        section = re.sub(r"\b\d{1,4}\s+table\s+of\s+contents\b", " ", section,
+                         flags=re.IGNORECASE)
+        section = re.sub(r"\s+", " ", section).strip()
+        if len(section) > 2000:  # a genuine section, not a stray heading
+            return neutralize_injections(section)
+    return ""
+
+
 def _norm(s: Optional[str]) -> str:
     """Normalize for quote matching: drop smart/straight quotes, collapse
-    whitespace, lowercase."""
+    whitespace, lowercase. Also drops inline "<n> Table of Contents" page
+    artifacts on BOTH sides so a quote can never fail verification over
+    pagination junk (Part 1, 2026-07-04)."""
     if not s:
         return ""
     s = re.sub(r"[‘’“”\"']", "", s)
-    return re.sub(r"\s+", " ", s).strip().lower()
+    s = re.sub(r"\s+", " ", s).strip().lower()
+    s = re.sub(r"\b\d{1,4} table of contents\b", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def _verify_quote(quote: Optional[str], source: str) -> Optional[bool]:
@@ -308,6 +380,75 @@ def _verify_quote(quote: Optional[str], source: str) -> Optional[bool]:
     cut = max(1, int(len(q) * 0.8))
     probe = q[:cut]
     return len(probe) >= 20 and probe in src
+
+
+def _reground_quote(quote: Optional[str], source: str) -> Optional[str]:
+    """Repair a non-verbatim LLM quote by re-anchoring it to the SOURCE text.
+
+    The measured failure modes (TSLA 2026-07-04 audit) both start verbatim:
+    the model either STITCHES two non-adjacent sentences together ("…manage
+    these components effectively." + "For example, as companies…") or rewrites
+    a later clause ("licenses and permitting" → "licenses and approvals for
+    additional expansion"). Anchor on the quote's opening words, then return
+    the SOURCE's own text from that anchor to a sentence boundary near the
+    original quote's length — verbatim by construction. Returns None when even
+    the opening words can't be found (a from-the-first-word paraphrase)."""
+    q = (quote or "").strip().rstrip("…").strip()
+    if len(q) < 40 or not source:
+        return None
+    words = q.split()
+    for n in (10, 8, 6, 5):
+        if len(words) < n:
+            continue
+        pat = r"\s+".join(re.escape(w) for w in words[:n])
+        # Smart-vs-straight apostrophes/quotes must not break the anchor.
+        pat = re.sub(r"['’‘]", "['’‘]", pat).replace('"', '["“”]')
+        m = re.search(pat, source, re.IGNORECASE)
+        if not m:
+            continue
+        window = source[m.start(): m.start() + len(q) + 300]
+        ends = [e.end() for e in re.finditer(r"[.!?](?=\s|$)", window)]
+        cut = next((e for e in ends if e >= int(len(q) * 0.85)), None)
+        if cut is None:
+            cut = next((e for e in reversed(ends) if e >= int(len(q) * 0.5)), None)
+        repaired = window[:cut].strip() if cut else window[:len(q)].strip()
+        return repaired or None
+    return None
+
+
+def _is_referral_stub(rf_text: str) -> bool:
+    """True when a 10-Q's Item 1A is ONLY a referral back to the annual
+    report's risk factors ("…subject to … the factors discussed in Part I,
+    Item 1A, Risk Factors in our Annual Report on Form 10-K…") with no
+    substantive updates. Such a section documents NO changes — comparing it
+    against the 10-K can only produce hallucinated findings."""
+    t = _norm(rf_text)
+    if not t or len(t) > 900:
+        return False
+    # "No material changes" in a short section is conclusive on its own
+    # (OKLO: "There are no material changes to the risk factors previously
+    # disclosed under the Risk Factors section in ... Form 10-K").
+    no_changes = "no material change" in t
+    refers = ("form 10-k" in t or "annual report" in t) and any(
+        p in t for p in ("discussed in", "described in", "set forth in",
+                         "referred to in", "included in", "contained in",
+                         "disclosed under", "disclosed in", "previously disclosed"))
+    has_updates = any(p in t for p in ("except", "other than", "the following",
+                                       "updated", "supplement", "in addition"))
+    return (no_changes or refers) and not has_updates
+
+
+def _verify_or_repair(quote: Optional[str], source: str):
+    """Verify a quote against its source; on failure, try re-grounding it.
+    Returns (quote_or_repaired_quote, ok) with ok ∈ {True, False, None} —
+    None means "no quote to verify" (absent side), exactly like _verify_quote."""
+    v = _verify_quote(quote, source)
+    if v is not False:
+        return (quote or "").strip(), v
+    fixed = _reground_quote(quote, source)
+    if fixed and _verify_quote(fixed, source) is True:
+        return fixed, True
+    return (quote or "").strip(), False
 
 
 # Characters that legitimately end a quoted sentence/clause. Anything else means
@@ -524,20 +665,28 @@ class RiskFactorAgent:
         new_filing, old_filing = ten_ks[0], ten_ks[1]
         return old_filing, new_filing
 
-    def get_filing_text(self, filing: dict) -> str:
+    def get_filing_text(self, filing: dict, bypass_cache: bool = False) -> str:
         """Full raw text (HTML) of a filing. Checks the shared text cache first,
-        then fetches via the SEC EDGAR provider and caches the result."""
+        then fetches via the SEC EDGAR provider and caches the result.
+
+        SEC throttle pages ("Request Rate Threshold Exceeded") are HTTP-200
+        HTML, so they can masquerade as filing text; they are never cached,
+        never returned, and a cached one is refetched (Part 6, 2026-07-04 —
+        the OKLO "Item 1A could not be located" failure class).
+        bypass_cache=True skips the cache read to heal a poisoned entry."""
         if not filing:
             return ""
         ticker = filing.get("ticker", "")
         acc = filing.get("accession_number", "")
-        if ticker and acc:
+        if ticker and acc and not bypass_cache:
             cached = get_cached_text(ticker, acc)
-            if cached:
+            if cached and not _is_sec_error_page(cached):
                 return cached
         html = self.provider.fetch_html(
             filing.get("cik", ""), filing.get("accession_nodash", ""),
             filing.get("primary_doc", ""), ticker)
+        if _is_sec_error_page(html):
+            return ""
         if html and ticker and acc:
             cache_text(ticker, acc, html)
         return html or ""
@@ -605,7 +754,9 @@ class RiskFactorAgent:
         old_filing, new_filing = self.get_two_most_recent_10ks(ticker)
         if not old_filing or not new_filing:
             _emit("Need two 10-K filings to compare — not enough found.", "flag")
-            result["summary"] = "Fewer than two 10-K filings available for comparison."
+            result["summary"] = ("Fewer than two 10-K filings available for comparison — "
+                                 "the company may have gone public recently; the risk-factor "
+                                 "delta needs two annual filings.")
             return result
 
         result["old_filing_date"] = old_filing.get("filing_date", "")
@@ -625,9 +776,28 @@ class RiskFactorAgent:
         _emit("Extracting Item 1A (Risk Factors) from both filings...", "analyze")
         old_rf = extract_risk_factors(old_html)
         new_rf = extract_risk_factors(new_html)
+        # Part 6: an empty extraction can mean a poisoned cached text (an SEC
+        # throttle page cached as the filing) — refetch that side once past
+        # the cache before giving up; a fresh success also heals the cache.
+        if not old_rf:
+            fresh = self.get_filing_text(old_filing, bypass_cache=True)
+            if fresh:
+                old_rf = extract_risk_factors(fresh)
+        if not new_rf:
+            fresh = self.get_filing_text(new_filing, bypass_cache=True)
+            if fresh:
+                new_rf = extract_risk_factors(fresh)
         if not old_rf or not new_rf:
-            _emit("Item 1A could not be located in one or both 10-Ks.", "flag")
-            result["summary"] = "Item 1A (Risk Factors) not found in one or both 10-Ks."
+            missing = []
+            if not old_rf:
+                missing.append("the %s 10-K" % (result["old_filing_date"] or "older"))
+            if not new_rf:
+                missing.append("the %s 10-K" % (result["new_filing_date"] or "newer"))
+            _emit("Item 1A could not be located in %s." % " or ".join(missing), "flag")
+            result["summary"] = ("Item 1A (Risk Factors) could not be extracted from %s. "
+                                 "If the company went public recently, its early filings "
+                                 "may not carry a standard risk-factors section."
+                                 % " and ".join(missing))
             return result
 
         result["total_risks_old"] = _estimate_risk_count(old_html, old_rf)
@@ -668,6 +838,27 @@ class RiskFactorAgent:
             result["summary"] = "Risk factor comparison returned an unparseable result."
             return result
 
+        # Part 1 retry: findings dropped for unverifiable quotes get ONE fresh
+        # comparison pass (past the byte cache) to recover them; keep whichever
+        # result grounds more findings. Unverified quotes are never emitted.
+        drops = getattr(self, "_last_unverified_drops", 0)
+        if drops:
+            _emit("%d finding(s) failed verbatim verification — retrying comparison once..." % drops, "flag")
+            try:
+                response2, _ = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                        provider_idx=start_tier("risk_factors"),
+                                        requires_strict_json=True,
+                                        bypass_cache=True)
+                tc2 = self._build_top_changes(
+                    response2, old_rf, new_rf,
+                    old_filing.get("url", ""), new_filing.get("url", ""))
+                drops2 = getattr(self, "_last_unverified_drops", 0)
+                if tc2 is not None and (drops2 < drops or
+                                        (drops2 == drops and len(tc2) > len(top_changes))):
+                    top_changes = tc2
+            except Exception:
+                pass
+
         result["top_changes"] = top_changes
         result["changes_found"] = len(top_changes)
         # Provisional 10-K-only score (the 10-Q phase below may refine it). PART 2:
@@ -705,9 +896,18 @@ class RiskFactorAgent:
             result["signal"] = _signal
             result["score_rationale"] = _rationale
 
-        verified_n = sum(1 for c in top_changes if c["verified"])
-        _emit("Risk factor scan complete — %d change(s), %d quote-verified. Score %d (%s)." % (
-            len(top_changes), verified_n, result["score"], result["signal"]), "done")
+        # Completion message shows SEVERITY COUNTS (Part 7.1, 2026-07-05), not
+        # the raw score — mirroring the card headers (runs.py _RISK_SEVERITY:
+        # ESCALATED/NEW=high, REMOVED=medium, DE-ESCALATED/REWORDED=low).
+        _sev_of = {"ESCALATED": "high", "NEW": "high", "REMOVED": "medium",
+                   "DE-ESCALATED": "low", "REWORDED": "low"}
+        _all_changes = list(top_changes) + list(
+            (result.get("ten_q_findings") or {}).get("changes") or [])
+        _counts = {"high": 0, "medium": 0, "low": 0}
+        for c in _all_changes:
+            _counts[_sev_of.get(str(c.get("category", "")).upper(), "medium")] += 1
+        _emit("Risk factor scan complete — %d high · %d medium · %d low." % (
+            _counts["high"], _counts["medium"], _counts["low"]), "done")
         # PART 3: archive this run (manifest + index line). Exception-safe.
         try:
             from src.utils.run_archive import save_run
@@ -749,20 +949,25 @@ class RiskFactorAgent:
         old_pm = build_page_map(old_rf)
         new_pm = build_page_map(new_rf)
         top_changes = []
-        for i, c in enumerate(changes, start=1):
+        # ZERO-UNVERIFIED CONTRACT (Part 1, 2026-07-04): quotes are verified,
+        # then REPAIRED by re-anchoring to the source when the model stitched
+        # or rewrote them; findings whose substantive quote still can't be
+        # grounded verbatim are DROPPED (never shown), counted here so the
+        # caller can retry the whole comparison once past the byte cache.
+        self._last_unverified_drops = 0
+        for c in changes:
             category = str(c.get("category", "")).upper().strip()
             old_q = (c.get("old_quote") or "").strip()
             new_q = (c.get("new_quote") or "").strip()
-            old_ok = _verify_quote(old_q, old_rf)
-            new_ok = _verify_quote(new_q, new_rf)
-            # A finding is "verified" when every quote it actually carries checks
-            # out (a missing OLD quote on a NEW risk does not count against it).
-            verified = (old_ok is not False) and (new_ok is not False)
-            # Mark quotes the model cut off at max_tokens (on both the verified
-            # and unverified paths) so a sentence that just stops reads as
-            # truncated, not broken.
+            old_q, old_ok = _verify_or_repair(old_q, old_rf)
+            new_q, new_ok = _verify_or_repair(new_q, new_rf)
+            if old_ok is False or new_ok is False:
+                self._last_unverified_drops += 1
+                continue
+            # Mark quotes the model cut off at max_tokens so a sentence that
+            # just stops reads as truncated, not broken.
             entry = {
-                "rank": i,
+                "rank": len(top_changes) + 1,
                 "category": category,
                 "risk_title": (c.get("risk_title") or "").strip(),
                 "old_quote": _mark_if_truncated(old_q),
@@ -770,9 +975,11 @@ class RiskFactorAgent:
                 "summary": (c.get("summary") or "").strip(),
                 "old_url": old_url,
                 "new_url": new_url,
-                "old_quote_verified": bool(old_ok),
-                "new_quote_verified": bool(new_ok),
-                "verified": bool(verified),
+                # None (side legitimately absent, e.g. no OLD quote on a NEW
+                # risk) must read as "nothing to verify", not "unverified".
+                "old_quote_verified": old_ok is not False,
+                "new_quote_verified": new_ok is not False,
+                "verified": True,
             }
             # Printed page numbers (Part 5) — attached only when the filing's
             # pagination survived cleaning AND the quote was located.
@@ -827,6 +1034,28 @@ class RiskFactorAgent:
         fmt = detect_format(ten_q_rf, new_rf, ten_q_html, new_html)
         emit("Found 10-Q from %s — format: %s" % (ten_q.get("filing_date", ""), fmt), "fetch")
 
+        # REFERRAL-STUB SHORT-CIRCUIT (Part 1, 2026-07-04): TSLA-style 10-Qs
+        # carry a one-sentence Item 1A that only refers back to the 10-K's risk
+        # factors. There is NOTHING to compare — forcing the LLM to find
+        # changes against a 327-char stub made it invent "ESCALATED" findings
+        # whose quotes were 10-K text (all failed verification). Report the
+        # honest zero instead of asking the model to hallucinate.
+        if fmt == "update_only" and _is_referral_stub(ten_q_rf):
+            emit("10-Q Item 1A only refers back to the 10-K's risk factors — "
+                 "no new risk disclosures this quarter.", "analyze")
+            result["ten_q_findings"] = {
+                "format": fmt,
+                "filing_date": ten_q.get("filing_date", ""),
+                "filing_url": ten_q.get("url", ""),
+                "compared_against": "10-K",
+                "compared_date": new_filing_date,
+                "compared_url": new_filing.get("url", ""),
+                "changes": [],
+                "changes_found": 0,
+                "no_material_changes": True,
+            }
+            return
+
         # Pick the baseline (OLD) per the four rules. Default is the 10-K.
         old_doc_type, old_filing, old_rf, old_date = "10-K", new_filing, new_rf, new_filing_date
         if fmt == "reprint":
@@ -865,6 +1094,27 @@ class RiskFactorAgent:
         if ten_q_changes is None:
             emit("Could not parse the 10-Q comparison output.", "flag")
             return
+
+        # Part 1 retry (same contract as the 10-K path): one fresh pass when
+        # findings were dropped for unverifiable quotes.
+        drops = getattr(self, "_last_unverified_drops", 0)
+        if drops:
+            emit("%d 10-Q finding(s) failed verbatim verification — retrying once..." % drops, "flag")
+            try:
+                response2, _ = call_llm(prompt, max_tokens=LLM_MAX_TOKENS,
+                                        provider_idx=start_tier("risk_factors"),
+                                        requires_strict_json=True,
+                                        bypass_cache=True)
+                tc2 = self._build_top_changes(
+                    response2, old_rf, ten_q_rf,
+                    old_filing.get("url", ""), ten_q.get("url", ""),
+                    update_only=(fmt == "update_only"))
+                drops2 = getattr(self, "_last_unverified_drops", 0)
+                if tc2 is not None and (drops2 < drops or
+                                        (drops2 == drops and len(tc2) > len(ten_q_changes))):
+                    ten_q_changes = tc2
+            except Exception:
+                pass
 
         emit("10-Q comparison complete — %d changes found" % len(ten_q_changes), "analyze")
         result["ten_q_findings"] = {

@@ -362,6 +362,39 @@ _GROWTH_WORDS = ("grow", "growth", "cagr", "expand", "increase", "project",
                  "forecast", "expect", "annual", "compound")
 _GENERIC_SECTOR_WORDS = ("market", "industry", "sector", "tam", "demand", "addressable")
 
+# ── PART 2 fix (2026-07-05): "sector word + % + growth word" was too loose —
+# OKLO's "Used nuclear fuel still contains approximately 95% of its energy
+# content … expected electrical needs …" qualified ("expected" counted as the
+# growth word) and highest-percentage selection then PREFERRED the irrelevant
+# 95. A percentage is only a sector CAGR when the sentence carries a forward
+# TIME HORIZON, the growth language sits AROUND the percentage itself, it is
+# not "X% of <something>", not litigation/safe-harbor boilerplate (AMD's
+# 2.125%), and not a past-tense fact. Selection prefers the percentage
+# anchored to "CAGR/compound", never the largest number.
+_HORIZON_RE = re.compile(
+    r"(?:through|by|until|into)\s+(?:fiscal\s+)?20\d\d"
+    r"|20\d\d\s*(?:through|to|-|–|until)\s*20\d\d"
+    r"|over\s+the\s+next|next\s+(?:several|few|\d+|two|three|four|five|six|"
+    r"seven|eight|nine|ten)\s+(?:years|decades)"
+    r"|annually|per\s+annum|per\s+year|long[- ]term"
+    r"|(?:five|ten|\d+)[- ]year\s+(?:period|horizon|outlook|forecast|plan)"
+    r"|fiscal\s+(?:year\s+)?20\d\d|coming\s+(?:years|decade)", re.IGNORECASE)
+_LEGAL_BOILERPLATE_RE = re.compile(
+    r"forward-?looking\s+statements|safe\s+harbor|risks?\s+and\s+uncertaint"
+    r"|securities\s+litigation|undue\s+reliance|except\s+as\s+required\s+by\s+law",
+    re.IGNORECASE)
+_PAST_FACT_RE = re.compile(
+    r"\b(?:grew|increased|rose|was|were|gained|declined|decreased|had|"
+    r"resulted|represented|accounted)\b", re.IGNORECASE)
+_FORWARD_RE = re.compile(
+    r"\b(?:expect(?:ed|s)?|project(?:ed|s|ion|ions)?|forecast(?:ed|s)?"
+    r"|anticipat\w+|will|estimat\w+|target(?:ed|s|ing)?|guidance|outlook)\b",
+    re.IGNORECASE)
+_GROWTH_CONTEXT_RE = re.compile(
+    r"cagr|compound\s+annual|grow(?:th|ing|s)?\b|expand(?:ing|ed|s)?\s+(?:at|by)"
+    r"|increas(?:e|ing)\s+(?:at|by)|annual(?:ized)?\s+(?:growth\s+)?rate"
+    r"|rate\s+of\s+growth", re.IGNORECASE)
+
 
 def _sector_keywords(sector_name: str) -> List[str]:
     """Sector-specific keywords (lowercased significant words) + generic market words."""
@@ -373,12 +406,16 @@ def _sector_keywords(sector_name: str) -> List[str]:
 
 
 def _extract_cagr_from_text(text: str, sector_name: str) -> Optional[Dict[str, Any]]:
-    """Find the best sector-growth CAGR sentence in a block of text (PART 2a 3-5).
-    A qualifying sentence contains a sector keyword AND '%' AND a growth word.
-    Deterministic selection: among qualifying CAGRs in the plausible [0,100] range,
-    take the highest; ties broken by sentence order (first)."""
+    """Find the best sector-growth CAGR sentence in a block of text.
+
+    A qualifying sentence must have: a sector keyword, a growth word, a
+    forward TIME HORIZON, no safe-harbor/litigation boilerplate, and no
+    past-tense-only framing. A qualifying PERCENTAGE must additionally sit in
+    growth context and not be an "X% of <something>" share/content figure.
+    Returns None when nothing qualifies — never a random percentage."""
     sector_kws = _sector_keywords(sector_name)
-    candidates: List[Tuple[float, Optional[str], str, int]] = []
+    # (anchor_rank, sentence_order, value, year, sentence)
+    candidates: List[Tuple[int, int, float, Optional[str], str]] = []
     for i, sent in enumerate(_split_sentences(text)):
         low = sent.lower()
         if "%" not in sent:
@@ -387,17 +424,30 @@ def _extract_cagr_from_text(text: str, sector_name: str) -> Optional[Dict[str, A
             continue
         if not any(g in low for g in _GROWTH_WORDS):
             continue
+        if _LEGAL_BOILERPLATE_RE.search(sent):
+            continue
+        if not _HORIZON_RE.search(sent):
+            continue
+        if _PAST_FACT_RE.search(sent) and not _FORWARD_RE.search(sent):
+            continue  # a historical fact, not a projection
         for m in _PCT_RE.finditer(sent):
             val = float(m.group(1))
             if not (0.0 < val <= 100.0):  # implausible-CAGR guard (PART 2a #5)
                 continue
+            if re.match(r"\s*of\b", sent[m.end():]):
+                continue  # "95% of its energy content" — a share, not a rate
+            around = low[max(0, m.start() - 80):min(len(sent), m.end() + 40)]
+            if not _GROWTH_CONTEXT_RE.search(around):
+                continue  # the % itself isn't growth-framed
+            anchored = 0 if re.search(r"cagr|compound", around) else 1
             yr = _YEAR_RANGE_RE.search(sent)
-            candidates.append((val, yr.group(1) if yr else None, sent.strip(), i))
+            candidates.append((anchored, i, val, yr.group(1) if yr else None,
+                               sent.strip()))
     if not candidates:
         return None
-    # highest plausible percentage, earliest sentence on ties
-    candidates.sort(key=lambda c: (-c[0], c[3]))
-    val, year, sent, _ = candidates[0]
+    # explicit CAGR-anchored percentages first, then earliest sentence
+    candidates.sort(key=lambda c: (c[0], c[1]))
+    _, _, val, year, sent = candidates[0]
     return {"cagr_value": val, "cagr_decimal": val / 100.0,
             "year_horizon": int(year) if year else None, "sentence": sent}
 
@@ -409,7 +459,9 @@ def _tr_text(tr: Dict[str, Any]) -> str:
 
 
 def _tr_url(tr: Dict[str, Any]) -> str:
-    return tr.get("url") or tr.get("source_url") or "SEC 8-K EX-99.1"
+    # No fabricated pseudo-URL fallback (Part 7.2, 2026-07-05): "SEC 8-K
+    # EX-99.1" rendered as a dead "Source" link in the UI. Real URL or none.
+    return tr.get("url") or tr.get("source_url") or ""
 
 
 def _tr_quarter(tr: Dict[str, Any]) -> str:

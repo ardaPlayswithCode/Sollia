@@ -392,13 +392,41 @@ class LegalProceedingsTracker:
                 r'Item\s+3\.\s+Legal\s+Proceedings.*?<div[^>]*>(.*?)</div>',
                 r'Item\s+3\.\s+Legal\s+Proceedings(.*?)Item\s+4\.',
             ]
-            for pattern in patterns:
-                match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-                if match:
-                    cleaned = clean(match.group(1))
-                    if len(cleaned) > 50:
-                        return cleaned[:5000]
-            return None
+            # ALL matches, not the first (Part-8 audit, 2026-07-05): the first
+            # "Item 3. Legal Proceedings" in a 10-K is usually the TOC row —
+            # its capture is a bare page number ("86"), which failed the length
+            # check and reported "no legal proceedings" for filers whose REAL
+            # Item 3 appears later in the document (COIN).
+            # Try RAW html first (legacy behavior), then TAG-STRIPPED text:
+            # section headers are usually split by inline markup ("ITEM 3.
+            # </span><span>LEGAL PROCEEDINGS"), so on raw HTML only the TOC row
+            # matches and the capture is a bare page number (COIN).
+            section = None
+            for source in (text, clean(text)):
+                for pattern in patterns:
+                    for match in re.finditer(pattern, source, re.DOTALL | re.IGNORECASE):
+                        cleaned = clean(match.group(1))
+                        if len(cleaned) > 50:
+                            section = cleaned
+                            break
+                    if section:
+                        break
+                if section:
+                    break
+            if not section:
+                return None
+            # CROSSREF FOLLOW (Part-8 audit, 2026-07-05): many filers reduce
+            # Item 3 to "For a description of material legal proceedings … see
+            # Note 21. Commitments and Contingencies … incorporated herein by
+            # reference" — the litigation narrative lives in that NOTE. When
+            # the section opens by deferring to a note, pull the note's text
+            # in as well so the diff sees the actual matters (COIN).
+            ref = re.search(r'\bnote\s+(\d{1,2})\b', section[:600], re.IGNORECASE)
+            if ref:
+                note = self._extract_referenced_note(text, ref.group(1))
+                if note and len(note) > 200:
+                    return (section.strip() + " " + note.strip())[:5000]
+            return section[:5000]
 
         elif doc_type == "10-Q":
             # Part II order is Item 1 (Legal Proceedings) -> Item 1A (Risk Factors)
@@ -411,13 +439,28 @@ class LegalProceedingsTracker:
                 r'PART\s+II.*?Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+1A\.|Item\s+2\.|Item\s+6\.)',
                 r'Item\s+1\.\s+Legal\s+Proceedings\.?(.*?)(?=Item\s+1A\.|Item\s+2\.|Item\s+6\.)',
             ]
-            for pattern in patterns:
-                match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-                if match:
-                    cleaned = clean(match.group(1))
-                    if cleaned:
-                        return cleaned[:3000]
-            return None
+            section = None
+            for source in (text, clean(text)):
+                for pattern in patterns:
+                    for match in re.finditer(pattern, source, re.DOTALL | re.IGNORECASE):
+                        cleaned = clean(match.group(1))
+                        if len(cleaned) > 50:
+                            section = cleaned
+                            break
+                    if section:
+                        break
+                if section:
+                    break
+            if not section:
+                return None
+            # Same crossref-follow as the 10-K branch (NVDA-style "Refer to
+            # Note 10 … for a discussion of our legal proceedings").
+            ref = re.search(r'\bnote\s+(\d{1,2})\b', section[:600], re.IGNORECASE)
+            if ref:
+                note = self._extract_referenced_note(text, ref.group(1))
+                if note and len(note) > 200:
+                    return (section.strip() + " " + note.strip())[:3000]
+            return section[:3000]
 
         else:
             # 8-K - extract body from XML if needed
@@ -428,6 +471,40 @@ class LegalProceedingsTracker:
                 text = re.sub(r'<[^>]+>', ' ', text)
                 text = re.sub(r'\s+', ' ', text)
             return text[:5000]
+
+    def _extract_referenced_note(self, text: str, note_no: str) -> Optional[str]:
+        """Extract the body of financial-statement 'Note {note_no}. …' that a
+        cross-referencing Item 3 / Part II Item 1 points at, preferring its
+        legal subsection. Returns None when the note can't be located."""
+        try:
+            plain = re.sub(r'<[^>]+>', ' ', text)
+            plain = re.sub(r'\s+', ' ', plain)
+            best = None
+            for m in re.finditer(r'Note\s+%s\.?\s+' % re.escape(str(note_no)),
+                                 plain, re.IGNORECASE):
+                seg = plain[m.start(): m.start() + 40000]
+                # TOC/index rows are short or immediately followed by a number
+                if len(seg) < 500:
+                    continue
+                try:
+                    nxt = re.search(r'Note\s+%d\.?\s+[A-Z]' % (int(note_no) + 1), seg)
+                except ValueError:
+                    nxt = None
+                body = seg[:nxt.start()] if nxt else seg[:30000]
+                if len(body) > len(best or ""):
+                    best = body
+            if not best or len(best) < 300:
+                return None
+            # Jump to the litigation subsection when the note also covers
+            # leases/purchase commitments (usual for "Commitments and
+            # Contingencies" notes) so the cap keeps the legal narrative.
+            sub = re.search(r'\b(Legal\s+(?:Proceedings|Matters|Contingencies)|Litigation)\b',
+                            best[100:], re.IGNORECASE)
+            if sub:
+                best = best[100 + sub.start():]
+            return best.strip() or None
+        except Exception:
+            return None
 
     def _is_substantive(self, text: str) -> bool:
         """True when a 10-K/10-Q legal section contains actual litigation narrative

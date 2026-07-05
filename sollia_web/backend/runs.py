@@ -474,6 +474,11 @@ def _risk_finding(c: dict, source: str, old_doc: str, new_doc: str) -> dict:
             "verified": bool(c.get("new_quote_verified")),
             **({"page_number": c["new_quote_page"]} if c.get("new_quote_page") else {}),
         })
+    # ZERO-UNVERIFIED CONTRACT safety net (Part 7.4, 2026-07-05): the agent
+    # drops unverifiable quotes at the source; if a flagged one ever arrives
+    # here it is suppressed from the export rather than shown.
+    if any(not cit.get("verified") for cit in cits):
+        return None
     category = str(c.get("category", "")).upper()
     severity = _RISK_SEVERITY.get(category, "medium")
     finding = {"type": "risk_" + category.lower().replace("-", "_"), "severity": severity, "source": source}
@@ -486,13 +491,16 @@ def _risk_finding(c: dict, source: str, old_doc: str, new_doc: str) -> dict:
 
 
 def _findings_risk(result: dict):
-    # Annual 10-K vs 10-K delta (the baseline comparison).
+    # Annual 10-K vs 10-K delta (the baseline comparison). _risk_finding
+    # returns None for a row carrying an unverified citation (never exported).
     out = [
-        _risk_finding(
-            c, "10-K",
-            "10-K (prior %s)" % result.get("old_filing_date", ""),
-            "10-K (current %s)" % result.get("new_filing_date", ""))
-        for c in result.get("top_changes", [])
+        f for f in (
+            _risk_finding(
+                c, "10-K",
+                "10-K (prior %s)" % result.get("old_filing_date", ""),
+                "10-K (current %s)" % result.get("new_filing_date", ""))
+            for c in result.get("top_changes", [])
+        ) if f is not None
     ]
     # 10-Q update findings (more recent than the annual delta), when present. The
     # OLD label reflects the actual baseline (10-K or previous 10-Q); the NEW
@@ -501,7 +509,8 @@ def _findings_risk(result: dict):
     if tqf and tqf.get("changes"):
         old_doc = "%s (%s)" % (tqf.get("compared_against", "10-K"), tqf.get("compared_date", ""))
         new_doc = "10-Q (%s)" % tqf.get("filing_date", "")
-        out.extend(_risk_finding(c, "10-Q", old_doc, new_doc) for c in tqf.get("changes", []))
+        out.extend(f for f in (_risk_finding(c, "10-Q", old_doc, new_doc)
+                               for c in tqf.get("changes", [])) if f is not None)
     return out
 
 

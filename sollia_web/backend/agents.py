@@ -176,11 +176,15 @@ def run_selected_agents(
             for log_entry in result.get("agent_log", []):
                 all_logs.append(AgentLogMessage(speaker="Corporate Discrepancy", message=log_entry.get("detail", "")))
         elif aid == "promise_audit":
-            all_logs.append(AgentLogMessage(speaker="Promise Audit", message=f"Analysis complete. Score: {result.get('score', 50):.1f}%"))
+            # Completion logs carry finding counts, not scores (Part 7.1) —
+            # scores stay in the composite; the cards show severity counts.
+            _np = len(result.get("top_promises", []) or [])
+            all_logs.append(AgentLogMessage(speaker="Promise Audit", message=f"Analysis complete — {_np} promise(s) surfaced."))
         elif aid == "legal_proceedings":
-            all_logs.append(AgentLogMessage(speaker="Legal Proceedings", message=f"Legal analysis complete. Score: {result.get('agent3_score', 50):.1f}%"))
+            all_logs.append(AgentLogMessage(speaker="Legal Proceedings", message="Legal analysis complete."))
         elif aid == "risk_factors":
-            all_logs.append(AgentLogMessage(speaker="Risk Factors", message=f"Risk factor delta complete. Score: {result.get('score', 50):.1f}%"))
+            _nc = len(result.get("top_changes", []) or [])
+            all_logs.append(AgentLogMessage(speaker="Risk Factors", message=f"Risk factor delta complete — {_nc} change(s)."))
         elif aid == "constraint_auditor":
             if result.get("status") == "unsupported":
                 all_logs.append(AgentLogMessage(speaker="Constraint Auditor", message="Sector not in the constraint library — audit skipped."))

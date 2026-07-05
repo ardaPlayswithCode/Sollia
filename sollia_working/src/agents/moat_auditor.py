@@ -463,33 +463,61 @@ def _resolve_ticker(tk: str) -> Optional[Dict[str, Any]]:
 # ===========================================================================
 _CLASSIFY_PROMPT = (
     "Classify the company {company} (ticker: {ticker}) into the single CLOSEST "
-    "sector from this list, based on its PRIMARY business.\n\nSECTORS:\n"
+    "sector from this list, based on its PRIMARY business.{context}\n\nSECTORS:\n"
     + sector_list_text()
     + "\n\nReturn ONLY the exact sector name from the list (or UNSUPPORTED if none "
       "fits), nothing else."
 )
 
+# Cache schema version. v2 = classification GROUNDED in the company's own 10-K
+# Item 1 text (2026-07-05 Part-5 fix): the old "classify by name alone" call
+# answered from the model's world knowledge — Groq-8B did not know OKLO (a
+# 2024 de-SPAC) and filed a nuclear-reactor company under "Cloud
+# Infrastructure & Platform", which then drove a fully-hallucinated
+# cloud-provider competitor set. v1 entries re-classify on next run.
+_SECTOR_CACHE_VERSION = 2
 
-def _classify_sector(ticker: str, company: str, log: List[Dict[str, str]]) -> str:
+
+def _classify_sector(ticker: str, company: str, log: List[Dict[str, str]],
+                     business_text: str = "") -> str:
     """Return a canonical 55-taxonomy sector (or 'UNSUPPORTED'). Cached per ticker
-    at .cache/sector_taxonomy/{TICKER}.json (distinct from Agent 5's cache)."""
+    at .cache/sector_taxonomy/{TICKER}.json (distinct from Agent 5's cache).
+    `business_text` (the 10-K Item 1 opening) grounds the answer in what the
+    company SAYS it does instead of what the model happens to know."""
     cache_path = os.path.join(SECTOR55_CACHE_DIR, "%s.json" % ticker.upper())
     cached = _read_cache(cache_path)
-    if cached and cached.get("sector"):
+    if cached and cached.get("sector") and cached.get("v") == _SECTOR_CACHE_VERSION:
         log.append({"step": "CLASSIFY", "detail": "Sector (cached): %s" % cached["sector"]})
         return cached["sector"]
-    prompt = _CLASSIFY_PROMPT.format(company=company or ticker, ticker=ticker.upper())
+    excerpt = re.sub(r"\s+", " ", business_text or "").strip()[:2500]
+    context = ("\n\nThe company's own 10-K business description begins:\n\"%s\""
+               % excerpt) if excerpt else ""
+    prompt = _CLASSIFY_PROMPT.format(company=company or ticker, ticker=ticker.upper(),
+                                     context=context)
     try:
         text, _meta = call_llm(prompt, max_tokens=40, temperature=0.0,
                                provider_idx=start_tier(AGENT_ID), agent=AGENT_ID,
                                stage="classify", ticker=ticker.upper())
+        sector = match_sector(text)
+        if sector is None and "unsupported" not in (text or "").lower():
+            # Unparseable answer (mid-storm garbage) — one fresh retry past the
+            # byte cache so a poisoned response is not served forever.
+            text, _meta = call_llm(prompt, max_tokens=40, temperature=0.0,
+                                   provider_idx=start_tier(AGENT_ID), agent=AGENT_ID,
+                                   stage="classify", ticker=ticker.upper(),
+                                   bypass_cache=True)
+            sector = match_sector(text)
     except Exception as exc:
         log.append({"step": "CLASSIFY", "detail": "Classification LLM failed: %s" % str(exc)[:120]})
         return "UNSUPPORTED"
-    sector = match_sector(text) or "UNSUPPORTED"
+    sector = sector or "UNSUPPORTED"
     _write_cache(cache_path, {"ticker": ticker.upper(), "company": company,
-                              "sector": sector, "classified_at": _now_iso()})
-    log.append({"step": "CLASSIFY", "detail": "Classified %s as %s" % (ticker.upper(), sector)})
+                              "sector": sector, "v": _SECTOR_CACHE_VERSION,
+                              "grounded": bool(excerpt),
+                              "classified_at": _now_iso()})
+    log.append({"step": "CLASSIFY", "detail": "Classified %s as %s%s"
+                % (ticker.upper(), sector,
+                   " (grounded in Item 1)" if excerpt else " (name-only)")})
     return sector
 
 
@@ -553,13 +581,19 @@ def _named_competitors_from_text(text: str, source_label: str, self_ticker: str,
 
 _COMPETITOR_PROMPT = (
     "The company {company} (ticker: {ticker}) operates primarily in the sector: "
-    "{sector}. Below is the complete list of Sollia sectors. Identify the top 3-7 "
+    "{sector}.{context} Below is the complete list of Sollia sectors. Identify the top 3-7 "
     "PUBLIC companies that directly compete with {company}.\n\n"
-    "Include companies that: (1) offer substitute products in the same sector; "
-    "(2) are in a DIFFERENT sector but have a known cross-sector competitive "
+    "Rank by DIRECTNESS of competition with the business described above: "
+    "companies building the SAME KIND of product or technology first (direct "
+    "technology peers), then (1) substitute products in the same sector; "
+    "(2) companies in a DIFFERENT sector with a known cross-sector competitive "
     "overlap with {company} (e.g. a cloud provider making its own chips); "
-    "(3) are large customers building in-house alternatives.\n"
-    "Only include companies that file 10-Ks with the SEC. Use the real US ticker.\n\n"
+    "(3) large customers building in-house alternatives. A generic same-sector "
+    "incumbent belongs on the list ONLY if it genuinely competes for the same "
+    "customers with a comparable offering.\n"
+    "Only include companies that file 10-Ks with the SEC. Use the real US ticker. "
+    "If you cannot identify genuine competitors, return an empty array [] — "
+    "NEVER guess unrelated companies.\n\n"
     "SECTORS:\n" + sector_list_text() + "\n\n"
     "Return ONLY a JSON array, no prose:\n"
     '[{{"competitor": "Company Name", "ticker": "TICKER", "sector": "exact sector '
@@ -568,9 +602,14 @@ _COMPETITOR_PROMPT = (
 
 
 def _llm_competitors(company: str, ticker: str, sector: str,
-                     log: List[Dict[str, str]]) -> List[Dict[str, str]]:
+                     log: List[Dict[str, str]],
+                     business_text: str = "") -> List[Dict[str, str]]:
+    excerpt = re.sub(r"\s+", " ", business_text or "").strip()[:1500]
+    context = (" The company's own 10-K describes its business as: \"%s\"" % excerpt
+               ) if excerpt else ""
     prompt = _COMPETITOR_PROMPT.format(company=company, ticker=ticker.upper(),
-                                       sector=sector if sector != "UNSUPPORTED" else "its primary industry")
+                                       sector=sector if sector != "UNSUPPORTED" else "its primary industry",
+                                       context=context)
     try:
         text, _meta = call_llm(prompt, max_tokens=900, temperature=0.0,
                                provider_idx=start_tier(AGENT_ID), agent=AGENT_ID,
@@ -603,18 +642,27 @@ def _filter_llm_competitors(llm_comps: List[Dict[str, str]], target_sector: str
     if target_sector in ("UNSUPPORTED", "", None):
         return llm_comps
     out = []
+    cross_kept = 0
     for c in llm_comps:
         csec = match_sector(c.get("sector", "")) or ""
         rationale = (c.get("rationale", "") or "").lower()
-        overlap_words = ("cross", "also", "expand", "in-house", "custom", "own ",
-                         "vertical", "enter", "compete", "alternative", "build")
+        # SPECIFIC overlap markers only (Part-5 tightening, 2026-07-05): the
+        # old list included "compete", which appears in virtually every LLM
+        # rationale and made the cross-sector escape hatch always-open.
+        overlap_words = ("cross-sector", "cross sector", "in-house", "in house",
+                        "custom", "vertical", "own chips", "own silicon",
+                        "in-house alternative", "builds its own", "building its own",
+                        "autonomous", "substitute")
         if csec == target_sector or same_group(csec, target_sector):
             c["_kept"] = "same sector/group"
             out.append(c)
-        elif any(w in rationale for w in overlap_words):
+        elif any(w in rationale for w in overlap_words) and cross_kept < 3:
+            # Cross-sector threats are real (NVDA/GOOGL vs an automaker) but
+            # bounded: at most 3, each with a SPECIFIC stated overlap.
             c["_kept"] = "cross-sector overlap"
+            cross_kept += 1
             out.append(c)
-        # else: unrelated sector, no stated overlap -> exclude
+        # else: unrelated sector, no specific overlap -> hallucination guard
     return out
 
 
@@ -649,7 +697,11 @@ def _identify_competitors(prov, ticker: str, company: str, sector: str,
                           log: List[Dict[str, str]]) -> List[Dict[str, str]]:
     cache_path = os.path.join(MOAT_CACHE_DIR, "competitors_%s.json" % ticker.upper())
     cached = _read_cache(cache_path)
-    if cached and isinstance(cached.get("competitors"), list):
+    # The competitor list is a FUNCTION of the sector — a list built under a
+    # misclassified sector (OKLO-as-cloud) must not survive the sector fix, so
+    # the cache is only valid when its recorded sector matches (2026-07-05).
+    if cached and isinstance(cached.get("competitors"), list) \
+            and cached.get("sector") == sector:
         log.append({"step": "COMPETITORS", "detail": "Competitor list (cached): %d" % len(cached["competitors"])})
         return cached["competitors"]
 
@@ -665,8 +717,14 @@ def _identify_competitors(prov, ticker: str, company: str, sector: str,
     named = _named_competitors_from_text(comp_1, "10-K Item 1", ticker.upper(), self_core)
     named += _named_competitors_from_text(comp_1a, "10-K Item 1A", ticker.upper(), self_core)
 
-    llm_comps = _llm_competitors(company, ticker, sector, log)
+    llm_comps = _llm_competitors(company, ticker, sector, log,
+                                 business_text=item1_text)
     llm_filtered = _filter_llm_competitors(llm_comps, sector)
+    dropped = [c.get("ticker", "?") for c in llm_comps
+               if c not in llm_filtered]
+    if dropped:
+        log.append({"step": "COMPETITORS",
+                    "detail": "Sector-coherence gate dropped: %s" % ", ".join(dropped)})
     merged = _merge_competitors(named, llm_filtered, ticker.upper(), log)
 
     n_10k = sum(1 for c in merged if c.get("source", "").startswith("10-K"))
@@ -674,7 +732,7 @@ def _identify_competitors(prov, ticker: str, company: str, sector: str,
                 "detail": "Identified %d competitors: %d from 10-K, %d from LLM"
                           % (len(merged), n_10k, len(merged) - n_10k)})
     _write_cache(cache_path, {"ticker": ticker.upper(), "competitors": merged,
-                              "built_at": _now_iso()})
+                              "sector": sector, "built_at": _now_iso()})
     return merged
 
 
@@ -1196,9 +1254,6 @@ class MoatAuditor:
         if not prov.get_cik(ticker):
             return self._error(ticker, company, log, t0, "Ticker does not resolve to an SEC filer.")
 
-        emit("Classifying %s into a sector..." % ticker)
-        sector = _classify_sector(ticker, company, log)
-
         # most recent 10-K
         emit("Fetching %s most recent 10-K..." % ticker, "fetch")
         try:
@@ -1229,6 +1284,12 @@ class MoatAuditor:
             return self._error(ticker, company, log, t0, "Could not fetch/parse the 10-K.")
         filing_meta = {"doc_type": "10-K %s" % _fy(tenk.get("period_of_report") or tenk.get("filing_date")),
                        "date": tenk.get("filing_date", ""), "url": tenk.get("htm_url", "")}
+
+        # PART 1b — sector (classified AFTER the 10-K fetch so the company's own
+        # Item 1 text grounds the answer; Part-5 fix 2026-07-05).
+        emit("Classifying %s into a sector..." % ticker)
+        sector = _classify_sector(ticker, company, log,
+                                  business_text=item1 or clean_10k[:4000])
 
         # PART 2 — competitors
         emit("Identifying competitors (10-K + LLM, sector-filtered)...", "search")
@@ -1330,6 +1391,12 @@ class MoatAuditor:
         }
         if status == "no_moats":
             result["message"] = "No moat claims identified in company filings."
+        if not competitors:
+            # Honest empty (Part 5, 2026-07-05): with no named competitors in
+            # the 10-K and none the LLM could ground, say so — never pad the
+            # list with unrelated large caps.
+            result["competitor_note"] = ("No direct public competitors identified "
+                                         "in SEC filings.")
         result["human_readable"] = render_human_readable(result)
         return result
 

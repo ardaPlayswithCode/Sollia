@@ -472,7 +472,10 @@ function LegalCard({ data }) {
 
 // ── Agent 4: Risk Factors ─────────────────────────────────────────────────────
 function RiskCard({ data }) {
-  const changes = sortFindings(data.top_changes || [], c => riskSeverity(c.category))
+  // Part 7.4 safety net: the agent already drops findings whose quotes fail
+  // verbatim verification; if one ever arrives flagged, it is not displayed.
+  const changes = sortFindings((data.top_changes || []).filter(c => c.verified !== false),
+    c => riskSeverity(c.category))
   const bearish = changes.some(c => ['ESCALATED', 'NEW'].includes(String(c.category).toUpperCase()))
   return (
     <Card title="Risk Factors" tone={bearish ? 'bearish' : changes.length ? 'neutral' : 'bullish'} active={changes.length > 0}
@@ -486,7 +489,6 @@ function RiskCard({ data }) {
           {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
           <Quote text={c.old_quote} url={c.old_url} label="Old 10-K" page={c.old_quote_page} />
           <Quote text={c.new_quote} url={c.new_url} label="New 10-K" page={c.new_quote_page} />
-          {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
         </Row>
       )} />
       {data.ten_q_findings && (
@@ -498,14 +500,13 @@ function RiskCard({ data }) {
             <p className="text-slate-600 text-sm">No material changes in the latest 10-Q.</p>
           )}
           <ExpandableFindings
-            items={sortFindings(data.ten_q_findings.changes || [], c => riskSeverity(c.category))}
-           
+            items={sortFindings((data.ten_q_findings.changes || []).filter(c => c.verified !== false),
+              c => riskSeverity(c.category))}
             renderItem={(c) => (
               <Row badge={c.category} badgeText={c.category} meta={c.risk_title}>
                 {c.summary && <p className="text-slate-400 text-xs mb-2">{c.summary}</p>}
                 <Quote text={c.old_quote} url={c.old_url} label={`Old ${data.ten_q_findings.compared_against}`} page={c.old_quote_page} />
                 <Quote text={c.new_quote} url={c.new_url} label="New 10-Q" page={c.new_quote_page} />
-                {c.verified === false && <p className="text-amber-400/70 text-[10px] mt-1">⚠ quote not verified verbatim</p>}
               </Row>
             )}
           />
@@ -612,9 +613,14 @@ function ConstraintAuditorCard({ data }) {
       />
 
       {prov && (prov.missing_keys?.length > 0 || prov.needs_pdf_parser?.length > 0) && (
-        <p className="text-slate-600 text-[10px] mt-2">
-          To enable live supply/demand &amp; industry-CAGR data: provision {[...(prov.missing_keys || []), ...(prov.needs_pdf_parser || []).map(s => s + ' parser')].join(', ')}.
-        </p>
+        <details className="mt-2 group">
+          <summary className="text-slate-600 text-[10px] cursor-pointer select-none hover:text-slate-400 list-none">
+            {(prov.missing_keys?.length || 0) + (prov.needs_pdf_parser?.length || 0)} data source(s) unavailable — provision API keys for full coverage <span className="group-open:hidden">▸</span><span className="hidden group-open:inline">▾</span>
+          </summary>
+          <p className="text-slate-600 text-[10px] mt-1 pl-2 border-l border-white/10">
+            To enable live supply/demand &amp; industry-CAGR data: provision {[...(prov.missing_keys || []), ...(prov.needs_pdf_parser || []).map(s => s + ' parser')].join(', ')}.
+          </p>
+        </details>
       )}
     </Card>
   )
@@ -816,11 +822,21 @@ function Quote({ text, url, label, page }) {
   const words = text.split(/\s+/)
   const shown = words.slice(0, 10).join(' ') + (words.length > 10 ? '…' : '')
   const sourceLabel = [label || 'Source', page ? `p.${page}` : ''].filter(Boolean).join(', ')
+  // Only real http(s) URLs are links — a descriptive fallback string ("SEC
+  // 8-K EX-99.1") must never render as a dead hyperlink (Part 7.2).
+  const isLink = typeof url === 'string' && /^https?:\/\//i.test(url)
   return (
     <div className="text-slate-400 text-sm flex items-center gap-2 flex-wrap">
-      <span className="text-slate-600 text-[10px] uppercase font-semibold">{sourceLabel}</span>
+      {isLink ? (
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          className="text-blue-400/90 text-[10px] uppercase font-semibold hover:underline">
+          {sourceLabel} ↗
+        </a>
+      ) : (
+        <span className="text-slate-600 text-[10px] uppercase font-semibold">{sourceLabel}</span>
+      )}
       <span className="italic">"{shown}"</span>
-      {url && (
+      {isLink && (
         <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-[10px] hover:underline">View ↗</a>
       )}
     </div>

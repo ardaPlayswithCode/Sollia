@@ -1167,6 +1167,92 @@ def _is_table_fragment(s: str) -> bool:
     numeric = sum(1 for t in tokens if re.fullmatch(r"[\$%()\d.,\-—]+", t))
     return numeric / len(tokens) > 0.45
 
+
+def _quote_is_table_row(q: str) -> bool:
+    """True when a QUOTED PHRASE is a table row: a short label followed by a
+    run of figures ("As a percentage of revenues 8 % 10 % 11 %"). Comparing two
+    of these across filings compares different column sets (3 fiscal years vs
+    2 quarters) — never a prose claim. Tuned separately from _is_table_fragment
+    because quotes are shorter than sentences."""
+    tokens = (q or "").split()
+    if len(tokens) < 4:
+        return False
+    numeric = sum(1 for t in tokens if re.fullmatch(r"[\$%()\d.,\-—]+", t))
+    return numeric >= 3 and numeric / len(tokens) >= 0.4
+
+
+# ── Part-4 deterministic false-positive guards (2026-07-04 quality pass) ────
+# Words whose presence in a wording DIFF means the change is substantive
+# (quantity, likelihood, negation, direction, or temporal status changed).
+# A diff containing NONE of these — and no digits — is a terminology relabel
+# ("digital twin"→"3D internet", "AV"→"autonomous vehicles"), not a finding.
+_MEANINGFUL_DIFF_WORDS = frozenset("""
+some substantial substantially significant significantly material materially
+all none most many few several majority minority entire partial limited
+numerous half more less greater fewer
+may might could will would shall must can cannot expect expects expected
+anticipate anticipates anticipated believe believes intend intends intend
+plan plans possible probable likely unlikely potential uncertain
+not no never without neither nor
+increase increased increases increasing decrease decreased decreases
+decreasing decline declined declines growth grow grew higher lower up down
+rise rose fall fell gain gains loss losses improve improved worsen worsened
+accelerate accelerated slow slowed offset
+upcoming future current currently former previous previously new newer
+existing ongoing delayed suspended discontinued completed launched began
+begun ceased ended near term short long immediately soon
+""".split())
+
+
+def _has_signal_words(words) -> bool:
+    """A word set carries signal if it holds a meaningful-diff word or a digit."""
+    return bool(words & _MEANINGFUL_DIFF_WORDS) or any(
+        any(ch.isdigit() for ch in w) for w in words)
+
+
+def _years_in(text: str) -> set:
+    return set(re.findall(r"\b(?:19|20)\d{2}\b", text or ""))
+
+
+def _is_period_clone(qa: str, qb: str, sent_a: str = "", sent_b: str = "") -> bool:
+    """True when two quotes are the SAME sentence template with only the
+    numbers swapped and no shared explicit year anchor — the signature of a
+    metric reported for different windows (10-K annual delta vs 10-Q YTD
+    delta: "decrease of 28,819 …" vs "decrease of 21,767 …"). A genuine
+    forecast revision keeps its shared anchor ("$20 billion in 2026" vs
+    "$25 billion in 2026" both anchor to 2026) and is NOT dropped. The anchor
+    is looked for in the quote AND in its located source sentence — models
+    often quote the bare fragment ("in excess of $20 billion") while the
+    anchor lives in the surrounding sentence (Part-8 audit fix, 2026-07-05:
+    this guard silently dropped the genuine TSLA capex revision)."""
+    ca, cb = _canonicalize_excerpt(qa), _canonicalize_excerpt(qb)
+    if not ca or not cb or ca == cb:
+        return False
+    skel_a = re.sub(r"\d+(?:[.,]\d+)*", "#", ca)
+    skel_b = re.sub(r"\d+(?:[.,]\d+)*", "#", cb)
+    if skel_a != skel_b:
+        return False
+    ya = _years_in(qa) | _years_in(sent_a)
+    yb = _years_in(qb) | _years_in(sent_b)
+    return not (ya and yb and ya & yb)
+
+
+def _is_pure_relabel(sent_a: str, sent_b: str) -> bool:
+    """True when the two cited sentences are near-identical boilerplate whose
+    only differences are neutral relabelings (product/list names), with no
+    quantifier/modal/negation/direction/temporal/numeric change. "Some of our
+    employees" vs "A substantial number of our employees" keeps its signal
+    words and survives; "digital twin applications" vs "3D internet
+    applications" inside an otherwise identical sentence does not."""
+    import difflib
+    na, nb = _canonicalize_excerpt(sent_a), _canonicalize_excerpt(sent_b)
+    if not na or not nb or na == nb:
+        return False
+    if difflib.SequenceMatcher(None, na, nb).ratio() < 0.85:
+        return False
+    diff = set(na.split()) ^ set(nb.split())
+    return bool(diff) and not _has_signal_words(diff)
+
 def _build_discrepancy_prompt(batch):
     """Build the LLM prompt for a topic batch."""
     topic = batch.get("topic", "Financial Analysis")
@@ -1297,17 +1383,24 @@ def _parse_discrepancy_array(text):
     return [d for d in data if isinstance(d, dict)]
 
 
-def _call_llm(prompt, provider_idx=None, max_tokens=400):
+def _call_llm(prompt, provider_idx=None, max_tokens=700):
     """Call LLM using shared config — delegates to llm_config.call_llm.
 
     PART 4c: default start tier is Groq-70B (this is the quality-sensitive
     classify step); callers may still pass an explicit provider_idx.
     requires_strict_json: classify output is a JSON array with exact sentence
-    indices — jumbo batches (>4k words) promote to Fable 5 via the router."""
+    indices — jumbo batches (>4k words) promote to Fable 5 via the router.
+    max_tokens 400→700 (2026-07-04 speed audit): 15% of Groq-70B classify
+    responses hit the 400-token cap mid-array and the truncation-completing
+    parser dropped the trailing finding(s)."""
     if provider_idx is None:
         provider_idx = start_tier("corporate_discrepancy")
     try:
+        # agent/stage passed EXPLICITLY: classify batches run on ThreadPool
+        # worker threads, where the thread-local call_context set by the
+        # caller does not exist — history recorded them as "unknown".
         return call_llm(prompt, max_tokens=max_tokens, provider_idx=provider_idx,
+                        agent="corporate_discrepancy", stage="classify",
                         requires_strict_json=True)
     except Exception:
         return "", {"cached": False, "provider": "failed"}
@@ -1504,8 +1597,71 @@ def _validate_llm_response(response, batch):
             sub_b = bool(_SUBANNUAL_RE.search(text_b))
             if sub_a != sub_b:
                 continue
+            #    4) TEMPLATE-CLONE (Part 4c, 2026-07-04): identical sentence
+            #       skeleton with only the figures swapped, across two
+            #       filings, no shared year anchor — different reporting
+            #       windows, not a contradiction ("decrease of 28,819" in the
+            #       10-K's annual delta vs "decrease of 21,767" in the 10-Q's
+            #       YTD delta). The prompt warns the model; this is the
+            #       deterministic backstop for when it ignores the warning.
+            #       Anchors are read from the quote AND its located sentence.
+            if _is_period_clone(qa, qb, text_a, text_b):
+                continue
         if _is_table_fragment(text_a) or _is_table_fragment(text_b):
             continue
+        #    5) TABLE-ROW QUOTES (Part 4, 2026-07-04): a quote that is a label
+        #       plus a run of figures compares column SETS from different
+        #       period tables ("…revenues 8 % 10 % 11 %" vs "…10 % 10 %").
+        if _quote_is_table_row(qa) or _quote_is_table_row(qb):
+            continue
+        #    5b) TABLE-CELL QUOTES (Part-8 audit, 2026-07-05): two-word quotes
+        #        are table cells, not claims — "Cybertruck / Active" vs
+        #        "Cybertruck / Tooling" compares a status column across
+        #        periods. Fires only when BOTH sides are substantive short
+        #        strings (an omission's empty/"N/A" side is judged by 5d, not
+        #        here). A real finding quotes at least a clause.
+        _qa_s, _qb_s = (qa or "").strip(), (qb or "").strip()
+        _qa_absent = _qa_s.upper() in ("", "N/A", "NONE")
+        _qb_absent = _qb_s.upper() in ("", "N/A", "NONE")
+        if (not _qa_absent and not _qb_absent
+                and len(_qa_s.split()) < 4 and len(_qb_s.split()) < 4):
+            continue
+        #    5c) NOTE-NUMBER PLUMBING (Part-8 audit, 2026-07-05): financial-
+        #        statement note numbering shifts between filings ("refer to
+        #        Note 10, Debt" vs "refer to Note 7, Debt") — bookkeeping
+        #        cross-references, never a disclosure discrepancy.
+        _note_ref = re.compile(
+            r"(?:refer(?:red)?\s+to|see|described\s+in|set\s+forth\s+in)\s+note\s+\d",
+            re.IGNORECASE)
+        if qa and qb and _note_ref.search(qa) and _note_ref.search(qb):
+            continue
+        #    5d) STRUCTURAL 10-Q BREVITY (Part-8 audit, 2026-07-05): an
+        #        omission whose ABSENT side is the 10-Q while the 10-K has the
+        #        detail is the norm — quarterly reports are abbreviated by
+        #        design. (The reverse — detail appearing in a 10-Q that the
+        #        10-K lacks — stays: that is new information.)
+        if entry.get("discrepancy_type") == "omission_discrepancy":
+            absent_doc = doc_b if _qb_absent else (doc_a if _qa_absent else "")
+            present_doc = doc_a if absent_doc == doc_b else doc_b
+            if absent_doc.upper().startswith("10-Q") and present_doc.upper().startswith("10-K"):
+                continue
+        #    6) PURE RELABEL / LIST-CLARIFICATION (Part 4a/4b, 2026-07-04),
+        #       non-numerical types only: near-identical boilerplate whose
+        #       wording diff carries no quantifier/modal/negation/direction/
+        #       temporal signal is terminology evolution, not a discrepancy.
+        #       Also: one quote merely ADDING neutral clarifying words to the
+        #       other ("vehicle sales" -> "vehicle sales and related
+        #       servicing") lists a detail, not a contradiction.
+        if entry.get("discrepancy_type") != "numerical_contradiction" and qa and qb:
+            if _is_pure_relabel(text_a, text_b):
+                continue
+            wa = set(_canonicalize_excerpt(qa).split())
+            wb = set(_canonicalize_excerpt(qb).split())
+            if wa and wb:
+                small, big = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
+                extra = big - small
+                if small <= big and extra and not _has_signal_words(extra):
+                    continue
 
         entry["sentence_index_a"] = idx_a
         entry["sentence_index_b"] = idx_b
@@ -1588,7 +1744,11 @@ def classify_discrepancies(documents):
         return valid
     
     all_discrepancies = []
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    # max_workers 4→8 (2026-07-04 speed audit): live-call concurrency is now
+    # bounded PER GROQ ORG (3 orgs × LLM_MAX_CONCURRENCY) inside llm_config,
+    # so 8 workers keep all three org buckets + the Gemini/OpenRouter
+    # spillover tiers busy instead of idling behind one org's rate window.
+    with ThreadPoolExecutor(max_workers=8) as ex:
         futures = {ex.submit(process_batch, k, b): k for k, b in valid_batches}
         for future in as_completed(futures):
             all_discrepancies.extend(future.result())
