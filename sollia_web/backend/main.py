@@ -1,3 +1,4 @@
+from typing import Optional, List
 """FastAPI backend — serves the agent pipeline with live streaming (WS5) and
 parallel execution (WS6).
 
@@ -115,7 +116,7 @@ class AnalysisRequest(BaseModel):
     agents: list[str] = ["corporate_discrepancy", "promise_audit"]
     # DEPRECATED (Part 2): kept so old clients don't 422; the pipeline ignores
     # it — Agent 1 analyzes the rolling 5-year window automatically.
-    year: int | None = None
+    year: Optional[int] = None
 
 
 # Input validation (Part 8c + Part 3c). Everything the pipeline touches (SEC
